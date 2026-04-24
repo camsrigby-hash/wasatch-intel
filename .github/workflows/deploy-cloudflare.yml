@@ -27,11 +27,17 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Publish to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: wasatch-intel
-          directory: dist
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+      - name: Show build output (diagnostic)
+        run: |
+          echo "=== root ==="
+          ls -la
+          echo "=== .output (if exists) ==="
+          ls -la .output/ 2>/dev/null || echo ".output/ not found"
+          echo "=== dist (if exists) ==="
+          ls -la dist/ 2>/dev/null || echo "dist/ not found"
+
+      - name: Deploy to Cloudflare Pages
+        run: npx wrangler pages deploy .output --project-name=wasatch-intel --branch=main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
