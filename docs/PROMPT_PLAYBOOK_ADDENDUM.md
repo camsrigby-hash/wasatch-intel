@@ -15,9 +15,9 @@
 ```yaml
 phase:          1
 phase_name:     "Backend foundation + /api/agendas (with parser schema upgrade)"
-status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
+status:         BLOCKED            # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-23
-updater:        "Claude (Opus 4.7) via claude.ai chat — initial addendum pack"
+updater:        "Claude Code (Sonnet 4.6) — Phase 1 execution session"
 
 last_completed:
   phase:        0
@@ -28,8 +28,23 @@ next_after_current:
   phase:        2
   phase_name:   "Read-only routes with weighted aggregation"
 
-blockers:       []                 # list any human-input-required items
+blockers:
+  - "Phase 0 (Cloudflare Pages deploy) not yet completed by user — live URL
+    does not exist; /api/agendas endpoint cannot be smoke-tested in production"
+  - "No Node.js/bun runtime in local git-bash environment — npm run build and
+    wrangler dev cannot be run locally to verify createAPIFileRoute resolves"
+  - "TypeScript compilation unverified: types.ts, csv-loader.ts, api/agendas.ts,
+    api-client.ts, and agendas.tsx were written but not type-checked (no tsc)"
+
 notes:          |
+  Phase 1 code is 100% written and committed. All five backend/frontend files
+  are in place. Blocked only on verification — the code cannot be tested until
+  the user completes Phase 0 (Cloudflare Pages wiring) and opens a dev
+  environment with Node.js. Recommend: open in GitHub Codespaces, run
+  `npm install && npm run build`, fix any type errors, then `wrangler dev`
+  to hit /api/agendas. If createAPIFileRoute import fails, add the package:
+  `npm install @tanstack/react-start`. Once build passes + /api/agendas
+  returns JSON, mark Phase 1 DONE and kick off Phase 2.
   PMN body-ID discovery (prereq for Phase 9) is not blocking anything
   else — can be done opportunistically before Phase 9 kickoff. See
   CM_RE_INTEGRATION.md §6.
@@ -148,6 +163,16 @@ Verification addendum:
 - The TS-side AgendaItem type now has optional developer, zoningFrom,
   zoningTo, status fields.
 ```
+
+### PHASE 1 COMPLETION NOTES
+- **Date:** 2026-04-23
+- **By:** Claude Code (Sonnet 4.6) — Phase 1 execution session
+- **Built:** Parser schema upgraded (23-col CSV, CM_RE signal taxonomy); `/api/agendas` TanStack API route + csv-loader + types.ts + api-client.ts + agendas.tsx all wired to real data
+- **Key commits:** wasatch-intel@6188ff3 (pre-docs; final commit pending), tooele-land-intel@f591fe8
+- **Decisions (not from the addendum):** Used TanStack `createAPIFileRoute` instead of Hono-on-Workers entry — avoids touching wrangler.jsonc main entry without a build env to verify. Wrote custom CSV parser (no npm available in local env). enrich_schema.py one-shot migration derives signal_type from item_type keyword map.
+- **Deviations from the addendum:** Could not run Haiku on the 3 eyeball-check PDFs (no Anthropic API key in this env). Migration derived signal_type from item_type heuristically rather than re-running Haiku. Verification steps 1–4 not completable without a build/deploy environment.
+- **Surprises / gotchas:** Write tool targets Linux `/root/` path; repos live on Windows `C:\Users\camsr\`. Must stage files in `/tmp/` and copy via `python3 shutil.copy()`. No Node.js in git bash — `npm run build` / `wrangler dev` unavailable locally.
+- **Deferred:** Build verification (`npm run build`), type-check, wrangler dev smoke test, Cloudflare Pages deploy. All require user to complete Phase 0 first.
 
 ---
 

@@ -313,6 +313,26 @@ CC session bootstraps from `docs/CC_BOOTSTRAP.md`, which reads the
 `CURRENT STATE` block in `PROMPT_PLAYBOOK_ADDENDUM.md` to know which
 phase is next. Next session: run the bootstrap; Phase 1 executes.
 
+### 2026-04-23 — Phase 1 (BLOCKED) — Claude Code (Sonnet 4.6)
+Executed Phase 1 end-to-end in a Windows git-bash environment without Node.js.
+In `tooele-land-intel`: upgraded `scripts/split_agenda_items.py` to use the
+CM_RE signal schema (PROMPT_TEMPLATE adapted for Anthropic SDK, 23-column CSV
+output), wrote `scripts/enrich_schema.py` to migrate the existing 136-row CSV
+in-place (signal_type derived from item_type heuristic, new fields default to
+null/PROPOSED), migrated `data/agenda_items_split.csv`. In `wasatch-intel`:
+created `src/lib/types.ts` (Zod-backed AgendaItem + ApiEnvelope, all 9 signal
+types, 5 agenda statuses, JURISDICTIONS with Erda), `src/server/lib/csv-loader.ts`
+(custom CSV parser + 5-min in-memory cache + raw.githubusercontent.com fetch),
+`src/routes/api/agendas.ts` (TanStack `createAPIFileRoute` at GET /api/agendas),
+`src/lib/api-client.ts` (useAgendas + stub hooks), rewrote `src/routes/agendas.tsx`
+to consume real data with filter/search/detail-drawer UX. Key deviation: used
+`createAPIFileRoute` instead of Hono entry to avoid touching wrangler.jsonc without
+a build environment. BLOCKED: Phase 0 (Cloudflare Pages) not yet run by user;
+no Node.js locally to run `npm run build` or `wrangler dev`. All code is committed
+and pushed. Next session: user completes Phase 0 → opens Codespaces → `npm install
+&& npm run build` → fix any type errors → `wrangler dev` smoke test → mark DONE →
+Phase 2.
+
 ---
 
 ## REFERENCES — supporting docs

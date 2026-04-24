@@ -6,9 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { AGENDAS, JURISDICTIONS, AGENDA_TYPES, STATUSES, TRANSCRIPT_SAMPLES, type AgendaItem } from "@/lib/mock-data";
+import { Skeleton } from "@/components/ui/skeleton";
+import { JURISDICTIONS } from "@/lib/types";
+import type { AgendaItem, SignalType } from "@/lib/types";
+import { useAgendas } from "@/lib/api-client";
 import { format } from "date-fns";
-import { Search, MapPin, FileText } from "lucide-react";
+import { Search, MapPin, AlertCircle } from "lucide-react";
 
 export const Route = createFileRoute("/agendas")({
   head: () => ({
@@ -22,21 +25,46 @@ export const Route = createFileRoute("/agendas")({
   component: AgendasPage,
 });
 
+const SIGNAL_TYPE_OPTIONS: SignalType[] = [
+  "REZONE", "NEW_SUBDIVISION", "COMMERCIAL_PROJECT", "MINIFLEX_OPPORTUNITY",
+  "INFRASTRUCTURE", "ANNEXATION", "GENERAL_PLAN_AMENDMENT", "LARGE_PROJECT",
+  "DEVELOPER_ACTIVITY",
+];
+
+const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
+  REZONE:                 "Rezone",
+  NEW_SUBDIVISION:        "Subdivision",
+  COMMERCIAL_PROJECT:     "Commercial",
+  MINIFLEX_OPPORTUNITY:   "Miniflex",
+  INFRASTRUCTURE:         "Infrastructure",
+  ANNEXATION:             "Annexation",
+  GENERAL_PLAN_AMENDMENT: "GP Amendment",
+  LARGE_PROJECT:          "Large Project",
+  DEVELOPER_ACTIVITY:     "Developer Activity",
+};
+
 function AgendasPage() {
-  const [q, setQ] = useState("");
-  const [jur, setJur] = useState<string>("");
-  const [type, setType] = useState<string>("");
-  const [status, setStatus] = useState<string>("");
-  const [open, setOpen] = useState<AgendaItem | null>(null);
+  const { data: response, isLoading, isError } = useAgendas();
+
+  const agendas = response?.data ?? [];
+  const meta    = response?.meta;
+
+  const [q,      setQ]      = useState("");
+  const [jur,    setJur]    = useState("");
+  const [sigType,setSigType]= useState("");
+  const [open,   setOpen]   = useState<AgendaItem | null>(null);
 
   const filtered = useMemo(() => {
-    return AGENDAS.filter((a) =>
-      (!q || a.title.toLowerCase().includes(q.toLowerCase()) || a.applicant.toLowerCase().includes(q.toLowerCase()) || a.parcelApn.toLowerCase().includes(q.toLowerCase())) &&
-      (!jur || a.jurisdiction === jur) &&
-      (!type || a.type === type) &&
-      (!status || a.status === status)
+    return agendas.filter((a) =>
+      (!q || a.title.toLowerCase().includes(q.toLowerCase()) ||
+             (a.developer ?? "").toLowerCase().includes(q.toLowerCase()) ||
+             a.id.toLowerCase().includes(q.toLowerCase())) &&
+      (!jur     || a.jurisdiction === jur) &&
+      (!sigType || a.signalType === sigType)
     );
-  }, [q, jur, type, status]);
+  }, [agendas, q, jur, sigType]);
+
+  if (isLoading) return <LoadingSkeleton />;
 
   return (
     <AppShell>
@@ -44,19 +72,35 @@ function AgendasPage() {
         <header className="flex items-baseline justify-between">
           <div>
             <h1 className="text-xl font-semibold">Agendas</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Last 24 months · {AGENDAS.length} scraped items across 12 jurisdictions</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {meta
+                ? `${meta.count} scraped items · ${meta.freshness === "live" ? "live" : "cached"}`
+                : "Loading…"}
+              {" "}· {JURISDICTIONS.filter((j) => agendas.some((a) => a.jurisdiction === j)).length} jurisdictions
+            </p>
           </div>
           <span className="font-mono text-xs text-muted-foreground">{filtered.length} results</span>
         </header>
 
+        {isError && (
+          <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            Could not load agendas. Retrying…
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Search title, applicant, parcel APN…" className="h-8 pl-8 text-xs border-transparent bg-muted/50" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search title, developer, ID…"
+              className="h-8 pl-8 text-xs border-transparent bg-muted/50"
+            />
           </div>
-          <Pill value={jur} onChange={setJur} placeholder="Jurisdiction" options={JURISDICTIONS} />
-          <Pill value={type} onChange={setType} placeholder="Type" options={AGENDA_TYPES as readonly string[]} />
-          <Pill value={status} onChange={setStatus} placeholder="Status" options={STATUSES as readonly string[]} />
+          <Pill value={jur}     onChange={setJur}     placeholder="Jurisdiction" options={JURISDICTIONS} />
+          <Pill value={sigType} onChange={setSigType} placeholder="Signal type"  options={SIGNAL_TYPE_OPTIONS} labels={SIGNAL_TYPE_LABELS} />
         </div>
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -65,78 +109,121 @@ function AgendasPage() {
               <tr>
                 <Th>Date</Th>
                 <Th>Jurisdiction</Th>
-                <Th>Type</Th>
-                <Th>Applicant</Th>
-                <Th>Parcel</Th>
-                <Th className="text-right">Units</Th>
-                <Th className="text-right">Acres</Th>
-                <Th>Status</Th>
                 <Th>Signal</Th>
+                <Th>Developer</Th>
+                <Th>Title</Th>
+                <Th className="text-right">Score</Th>
+                <Th>Status</Th>
               </tr>
             </thead>
             <tbody>
-              {filtered.slice(0, 80).map((a) => (
+              {filtered.slice(0, 100).map((a) => (
                 <tr
                   key={a.id}
                   onClick={() => setOpen(a)}
                   className="border-t border-border hover:bg-muted/40 cursor-pointer transition-colors"
                 >
-                  <Td className="font-mono text-muted-foreground whitespace-nowrap">{format(new Date(a.date), "MMM d, yyyy")}</Td>
+                  <Td className="font-mono text-muted-foreground whitespace-nowrap">
+                    {a.date ? format(new Date(a.date), "MMM d, yyyy") : "—"}
+                  </Td>
                   <Td>{a.jurisdiction}</Td>
-                  <Td><Badge variant="outline" className="text-[10px] font-normal">{a.type}</Badge></Td>
-                  <Td className="max-w-48 truncate">{a.applicant}</Td>
-                  <Td className="font-mono text-muted-foreground">{a.parcelApn}</Td>
-                  <Td className="text-right font-mono">{a.units ?? "—"}</Td>
-                  <Td className="text-right font-mono">{a.acres}</Td>
-                  <Td><StatusPill status={a.status} /></Td>
-                  <Td><SignalBar value={a.signal} showLabel={false} /></Td>
+                  <Td>
+                    {a.signalType
+                      ? <Badge variant="outline" className="text-[10px] font-normal">{SIGNAL_TYPE_LABELS[a.signalType]}</Badge>
+                      : <span className="text-muted-foreground">—</span>}
+                  </Td>
+                  <Td className="max-w-40 truncate text-muted-foreground">{a.developer ?? "—"}</Td>
+                  <Td className="max-w-72 truncate">{a.title}</Td>
+                  <Td className="text-right">
+                    {a.growthScore != null
+                      ? <SignalBar value={a.growthScore} showLabel={false} />
+                      : <span className="text-muted-foreground">—</span>}
+                  </Td>
+                  <Td><StatusPill status={a.agendaStatus} /></Td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {filtered.length > 80 && (
-            <div className="p-3 border-t border-border text-center text-[11px] text-muted-foreground">Showing first 80 of {filtered.length}.</div>
+          {filtered.length > 100 && (
+            <div className="p-3 border-t border-border text-center text-[11px] text-muted-foreground">
+              Showing first 100 of {filtered.length}.
+            </div>
+          )}
+          {filtered.length === 0 && !isLoading && (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              No agenda items match your filters.
+            </div>
           )}
         </div>
       </div>
 
       {/* Detail drawer */}
-      <Sheet open={!!open} onOpenChange={(o)=>!o && setOpen(null)}>
+      <Sheet open={!!open} onOpenChange={(o) => !o && setOpen(null)}>
         <SheetContent side="right" className="w-full sm:max-w-lg p-0">
           {open && (
             <>
               <SheetHeader className="p-4 border-b border-border">
-                <Badge variant="outline" className="text-[10px] w-fit">{open.type}</Badge>
+                {open.signalType && (
+                  <Badge variant="outline" className="text-[10px] w-fit">
+                    {SIGNAL_TYPE_LABELS[open.signalType]}
+                  </Badge>
+                )}
                 <SheetTitle className="text-base text-left">{open.title}</SheetTitle>
                 <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span>{open.jurisdiction}</span>·<span className="font-mono">{format(new Date(open.date), "MMM d, yyyy")}</span>·<StatusPill status={open.status} />
+                  <span>{open.jurisdiction}</span>·
+                  <span className="font-mono">{open.date ? format(new Date(open.date), "MMM d, yyyy") : "—"}</span>·
+                  <StatusPill status={open.agendaStatus} />
                 </div>
               </SheetHeader>
               <div className="p-4 space-y-4 overflow-auto">
-                <div className="rounded-md bg-muted/40 p-3 text-xs">{open.summary}</div>
+                {open.description && (
+                  <div className="rounded-md bg-muted/40 p-3 text-xs">{open.description}</div>
+                )}
 
-                <div>
-                  <h4 className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5">
-                    <FileText className="h-3 w-3" /> Transcript snippet
-                  </h4>
-                  <div className="rounded-md border border-border divide-y divide-border">
-                    {TRANSCRIPT_SAMPLES.default.map((l, i) => (
-                      <div key={i} className="px-3 py-2 text-xs">
-                        <div className="text-[10px] uppercase tracking-wide font-medium text-muted-foreground">{l.speaker}</div>
-                        <div className="mt-0.5">{l.line}</div>
-                      </div>
-                    ))}
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  {open.developer  && <><dt className="text-muted-foreground">Developer</dt><dd>{open.developer}</dd></>}
+                  {open.location   && <><dt className="text-muted-foreground">Location</dt><dd>{open.location}</dd></>}
+                  {open.acres != null && <><dt className="text-muted-foreground">Acres</dt><dd>{open.acres}</dd></>}
+                  {open.units != null && <><dt className="text-muted-foreground">Units</dt><dd>{open.units}</dd></>}
+                  {open.zoningFrom && <><dt className="text-muted-foreground">Zone from</dt><dd>{open.zoningFrom}</dd></>}
+                  {open.zoningTo   && <><dt className="text-muted-foreground">Zone to</dt><dd>{open.zoningTo}</dd></>}
+                  {open.body       && <><dt className="text-muted-foreground">Body</dt><dd>{open.body}</dd></>}
+                </dl>
+
+                {open.notes && (
+                  <div className="rounded-md border border-border p-3 text-xs text-muted-foreground">
+                    {open.notes}
                   </div>
-                </div>
+                )}
 
-                <Button size="sm" variant="outline" className="w-full">
-                  <MapPin className="h-3 w-3" /> Jump to parcel on map
-                </Button>
+                {open.url && (
+                  <Button size="sm" variant="outline" className="w-full" asChild>
+                    <a href={open.url} target="_blank" rel="noopener noreferrer">
+                      <MapPin className="h-3 w-3" /> View source
+                    </a>
+                  </Button>
+                )}
               </div>
             </>
           )}
         </SheetContent>
       </Sheet>
+    </AppShell>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <AppShell>
+      <div className="max-w-7xl mx-auto p-6 space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-10 w-full" />
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 w-full" />
+          ))}
+        </div>
+      </div>
     </AppShell>
   );
 }
@@ -147,24 +234,43 @@ function Th({ children, className = "" }: { children: React.ReactNode; className
 function Td({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <td className={`px-3 py-2 ${className}`}>{children}</td>;
 }
-function StatusPill({ status }: { status: string }) {
+
+function StatusPill({ status }: { status: string | null }) {
+  if (!status) return <span className="text-muted-foreground text-[10px]">—</span>;
   const tone =
-    status === "Approved" ? "bg-[var(--color-opportunity)]/15 text-[var(--color-opportunity)]"
-    : status === "Denied" ? "bg-destructive/15 text-destructive"
-    : status === "Tabled" ? "bg-[var(--color-signal-med)]/15 text-[var(--color-signal-med)]"
+    status === "APPROVED"  ? "bg-[var(--color-opportunity)]/15 text-[var(--color-opportunity)]"
+    : status === "DENIED"  ? "bg-destructive/15 text-destructive"
+    : status === "TABLED"  ? "bg-[var(--color-signal-med)]/15 text-[var(--color-signal-med)]"
     : "bg-muted text-muted-foreground";
-  return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}>{status}</span>;
+  const label =
+    status === "PROPOSED"  ? "Proposed"
+    : status === "APPROVED" ? "Approved"
+    : status === "DENIED"  ? "Denied"
+    : status === "TABLED"  ? "Tabled"
+    : status === "CONTINUED" ? "Continued"
+    : status;
+  return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}>{label}</span>;
 }
 
-function Pill({ value, onChange, placeholder, options }: { value: string; onChange: (v: string)=>void; placeholder: string; options: readonly string[] }) {
+function Pill({
+  value, onChange, placeholder, options, labels,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  options: readonly string[];
+  labels?: Record<string, string>;
+}) {
   return (
     <select
       value={value}
-      onChange={(e)=>onChange(e.target.value)}
+      onChange={(e) => onChange(e.target.value)}
       className="h-8 rounded-md bg-muted/50 border border-transparent px-2 text-xs hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring"
     >
       <option value="">{placeholder}: All</option>
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      {options.map((o) => (
+        <option key={o} value={o}>{labels ? labels[o as SignalType] ?? o : o}</option>
+      ))}
     </select>
   );
 }
