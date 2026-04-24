@@ -266,7 +266,8 @@ a single 500 from UGRC invalidates the whole run.
 - **Decisions (not from the addendum):** Ran geocode locally without Haiku (no API key available) → 12/136 geocoded. Committed initial items_geocoded.csv so map shows real pins immediately; full run waits for geocode.yml with ANTHROPIC_API_KEY.
 - **Deviations from the addendum:** Nominatim strategies added city name appendage only when needed (not always "Tooele County, UT" to avoid over-constraining rural addresses). Bbox filter added to reject Nominatim results outside Tooele Valley.
 - **Surprises / gotchas:** GH CLI not authenticated locally — couldn't trigger geocode.yml via `gh workflow run`. User should trigger it from GitHub UI or it runs automatically after next weekly-digest.yml run.
-- **Deferred:** 124/136 items without geocoding (need Haiku run). Signal-weighted pin styling (Phase 5). Real PARCELS layer (Phase 4). ParcelDeepDive still uses mock Parcel shape (Phase 4/5).
+- **Deferred:** Signal-weighted pin styling (Phase 5). Real PARCELS layer (Phase 4). ParcelDeepDive still uses mock Parcel shape (Phase 4/5).
+- **Geocode workflow ran 2026-04-24 — 30/136 items plotted, $0.011 cost.** 106 unplotted: 55 no-text items (procedural), 5 canceled meetings, 46 subdivision names Nominatim can't resolve. 0 out-of-bbox garbage. Quality clean — no prompt tightening needed.
 
 ---
 
