@@ -340,6 +340,12 @@ Note: CM_RE's scorer builds an AADT-to-score curve (150k = 100, 50k = 70,
 and lets the human interpret it. Scoring for a specific use is out of scope.
 ```
 
+### Pre-flight notes (added 2026-04-24 from Phase 3 completion)
+
+Geocoding gap to close: 46 of 136 agenda items currently fail geocoding because they only have subdivision names ("Oquirrh Point Phase 1", "Copper Cove") that Nominatim can't resolve. The underlying agenda PDFs almost certainly contain parcel IDs or legal descriptions in the body text — the current parser only extracts from the title field. As part of Phase 5's enrichment pass, have Haiku read the full PDF body (not just title) and pull any parcel IDs / legal descriptions / cross-streets it finds into new CSV columns (parcel_id_extracted, legal_description, cross_streets). Then re-run geocode_items.py — expected jump from 30/136 to 80+/136 plotted.
+
+Out of scope for Phase 5: anything requiring polygon centroids from a gap layer (that's Phase 4's job).
+
 ---
 
 ## PHASE 6 ADDENDUM — Shared signal taxonomy for correlation
