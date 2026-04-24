@@ -8,6 +8,12 @@ That's it. Everything below is written to Claude Code, not to you.
 
 ---
 
+## Tool portability
+
+This protocol is designed for Claude Code but works with any agentic CLI that can read files, edit code, run bash, and commit to git. Confirmed compatible: Claude Code, OpenAI Codex CLI, Gemini CLI, Cline, OpenCode. If you are not Claude Code, the only adjustments: (1) ignore any /model commands in PROMPT_PLAYBOOK.md addendum sections — those are Claude-Code-specific, just use your default frontier model, (2) self-update protocol (commit cadence, doc updates) applies regardless of which agent is executing.
+
+---
+
 ## Instructions — for Claude Code
 
 You are Claude Code, picking up autonomous work on the Wasatch Intel × Tooele Land Intel project. This doc is your session kickoff protocol. Follow it end-to-end every time.
