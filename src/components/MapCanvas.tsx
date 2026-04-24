@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import maplibregl, { Map as MLMap, LngLatBoundsLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { PARCELS, AGENDAS, signalLabel, type Parcel, type AgendaItem } from "@/lib/mock-data";
+import type { AgendaItem } from "@/lib/types";
+import { PARCELS } from "@/lib/mock-data";
 
 interface MapCanvasProps {
   layers: {
@@ -11,7 +12,8 @@ interface MapCanvasProps {
     heatmap: boolean;
     sitePlans: boolean;
   };
-  onParcelClick?: (parcel: Parcel) => void;
+  agendaItems?: AgendaItem[];          // real geocoded items from /api/agendas
+  onParcelClick?: (parcel: import("@/lib/mock-data").Parcel) => void;
   onAgendaClick?: (agenda: AgendaItem) => void;
   selectedParcelId?: string | null;
 }
@@ -39,18 +41,50 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
   ],
 };
 
-function colorForSignal(s: number): string {
-  const l = signalLabel(s);
-  if (l === "Critical") return "#dc2626";
-  if (l === "High") return "#ea580c";
-  if (l === "Med") return "#eab308";
-  return "#60a5fa";
+function buildAgendaGeoJSON(items: AgendaItem[]): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
+  for (const a of items) {
+    if (a.lat == null || a.lng == null) continue;
+    features.push({
+      type: "Feature",
+      id: a.id,
+      properties: {
+        id: a.id,
+        developer: a.developer ?? a.title ?? "",
+        signalType: a.signalType ?? a.itemType ?? "",
+        jurisdiction: a.jurisdiction,
+        date: a.date,
+        title: a.title,
+        // growthScore intentionally not used for pin styling until Phase 5 Haiku
+        // enrichment populates real values — all 136 items have growthScore=null.
+        // Pins render UNIFORMLY until Phase 5 adds signal-weighted styling.
+      },
+      geometry: { type: "Point", coordinates: [a.lng, a.lat] },
+    });
+  }
+  return { type: "FeatureCollection", features };
 }
 
-export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcelId }: MapCanvasProps) {
+export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, selectedParcelId }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MLMap | null>(null);
   const loadedRef = useRef(false);
+  const agendaItemsRef = useRef<AgendaItem[]>(agendaItems ?? []);
+
+  // Keep ref current so click handlers always see latest data without re-registering
+  useEffect(() => {
+    agendaItemsRef.current = agendaItems ?? [];
+  }, [agendaItems]);
+
+  // Update "agendas" source when real data arrives
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const src = map.getSource("agendas") as maplibregl.GeoJSONSource | undefined;
+    if (src) {
+      src.setData(buildAgendaGeoJSON(agendaItems ?? []));
+    }
+  }, [agendaItems]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -70,21 +104,15 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
     );
     mapRef.current = map;
 
-    const resizeMap = () => {
-      requestAnimationFrame(() => {
-        map.resize();
-      });
-    };
-
-    const resizeObserver = new ResizeObserver(() => {
-      resizeMap();
-    });
+    const resizeMap = () => { requestAnimationFrame(() => { map.resize(); }); };
+    const resizeObserver = new ResizeObserver(() => { resizeMap(); });
     resizeObserver.observe(containerRef.current);
 
     map.on("load", () => {
       loadedRef.current = true;
       resizeMap();
 
+      // Parcel polygon layer (mock data — replaced in Phase 4)
       map.addSource("parcels", {
         type: "geojson",
         data: {
@@ -126,23 +154,10 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
         },
       });
 
-      const agendaFeatures = AGENDAS.map((a) => ({
-        type: "Feature" as const,
-        id: a.id,
-        properties: {
-          id: a.id,
-          signal: a.signal,
-          applicant: a.applicant,
-          type: a.type,
-          jurisdiction: a.jurisdiction,
-          color: colorForSignal(a.signal),
-        },
-        geometry: { type: "Point" as const, coordinates: a.centroid },
-      }));
-
+      // Agenda pins — real geocoded data from /api/agendas
       map.addSource("agendas", {
         type: "geojson",
-        data: { type: "FeatureCollection", features: agendaFeatures },
+        data: buildAgendaGeoJSON(agendaItemsRef.current),
         cluster: true,
         clusterMaxZoom: 12,
         clusterRadius: 40,
@@ -168,11 +183,13 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
         source: "agendas",
         filter: ["!", ["has", "point_count"]],
         paint: {
-          "circle-color": ["get", "color"],
+          // Uniform styling — growthScore is 0 for all items until Phase 5 Haiku
+          // enrichment runs. Signal-weighted size/color/opacity belongs in Phase 5.
+          "circle-color": "#4338ca",
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 1.5,
-          "circle-radius": ["interpolate", ["linear"], ["get", "signal"], 0, 4, 100, 9],
-          "circle-opacity": 0.95,
+          "circle-radius": 6,
+          "circle-opacity": 0.9,
         },
       });
 
@@ -182,22 +199,15 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
         source: "agendas",
         maxzoom: 13,
         paint: {
-          "heatmap-weight": ["interpolate", ["linear"], ["get", "signal"], 0, 0, 100, 1],
+          "heatmap-weight": 1,  // uniform weight — signal weighting deferred to Phase 5
           "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 1, 13, 3],
           "heatmap-color": [
-            "interpolate",
-            ["linear"],
-            ["heatmap-density"],
-            0,
-            "rgba(0,0,0,0)",
-            0.2,
-            "rgba(99,102,241,0.4)",
-            0.5,
-            "rgba(234,179,8,0.6)",
-            0.8,
-            "rgba(234,88,12,0.75)",
-            1,
-            "rgba(220,38,38,0.85)",
+            "interpolate", ["linear"], ["heatmap-density"],
+            0,   "rgba(0,0,0,0)",
+            0.2, "rgba(99,102,241,0.4)",
+            0.5, "rgba(234,179,8,0.6)",
+            0.8, "rgba(234,88,12,0.75)",
+            1,   "rgba(220,38,38,0.85)",
           ],
           "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 8, 13, 40],
           "heatmap-opacity": 0.7,
@@ -214,7 +224,7 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
       map.on("click", "agenda-points", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        const a = AGENDAS.find((x) => x.id === f.properties?.id);
+        const a = agendaItemsRef.current.find((x) => x.id === f.properties?.id);
         if (a) onAgendaClick?.(a);
       });
 
@@ -226,12 +236,8 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
       });
 
       ["parcels-fill", "agenda-points", "agenda-clusters"].forEach((layerId) => {
-        map.on("mouseenter", layerId, () => {
-          map.getCanvas().style.cursor = "pointer";
-        });
-        map.on("mouseleave", layerId, () => {
-          map.getCanvas().style.cursor = "";
-        });
+        map.on("mouseenter", layerId, () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; });
       });
     });
 
@@ -252,9 +258,7 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
     if (!map || !loadedRef.current) return;
 
     const setVis = (id: string, vis: boolean) => {
-      if (map.getLayer(id)) {
-        map.setLayoutProperty(id, "visibility", vis ? "visible" : "none");
-      }
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis ? "visible" : "none");
     };
 
     setVis("parcels-fill", layers.parcels);
@@ -282,12 +286,9 @@ export function MapCanvas({ layers, onParcelClick, onAgendaClick, selectedParcel
 
     if (selectedParcelId) {
       const p = PARCELS.find((x) => x.id === selectedParcelId);
-      if (p) {
-        map.easeTo({ center: p.centroid, zoom: Math.max(map.getZoom(), 14), duration: 600 });
-      }
+      if (p) map.easeTo({ center: p.centroid, zoom: Math.max(map.getZoom(), 14), duration: 600 });
     }
   }, [selectedParcelId]);
 
   return <div ref={containerRef} className="absolute inset-0 min-h-full w-full bg-muted" />;
 }
-

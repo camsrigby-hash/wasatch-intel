@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Layers, MapPin } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MapCanvas } from "@/components/MapCanvas";
@@ -9,8 +9,9 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { JURISDICTIONS, signalLabel } from "@/lib/types";
-import { AGENDA_TYPES, type Parcel, type AgendaItem } from "@/lib/mock-data";
+import { JURISDICTIONS, signalLabel, type AgendaItem } from "@/lib/types";
+import { AGENDA_TYPES, type Parcel } from "@/lib/mock-data";
+import { useAgendas } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -40,10 +41,20 @@ function MapPage() {
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [agendaPopover, setAgendaPopover] = useState<AgendaItem | null>(null);
 
+  const { data: agendasEnvelope } = useAgendas();
+  const allAgendas = agendasEnvelope?.data ?? [];
+
+  // Items with geocoded coordinates — shown as pins on the map
+  const plottedAgendas = useMemo(
+    () => allAgendas.filter((a) => a.lat != null && a.lng != null),
+    [allAgendas],
+  );
+
   return (
     <AppShell padded={false}>
       <MapCanvas
         layers={layers}
+        agendaItems={plottedAgendas}
         onParcelClick={setSelectedParcel}
         onAgendaClick={setAgendaPopover}
         selectedParcelId={selectedParcel?.id ?? null}
@@ -92,6 +103,21 @@ function MapPage() {
                 </div>
               ))}
 
+              {/* Pin counter — honest about unplotted items */}
+              {allAgendas.length > 0 && (
+                <div className="pt-3 border-t border-border">
+                  <p className="text-[10px] text-muted-foreground">
+                    <MapPin className="inline h-3 w-3 mr-0.5" />
+                    {plottedAgendas.length} of {allAgendas.length} items plotted
+                  </p>
+                  {plottedAgendas.length === 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Geocoding pending — run geocode.yml workflow
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="pt-3 border-t border-border">
                 <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Signal legend</div>
                 <div className="space-y-1">
@@ -113,21 +139,30 @@ function MapPage() {
         </div>
       </aside>
 
-      {/* Agenda popover */}
+      {/* Agenda item popover (real AgendaItem from types.ts) */}
       {agendaPopover && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-80 bg-background border border-border rounded-md shadow-lg p-3">
           <div className="flex items-center justify-between mb-1">
-            <Badge variant="outline" className="text-[10px]">{agendaPopover.type}</Badge>
+            <Badge variant="outline" className="text-[10px]">
+              {agendaPopover.signalType ?? agendaPopover.itemType ?? "Item"}
+            </Badge>
             <button className="text-muted-foreground hover:text-foreground text-xs" onClick={() => setAgendaPopover(null)}>×</button>
           </div>
-          <div className="text-xs font-medium">{agendaPopover.applicant}</div>
+          <div className="text-xs font-medium">
+            {agendaPopover.developer ?? agendaPopover.title}
+          </div>
           <div className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-            <MapPin className="h-3 w-3" /> {agendaPopover.jurisdiction} · {format(new Date(agendaPopover.date), "MMM d, yyyy")}
+            <MapPin className="h-3 w-3" />
+            {agendaPopover.jurisdiction} · {format(new Date(agendaPopover.date), "MMM d, yyyy")}
           </div>
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground">Signal</span>
-            <Badge className="text-[10px] bg-[var(--color-signal-high)] text-white border-0">{agendaPopover.signal} {signalLabel(agendaPopover.signal)}</Badge>
-          </div>
+          {agendaPopover.growthScore != null && (
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground">Signal</span>
+              <Badge className="text-[10px] bg-[var(--color-signal-high)] text-white border-0">
+                {agendaPopover.growthScore} {signalLabel(agendaPopover.growthScore)}
+              </Badge>
+            </div>
+          )}
         </div>
       )}
 

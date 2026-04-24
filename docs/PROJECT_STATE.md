@@ -113,7 +113,7 @@ Update this file at the end of every work session. The "Current Status" section 
 ┌───────────────────────────────────────────────────────────────┐
 │  Frontend  — wasatch-intel repo, src/                         │
 │  TanStack Start + React 19, MapLibre GL, Radix UI, Tailwind 4 │
-│  Cloudflare Pages: wasatch-intel.pages.dev                    │
+│  Live URL: wasatch-intel.cam-s-rigby.workers.dev               │
 │  Custom domain (if added): wasatch-intel.com (not registered) │
 └───────────────────────────────────────────────────────────────┘
 ```

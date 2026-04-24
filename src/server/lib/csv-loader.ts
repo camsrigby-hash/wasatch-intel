@@ -21,9 +21,13 @@ async function fetchRaw(url: string): Promise<string> {
   return text;
 }
 
-// Legacy single-file cache alias (kept for backward compat)
+// Fetch geocoded CSV if available, fall back to base CSV
 async function fetchCsv(): Promise<string> {
-  return fetchRaw(`${TLI_BASE}/agenda_items_split.csv`);
+  try {
+    return await fetchRaw(`${TLI_BASE}/items_geocoded.csv`);
+  } catch {
+    return fetchRaw(`${TLI_BASE}/agenda_items_split.csv`);
+  }
 }
 
 // ── CSV parser (handles quoted fields with embedded commas / newlines) ────────

@@ -72,7 +72,7 @@ Concrete deliverables:
    curling http://localhost:5173/api/agendas and getting real Erda +
    Grantsville data.
 5. Production: push to main, watch the Cloudflare Pages deploy succeed,
-   visit https://wasatch-intel.pages.dev/agendas and visually confirm the
+   visit https://wasatch-intel.cam-s-rigby.workers.dev/agendas and visually confirm the
    table shows real items (not the mock 400 fake rows).
 
 Decisions you'll need to make and just decide (don't ask):
