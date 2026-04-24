@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import maplibregl, { Map as MLMap, LngLatBoundsLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { AgendaItem } from "@/lib/types";
-import { PARCELS } from "@/lib/mock-data";
+import { PARCELS, type Parcel } from "@/lib/mock-data";
 
 interface MapCanvasProps {
   layers: {
@@ -13,7 +13,7 @@ interface MapCanvasProps {
     sitePlans: boolean;
   };
   agendaItems?: AgendaItem[];          // real geocoded items from /api/agendas
-  onParcelClick?: (parcel: import("@/lib/mock-data").Parcel) => void;
+  onParcelClick?: (parcel: Parcel) => void;
   onAgendaClick?: (agenda: AgendaItem) => void;
   selectedParcelId?: string | null;
 }
