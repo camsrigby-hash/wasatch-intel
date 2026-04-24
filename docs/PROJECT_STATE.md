@@ -20,11 +20,12 @@ Update this file at the end of every work session. The "Current Status" section 
 - Shared `types.ts` module written and typecheck-verified (zod v3 + v4 compatible)
 - Build plan written (`docs/tli-buildout-schedule-v2.md`)
 - Phase 0 bash block ready to paste in Codespaces
-- CM_RE heritage catalogued; vendor/cm_re/ extracted into tooele-land-intel
+- CM_RE reference tree extracted to `tooele-land-intel/vendor/cm_re/` — scraper/parser/aggregator/UGRC-fetcher/road-adjacency/STIP/land-cover source code available for porting in Phases 1, 3, 4, 5, 6, 9, 10. See `docs/CM_RE_INTEGRATION.md`.
+- Session bootstrap protocol established — every future CC session starts with "Read docs/CC_BOOTSTRAP.md and begin." and picks up from the `CURRENT STATE` block in `docs/PROMPT_PLAYBOOK_ADDENDUM.md`.
 
 ### What's next
 - Run Phase 0 (push frontend, wire Cloudflare Pages, ship a live mock URL)
-- Then Phase 1 (Workers backend + first real `/api/agendas` endpoint)
+- Then Phase 1 (Workers backend + first real `/api/agendas` endpoint, with parser schema upgrade per CM_RE addendum)
 
 ### Open questions / blockers
 - None currently
@@ -186,9 +187,6 @@ wasatch-intel/
 ├── docs/
 │   ├── PROJECT_STATE.md               # this file
 │   ├── PROMPT_PLAYBOOK.md             # phase-by-phase prompts for AI agents
-│   ├── CC_BOOTSTRAP.md                # Claude Code session bootstrap guide
-│   ├── CM_RE_INTEGRATION.md           # CM_RE heritage inventory + phase integration map
-│   ├── PROMPT_PLAYBOOK_ADDENDUM.md    # per-phase delta prompts for CM_RE porting
 │   ├── tli-full-spec.md               # 110% feature spec
 │   ├── tli-buildout-schedule-v2.md    # phase plan
 │   └── python-to-ts-field-mapping.md  # ETL contract
@@ -297,13 +295,23 @@ main. Next session: user runs Phase 0 in Codespaces; first Claude Code session
 at home opens with Phase 1 prompt from the playbook.
 
 ### 2026-04-23 — CM_RE heritage documented — Claude (Opus 4.7) via claude.ai chat
-Catalogued reusable modules from the prior CM_RE project (Davis+Weber CRE
-site-selection tool). Created CM_RE_INTEGRATION.md, PROMPT_PLAYBOOK_ADDENDUM.md,
-and cm_re_extract.sh. No code ported yet — extraction and porting happen in
-the respective phases (Phase 1 schema upgrade, Phase 3/4/5 UGRC/STIP/polygon
-work, Phase 9 PMN expansion, Phase 10 NAIP land cover). Scope boundaries
-documented: do not drag CRE scorer, Google Places, owner scraping, or
-rasterio into MVP.
+Catalogued reusable modules from a prior related project ("CM_RE" — a
+Davis+Weber commercial real estate site-selection tool). Created three new
+docs: `CC_BOOTSTRAP.md` (session kickoff protocol), `CM_RE_INTEGRATION.md`
+(reuse map + scope guardrails), `PROMPT_PLAYBOOK_ADDENDUM.md` (phase-level
+deltas with a living `CURRENT STATE` block and a `SELF-UPDATE PROTOCOL`).
+Extracted reusable CM_RE modules into `tooele-land-intel/vendor/cm_re/` as
+read-only reference via `cm_re_extract.sh` (scraper, parser, aggregator,
+UGRC fetcher, road adjacency, STIP, NAIP land cover). No code ported yet —
+porting happens in the respective phases (Phase 1 parser schema upgrade,
+Phase 3 UGRC patterns, Phase 4 STIP + polygon renderer, Phase 5 road
+adjacency + AADT, Phase 6 shared signal taxonomy, Phase 9 PMN-based
+per-city expansion, new Phase 10 NAIP land cover — deferred). Scope
+guardrails documented: do not drag the CRE scorer weights, Google Places
+API, owner scraping, or rasterio into MVP. From this point forward every
+CC session bootstraps from `docs/CC_BOOTSTRAP.md`, which reads the
+`CURRENT STATE` block in `PROMPT_PLAYBOOK_ADDENDUM.md` to know which
+phase is next. Next session: run the bootstrap; Phase 1 executes.
 
 ---
 
@@ -313,8 +321,10 @@ rasterio into MVP.
 - `docs/tli-buildout-schedule-v2.md` — phase-by-phase build plan with effort estimates
 - `docs/python-to-ts-field-mapping.md` — ETL contract from Python CSV columns to TS fields
 - `docs/PROMPT_PLAYBOOK.md` — copy-paste prompts for each phase (the file you came here from, probably)
-- `src/lib/types.ts` — the single source of truth for data shapes; backend MUST conform
+- `docs/PROMPT_PLAYBOOK_ADDENDUM.md` — CM_RE-heritage deltas per phase; holds the living `CURRENT STATE` block updated at end of every phase
 - `docs/CM_RE_INTEGRATION.md` — inventory of a prior related project whose scraper, parser, aggregator, and UGRC fetcher code is reusable for Phases 3–6 and 9. The code itself lives under `tooele-land-intel/vendor/cm_re/` after running `cm_re_extract.sh`. Read this before Phase 1 (parser schema upgrade), Phase 3 (UGRC patterns), and Phase 9 (per-city expansion via PMN).
+- `docs/CC_BOOTSTRAP.md` — Claude Code session kickoff protocol. Every CC session starts with "Read docs/CC_BOOTSTRAP.md and begin."
+- `src/lib/types.ts` — the single source of truth for data shapes; backend MUST conform
 
 ---
 
