@@ -13,35 +13,35 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          3
-phase_name:     "Geocoding backfill"
+phase:          4
+phase_name:     "STIP overlay + polygon renderer"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-24
-updater:        "Claude Code (Sonnet 4.6) — Phase 2 session"
+updater:        "Claude Code (Sonnet 4.6) — Phase 3 session"
 
 last_completed:
-  phase:        2
-  phase_name:   "Read-only routes with weighted aggregation"
+  phase:        3
+  phase_name:   "Geocoding backfill"
   completed_on: 2026-04-24
 
 next_after_current:
-  phase:        4
-  phase_name:   "STIP overlay + polygon renderer"
+  phase:        5
+  phase_name:   "Parcel Deep Dive with live ArcGIS"
 
 blockers: []
 
 notes:          |
-  Phase 2 fully done. All 6 new API endpoints wired in src/server/entry.ts:
-  /api/digest, /api/developers, /api/signal-wire, /api/parcels (empty),
-  /api/watchlists (empty), /api/deals (empty). Routes feed.tsx, developers.tsx,
-  pipeline.tsx, watchlists.tsx, index.tsx all replaced mock data with real
-  TanStack Query hooks. mock-data.ts shrunk by ~150 lines — only MapCanvas/
-  ParcelDeepDive/search.tsx mock shapes remain (Phase 3 scope). Python
-  aggregate_city_signals.py committed to tooele-land-intel@500e0d0 and produces
-  city_signal_scores.json with weighted rollup (Grantsville 100.0/A, Erda 12.1/D).
-  Two AgendaItem shapes still coexist: mock (centroid+applicant+signal) in
-  mock-data.ts for map components, real (lat/lng+developer+growthScore) in
-  types.ts for API. Phase 3 resolves this by geocoding real items onto the map.
+  Phase 3 done. geocode_items.py committed with 4-strategy pipeline (parcel_id →
+  UGRC, location → Nominatim, title regex → Nominatim, Haiku → Nominatim capped
+  at 100 calls). Initial local run produced 12/136 geocoded items (parcel=10,
+  nominatim=2); 124 remaining need Haiku → trigger geocode.yml workflow with
+  ANTHROPIC_API_KEY to complete the full run. Map route wired to useAgendas()
+  with real AgendaItem (types.ts) — pins render UNIFORMLY (comment in MapCanvas
+  explains Phase 5 deferral). "X of Y items plotted" counter live in layer rail.
+  arcgis.py now resilient (Retry + disk cache). Two AgendaItem shapes resolved:
+  mock shape remains only for PARCELS layer (Phase 4 replaces it); map click
+  handler and popover use real types.ts AgendaItem. pages.dev refs purged from
+  both docs.
 ```
 
 ---
@@ -257,6 +257,16 @@ a single 500 from UGRC invalidates the whole run.
 - growth_score is empty for all 136 CSV rows → upstream Haiku enrichment in tooele-land-intel hasn't run; fix in Phase 5
 - 1 row with meeting_date="nan" leaks through date filter in loadSignalWire — add Date.parse guard when Phase 5 touches the loader
 - mostRecentActivity="nan" in city_signal_scores.json — fix NaN→None in tooele-land-intel/scripts/aggregate_city_signals.py during Phase 5
+
+### PHASE 3 COMPLETION NOTES
+- **Date:** 2026-04-24
+- **By:** Claude Code (Sonnet 4.6) — Phase 3 session
+- **Built:** resilient arcgis.py (Retry+disk cache); geocode_items.py (4-strategy: parcel_id/nominatim/title-regex/haiku); geocode.yml workflow; MapCanvas rewritten to accept real AgendaItem[] with uniform pins + comment; index.tsx wired to useAgendas() with counter + updated popover; csv-loader.ts tries items_geocoded.csv first; pages.dev refs purged.
+- **Key commits:** wasatch-intel@8db1416, tooele-land-intel@018e54d (geocoded CSV), tooele-land-intel@b24a40b (scripts)
+- **Decisions (not from the addendum):** Ran geocode locally without Haiku (no API key available) → 12/136 geocoded. Committed initial items_geocoded.csv so map shows real pins immediately; full run waits for geocode.yml with ANTHROPIC_API_KEY.
+- **Deviations from the addendum:** Nominatim strategies added city name appendage only when needed (not always "Tooele County, UT" to avoid over-constraining rural addresses). Bbox filter added to reject Nominatim results outside Tooele Valley.
+- **Surprises / gotchas:** GH CLI not authenticated locally — couldn't trigger geocode.yml via `gh workflow run`. User should trigger it from GitHub UI or it runs automatically after next weekly-digest.yml run.
+- **Deferred:** 124/136 items without geocoding (need Haiku run). Signal-weighted pin styling (Phase 5). Real PARCELS layer (Phase 4). ParcelDeepDive still uses mock Parcel shape (Phase 4/5).
 
 ---
 

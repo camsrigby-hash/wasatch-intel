@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-24
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 2 session
-**Active phase:** Phase 3 — Geocoding backfill (NOT STARTED)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 3 session
+**Active phase:** Phase 4 — STIP overlay + polygon renderer (NOT STARTED)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -19,12 +19,13 @@ Update this file at the end of every work session. The "Current Status" section 
 - Phase 0: Cloudflare Workers deploy pipeline live (GitHub Actions → wrangler deploy)
 - Phase 1: /api/agendas endpoint live (136 items, freshness=live from tooele-land-intel CSV)
 - Phase 2: /api/digest, /api/developers, /api/signal-wire live; feed.tsx, developers.tsx, pipeline.tsx, watchlists.tsx wired to real data; mock-data.ts shrunk; weighted aggregator (aggregate_city_signals.py) in tooele-land-intel
+- Phase 3: geocode_items.py + geocode.yml; arcgis.py resilient; MapCanvas accepts real AgendaItem[] with uniform pins; index.tsx wired to useAgendas() with counter + popover; csv-loader tries items_geocoded.csv first. 12/136 items geocoded in initial local run; full run (Haiku strategies) needs geocode.yml workflow trigger.
 - types.ts, csv-loader.ts, api-client.ts, agendas.tsx — all wired, real data loading
 - Parser schema upgraded in tooele-land-intel (CM_RE signal taxonomy, 23-col CSV)
 - CM_RE reference tree at `tooele-land-intel/vendor/cm_re/`
 
 ### What's next
-- Phase 3: Geocoding backfill — geocode real agenda items to lat/lng, replace mock AgendaItem on map
+- Phase 4: STIP overlay + polygon renderer
 
 ### Open questions / blockers
 - None currently
@@ -369,6 +370,27 @@ City scores confirmed exposed at /api/digest → data.cityScores (Grantsville 10
 needed. Debt sweep: tree clean, zero TODO/FIXME/XXX in src/. Three non-blocking data quality issues logged
 under "Open items" above (growth_score empty, 1 nan date, mostRecentActivity="nan" in JSON) — all upstream
 CSV/Python issues, not TypeScript bugs. No code changes made. Phase 3 is clear to start.
+
+### 2026-04-24 — Phase 3 (DONE) — Claude Code (Sonnet 4.6)
+Executed Phase 3 end-to-end. Pre-flight: replaced pages.dev refs with workers.dev in
+PROMPT_PLAYBOOK.md and PROJECT_STATE.md architecture diagram. In tooele-land-intel:
+rewrote scripts/arcgis.py with _make_session() (Retry adapter on 500/502/503/504) and
+disk cache under data/cache/arcgis/ for get_parcel_centroid (cached False sentinel for
+misses, list for hits); wrote scripts/geocode_items.py with 4-strategy pipeline (parcel ID
+regex → UGRC centroid, location field → Nominatim, street address regex in title →
+Nominatim, Haiku 4.5 extraction → Nominatim capped at 100 calls); wrote
+.github/workflows/geocode.yml (triggers after weekly-digest.yml or workflow_dispatch).
+Ran geocode_items.py locally without ANTHROPIC_API_KEY → 12/136 items geocoded
+(10 parcel_id, 2 nominatim), committed data/items_geocoded.csv. In wasatch-intel:
+csv-loader.ts loadAgendas() tries items_geocoded.csv first with fallback to
+agenda_items_split.csv; MapCanvas.tsx rewritten to accept real AgendaItem[] prop,
+pins render uniformly (comment explains Phase 5 deferral), click handler uses ref
+to avoid stale closure; src/routes/index.tsx wired to useAgendas(), filters to geocoded
+items, shows "X of Y items plotted" counter with "Geocoding pending" note when 0.
+Two AgendaItem shapes resolved: types.ts shape used everywhere on the map; mock
+shape remains only for PARCELS polygon layer (Phase 4 replaces it). GH CLI not
+authenticated locally — geocode.yml trigger needs GitHub UI or waits for next
+weekly-digest.yml run (Monday). Phase 4 is next.
 
 ---
 
