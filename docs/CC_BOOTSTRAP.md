@@ -1,5 +1,43 @@
 # CC_BOOTSTRAP.md — Claude Code session starter
 
+## STEP 0 — Verify working directory
+
+Before reading anything else, run:
+
+```
+pwd
+```
+
+The output MUST end in `wasatch-intel`. If it does not (common: Claude Code on Windows opens in Desktop), run:
+
+```
+cd C:/Users/camsr/code/wasatch-intel
+```
+
+If that path doesn't exist on this machine, search for the wasatch-intel repo:
+
+```bash
+# macOS/Linux/git-bash
+find ~ -type d -name "wasatch-intel" 2>/dev/null | head -3
+```
+
+```powershell
+# PowerShell
+Get-ChildItem -Path $HOME -Filter "wasatch-intel" -Directory -Recurse -ErrorAction SilentlyContinue | Select-Object -First 3
+```
+
+cd into the result. If no result, STOP and ask the user where the repo lives. Do NOT proceed with the rest of the bootstrap until pwd confirms you're in the wasatch-intel repo root.
+
+Also confirm the sibling tooele-land-intel repo exists (Phases 1, 3, 5, 9 touch both):
+
+```
+ls ../tooele-land-intel/.git
+```
+
+If absent, STOP and tell the user. Do not clone — they need to confirm the path.
+
+---
+
 **How the user uses this file:** paste exactly this at the start of every Claude Code session, nothing else:
 
 > Read `docs/CC_BOOTSTRAP.md` and begin.
