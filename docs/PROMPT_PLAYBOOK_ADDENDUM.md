@@ -240,6 +240,24 @@ means thousands of parcel-centroid lookups. Without caching and resilience,
 a single 500 from UGRC invalidates the whole run.
 ```
 
+### Pre-flight notes (added 2026-04-24 from Phase 2 verification)
+
+1. Production URL is https://wasatch-intel.cam-s-rigby.workers.dev (Workers, not Pages). The legacy https://wasatch-intel.pages.dev returns 404. Before doing Phase 3 work, run:
+
+     grep -rn "pages.dev" docs/ *.md .env.example 2>/dev/null
+
+   in BOTH repos (wasatch-intel and tooele-land-intel) and replace any lingering pages.dev references with the workers.dev host. Commit as part of Phase 3.
+
+2. The `signal` field is currently 0 for all 136 wire items pending Phase 5 Haiku enrichment. When rendering pins on the map, render them UNIFORMLY — do not build signal-weighted pin styling (size, color, opacity by signal score) yet. That work belongs in Phase 5 once enrichment populates real signal values. Note this in the Map route's component comments so future-you knows why the styling is deliberately flat.
+
+3. City scores already live at /api/digest → data.cityScores (Grantsville 100.0/A, Erda 12.1/D). No new endpoint needed. If the Map route or any Phase 3 component wants city-level signal context, fetch it from there.
+
+### Deferred to Phase 5 (data quality)
+
+- growth_score is empty for all 136 CSV rows → upstream Haiku enrichment in tooele-land-intel hasn't run; fix in Phase 5
+- 1 row with meeting_date="nan" leaks through date filter in loadSignalWire — add Date.parse guard when Phase 5 touches the loader
+- mostRecentActivity="nan" in city_signal_scores.json — fix NaN→None in tooele-land-intel/scripts/aggregate_city_signals.py during Phase 5
+
 ---
 
 ## PHASE 4 ADDENDUM — STIP overlay + polygon renderer
