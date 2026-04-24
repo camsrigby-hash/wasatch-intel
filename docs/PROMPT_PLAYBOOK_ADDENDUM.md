@@ -13,41 +13,34 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          1
-phase_name:     "Backend foundation + /api/agendas (with parser schema upgrade)"
-status:         BLOCKED            # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
-updated:        2026-04-23
-updater:        "Claude Code (Sonnet 4.6) — Phase 1 execution session"
+phase:          2
+phase_name:     "Read-only routes with weighted aggregation"
+status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
+updated:        2026-04-24
+updater:        "Claude Code (Sonnet 4.6) — Phase 1 deploy-fix session"
 
 last_completed:
-  phase:        0
-  phase_name:   "Frontend import, Cloudflare Pages deploy, project docs"
-  completed_on: 2026-04-23
+  phase:        1
+  phase_name:   "Backend foundation + /api/agendas (with parser schema upgrade)"
+  completed_on: 2026-04-24
 
 next_after_current:
-  phase:        2
-  phase_name:   "Read-only routes with weighted aggregation"
+  phase:        3
+  phase_name:   "Geocoding backfill"
 
-blockers:
-  - "Phase 0 (Cloudflare Pages deploy) not yet completed by user — live URL
-    does not exist; /api/agendas endpoint cannot be smoke-tested in production"
-  - "No Node.js/bun runtime in local git-bash environment — npm run build and
-    wrangler dev cannot be run locally to verify createAPIFileRoute resolves"
-  - "TypeScript compilation unverified: types.ts, csv-loader.ts, api/agendas.ts,
-    api-client.ts, and agendas.tsx were written but not type-checked (no tsc)"
+blockers: []
 
 notes:          |
-  Phase 1 code is 100% written and committed. All five backend/frontend files
-  are in place. Blocked only on verification — the code cannot be tested until
-  the user completes Phase 0 (Cloudflare Pages wiring) and opens a dev
-  environment with Node.js. Recommend: open in GitHub Codespaces, run
-  `npm install && npm run build`, fix any type errors, then `wrangler dev`
-  to hit /api/agendas. If createAPIFileRoute import fails, add the package:
-  `npm install @tanstack/react-start`. Once build passes + /api/agendas
-  returns JSON, mark Phase 1 DONE and kick off Phase 2.
-  PMN body-ID discovery (prereq for Phase 9) is not blocking anything
-  else — can be done opportunistically before Phase 9 kickoff. See
-  CM_RE_INTEGRATION.md §6.
+  Phase 1 fully done. Live URL: https://wasatch-intel.cam-s-rigby.workers.dev
+  (Workers, not Pages — deploy model changed from cloudflare/pages-action to
+  wrangler deploy during the Cloudflare fix sprint). /api/agendas returns 136
+  live items (freshness: live) from the tooele-land-intel CSV.
+  Key architectural note: createAPIFileRoute from @tanstack/react-start/api was
+  NOT picked up by the server runtime. Fixed by replacing it with a custom CF
+  Worker entry (src/server/entry.ts) that intercepts /api/agendas before TanStack
+  Start's SSR. wrangler.jsonc main now points to src/server/entry.ts. Future API
+  routes should follow this pattern (add an if-branch in entry.ts) until Hono is
+  wired in Phase 7.
 ```
 
 ---
@@ -165,14 +158,14 @@ Verification addendum:
 ```
 
 ### PHASE 1 COMPLETION NOTES
-- **Date:** 2026-04-23
-- **By:** Claude Code (Sonnet 4.6) — Phase 1 execution session
-- **Built:** Parser schema upgraded (23-col CSV, CM_RE signal taxonomy); `/api/agendas` TanStack API route + csv-loader + types.ts + api-client.ts + agendas.tsx all wired to real data
-- **Key commits:** wasatch-intel@6188ff3 (pre-docs; final commit pending), tooele-land-intel@f591fe8
-- **Decisions (not from the addendum):** Used TanStack `createAPIFileRoute` instead of Hono-on-Workers entry — avoids touching wrangler.jsonc main entry without a build env to verify. Wrote custom CSV parser (no npm available in local env). enrich_schema.py one-shot migration derives signal_type from item_type keyword map.
-- **Deviations from the addendum:** Could not run Haiku on the 3 eyeball-check PDFs (no Anthropic API key in this env). Migration derived signal_type from item_type heuristically rather than re-running Haiku. Verification steps 1–4 not completable without a build/deploy environment.
-- **Surprises / gotchas:** Write tool targets Linux `/root/` path; repos live on Windows `C:\Users\camsr\`. Must stage files in `/tmp/` and copy via `python3 shutil.copy()`. No Node.js in git bash — `npm run build` / `wrangler dev` unavailable locally.
-- **Deferred:** Build verification (`npm run build`), type-check, wrangler dev smoke test, Cloudflare Pages deploy. All require user to complete Phase 0 first.
+- **Date:** 2026-04-23 (code) / 2026-04-24 (deploy fixed, verified)
+- **By:** Claude Code (Sonnet 4.6) — two sessions (execution + deploy fix)
+- **Built:** Parser schema upgraded (23-col CSV, CM_RE signal taxonomy); `/api/agendas` endpoint live at https://wasatch-intel.cam-s-rigby.workers.dev/api/agendas (136 items, freshness=live); csv-loader, types.ts, api-client.ts, agendas.tsx all wired to real data.
+- **Key commits:** tooele-land-intel@f591fe8, wasatch-intel@6ae0616 (final)
+- **Decisions (not from the addendum):** Deploy model changed from Cloudflare Pages to Cloudflare Workers (wrangler deploy). `createAPIFileRoute` from `@tanstack/react-start/api` never registered with the runtime; replaced by `src/server/entry.ts` — a thin CF Worker wrapper that intercepts `/api/agendas` before TanStack Start SSR. Future routes add if-branches in entry.ts until Hono lands in Phase 7.
+- **Deviations from the addendum:** Haiku eyeball-check of 3 PDFs not done (no Anthropic key in env). Migration derived signal_type heuristically from item_type. No `wrangler dev` local smoke test.
+- **Surprises / gotchas:** `createAPIFileRoute` silently fails — router plugin warns about it but the server runtime never intercepts the route. `dist/server/wrangler.json` uses Workers (not Pages) output format. CLOUDFLARE_API_TOKEN needed "Edit Cloudflare Workers" template scope, not "Pages" scope.
+- **Deferred:** Nothing. Phase 1 fully complete.
 
 ---
 

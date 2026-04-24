@@ -8,24 +8,22 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-04-23
-**Last agent:** Claude (Opus 4.7) via claude.ai chat
-**Active phase:** Phase 0 — Frontend deploy (in progress)
-**Live URL:** Not deployed yet
-**GitHub repo:** `github.com/camsrigby-hash/wasatch-intel` (to be created — see Phase 0)
+**Last updated:** 2026-04-24
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 1 deploy-fix session
+**Active phase:** Phase 2 — Read-only routes with weighted aggregation (NOT STARTED)
+**Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
+**GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
 
 ### What's done
-- Lovable frontend exported and ready to import
-- Shared `types.ts` module written and typecheck-verified (zod v3 + v4 compatible)
-- Build plan written (`docs/tli-buildout-schedule-v2.md`)
-- Phase 0 bash block ready to paste in Codespaces
-- CM_RE reference tree extracted to `tooele-land-intel/vendor/cm_re/` — scraper/parser/aggregator/UGRC-fetcher/road-adjacency/STIP/land-cover source code available for porting in Phases 1, 3, 4, 5, 6, 9, 10. See `docs/CM_RE_INTEGRATION.md`.
-- Session bootstrap protocol established — every future CC session starts with "Read docs/CC_BOOTSTRAP.md and begin." and picks up from the `CURRENT STATE` block in `docs/PROMPT_PLAYBOOK_ADDENDUM.md`.
+- Phase 0: Cloudflare Workers deploy pipeline live (GitHub Actions → wrangler deploy)
+- Phase 1: /api/agendas endpoint live (136 items, freshness=live from tooele-land-intel CSV)
+- types.ts, csv-loader.ts, api-client.ts, agendas.tsx — all wired, real data loading
+- Parser schema upgraded in tooele-land-intel (CM_RE signal taxonomy, 23-col CSV)
+- CM_RE reference tree at `tooele-land-intel/vendor/cm_re/`
 
 ### What's next
-- Run Phase 0 (push frontend, wire Cloudflare Pages, ship a live mock URL)
-- Then Phase 1 (Workers backend + first real `/api/agendas` endpoint, with parser schema upgrade per CM_RE addendum)
+- Phase 2: /api/digest, /api/developers, weighted aggregation (see PROMPT_PLAYBOOK_ADDENDUM.md)
 
 ### Open questions / blockers
 - None currently
@@ -240,6 +238,10 @@ wasatch-intel/
 
 8. **GitHub Actions on Node 20.** As of April 2026, Node 20 is deprecated; `setup-node@v4` works fine but starting June 2 forces Node 24. If a workflow breaks unexpectedly after that date, bump the Node version.
 
+9. **`createAPIFileRoute` from `@tanstack/react-start/api` does NOT work.** The TanStack Router plugin warns about API route files but the server runtime never intercepts them — requests fall through to SSR and return the React 404 component. Do NOT use `createAPIFileRoute`. Instead, add route handlers as `if`-branches in `src/server/entry.ts` (the custom CF Worker entry). Hono will replace this pattern in Phase 7.
+
+10. **Deploy model is Workers, not Pages.** The `@cloudflare/vite-plugin` produces a Cloudflare Workers bundle (`dist/server/wrangler.json` + `dist/server/index.js`), not a Pages-compatible `_worker.js`. Use `wrangler deploy --config dist/server/wrangler.json`. The live URL is `*.workers.dev`, not `*.pages.dev`. The `CLOUDFLARE_API_TOKEN` must have "Edit Cloudflare Workers" scope (not "Pages" scope).
+
 ---
 
 ## SECRETS / ENVIRONMENT VARIABLES
@@ -313,25 +315,30 @@ CC session bootstraps from `docs/CC_BOOTSTRAP.md`, which reads the
 `CURRENT STATE` block in `PROMPT_PLAYBOOK_ADDENDUM.md` to know which
 phase is next. Next session: run the bootstrap; Phase 1 executes.
 
-### 2026-04-23 — Phase 1 (BLOCKED) — Claude Code (Sonnet 4.6)
-Executed Phase 1 end-to-end in a Windows git-bash environment without Node.js.
+### 2026-04-23 — Phase 1 (code) — Claude Code (Sonnet 4.6)
+Executed Phase 1 code in a Windows git-bash environment without Node.js.
 In `tooele-land-intel`: upgraded `scripts/split_agenda_items.py` to use the
-CM_RE signal schema (PROMPT_TEMPLATE adapted for Anthropic SDK, 23-column CSV
-output), wrote `scripts/enrich_schema.py` to migrate the existing 136-row CSV
-in-place (signal_type derived from item_type heuristic, new fields default to
-null/PROPOSED), migrated `data/agenda_items_split.csv`. In `wasatch-intel`:
-created `src/lib/types.ts` (Zod-backed AgendaItem + ApiEnvelope, all 9 signal
-types, 5 agenda statuses, JURISDICTIONS with Erda), `src/server/lib/csv-loader.ts`
-(custom CSV parser + 5-min in-memory cache + raw.githubusercontent.com fetch),
-`src/routes/api/agendas.ts` (TanStack `createAPIFileRoute` at GET /api/agendas),
-`src/lib/api-client.ts` (useAgendas + stub hooks), rewrote `src/routes/agendas.tsx`
-to consume real data with filter/search/detail-drawer UX. Key deviation: used
-`createAPIFileRoute` instead of Hono entry to avoid touching wrangler.jsonc without
-a build environment. BLOCKED: Phase 0 (Cloudflare Pages) not yet run by user;
-no Node.js locally to run `npm run build` or `wrangler dev`. All code is committed
-and pushed. Next session: user completes Phase 0 → opens Codespaces → `npm install
-&& npm run build` → fix any type errors → `wrangler dev` smoke test → mark DONE →
-Phase 2.
+CM_RE signal schema (23-column CSV output), wrote `scripts/enrich_schema.py`
+to migrate the existing 136-row CSV in-place. In `wasatch-intel`: created
+`src/lib/types.ts`, `src/server/lib/csv-loader.ts`, `src/routes/api/agendas.ts`
+(using `createAPIFileRoute` — later found to not work), `src/lib/api-client.ts`,
+rewrote `src/routes/agendas.tsx`. Left BLOCKED pending deploy.
+
+### 2026-04-24 — Phase 1 (DONE) — Claude Code (Sonnet 4.6)
+Fixed the Cloudflare deploy and unblocked Phase 1. The Pages-action deploy model
+was wrong — the TanStack Start + `@cloudflare/vite-plugin` build produces a
+Workers bundle (`dist/server/wrangler.json` with `"main":"index.js"`), not a
+Pages `_worker.js`. Fixed by switching to `wrangler deploy --config dist/server/wrangler.json`.
+Two credential fixes required: CLOUDFLARE_ACCOUNT_ID was wrong (error 7003), and
+the API token lacked Workers Scripts permission (error 10000) — user created a new
+token using "Edit Cloudflare Workers" template. After deploy succeeded, found
+`createAPIFileRoute` from `@tanstack/react-start/api` was silently not registered
+by the server runtime — `/api/agendas` returned TanStack's 404 component. Fixed by
+creating `src/server/entry.ts`, a thin CF Worker wrapper that intercepts
+`GET /api/agendas` before delegating to TanStack Start's SSR, and pointing
+`wrangler.jsonc main` at it. Verified live: https://wasatch-intel.cam-s-rigby.workers.dev
+returns 200 + React app; `/api/agendas` returns 200 + 136 real JSON items (freshness=live).
+Phase 2 is next.
 
 ---
 
