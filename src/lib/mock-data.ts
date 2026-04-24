@@ -1,39 +1,9 @@
 // Mocked Utah real estate development intelligence data.
-// Wasatch Front + Tooele Valley — ~12 cities, ~200 parcels, ~400 agenda items.
+// Phase 2: JURISDICTIONS, CITY_CENTERS, DealStage, Deal, Watchlist, SignalWireItem
+// have been moved to types.ts and are now API-backed. This file retains only the
+// data that is still consumed by MapCanvas, ParcelDeepDive, and search.tsx (Phases 3–5).
 
-export type Jurisdiction =
-  | "Salt Lake City"
-  | "Lehi"
-  | "Saratoga Springs"
-  | "Eagle Mountain"
-  | "Vineyard"
-  | "Herriman"
-  | "Tooele"
-  | "Grantsville"
-  | "Draper"
-  | "South Jordan"
-  | "Bluffdale"
-  | "Spanish Fork";
-
-export const JURISDICTIONS: Jurisdiction[] = [
-  "Salt Lake City", "Lehi", "Saratoga Springs", "Eagle Mountain", "Vineyard",
-  "Herriman", "Tooele", "Grantsville", "Draper", "South Jordan", "Bluffdale", "Spanish Fork",
-];
-
-export const CITY_CENTERS: Record<Jurisdiction, [number, number]> = {
-  "Salt Lake City": [-111.891, 40.7608],
-  "Lehi": [-111.8508, 40.3916],
-  "Saratoga Springs": [-111.9047, 40.3497],
-  "Eagle Mountain": [-112.0058, 40.3144],
-  "Vineyard": [-111.7547, 40.3169],
-  "Herriman": [-112.0330, 40.5141],
-  "Tooele": [-112.2983, 40.5308],
-  "Grantsville": [-112.4644, 40.5994],
-  "Draper": [-111.8638, 40.5247],
-  "South Jordan": [-111.9388, 40.5621],
-  "Bluffdale": [-111.9388, 40.4837],
-  "Spanish Fork": [-111.6549, 40.1149],
-};
+import { JURISDICTIONS, CITY_CENTERS } from "./types";
 
 export const AGENDA_TYPES = [
   "Rezone", "General Plan Amendment", "Subdivision Plat", "Site Plan",
@@ -54,28 +24,28 @@ export interface Developer {
   type: "Builder" | "LLC" | "Investor" | "REIT";
   unitsInPipeline: number;
   parcelsOwned: number;
-  jurisdictions: Jurisdiction[];
+  jurisdictions: string[];
   founded: number;
   hq: string;
   recentActivity: number;
 }
 
 export const DEVELOPERS: Developer[] = [
-  { id: "dev-1", name: "Ivory Homes", type: "Builder", unitsInPipeline: 2840, parcelsOwned: 47, jurisdictions: ["Lehi","Saratoga Springs","Eagle Mountain","Herriman","South Jordan"], founded: 1988, hq: "Salt Lake City", recentActivity: 23 },
-  { id: "dev-2", name: "Fieldstone Homes", type: "Builder", unitsInPipeline: 1620, parcelsOwned: 28, jurisdictions: ["Eagle Mountain","Tooele","Grantsville"], founded: 1995, hq: "Lehi", recentActivity: 14 },
-  { id: "dev-3", name: "Lennar Utah", type: "Builder", unitsInPipeline: 2210, parcelsOwned: 31, jurisdictions: ["Lehi","Vineyard","Herriman","Bluffdale"], founded: 2002, hq: "Draper", recentActivity: 19 },
-  { id: "dev-4", name: "D.R. Horton", type: "Builder", unitsInPipeline: 1890, parcelsOwned: 26, jurisdictions: ["Saratoga Springs","Eagle Mountain","Spanish Fork"], founded: 1978, hq: "Lehi", recentActivity: 16 },
-  { id: "dev-5", name: "Wasatch Land Holdings LLC", type: "LLC", unitsInPipeline: 0, parcelsOwned: 64, jurisdictions: ["Tooele","Grantsville","Eagle Mountain"], founded: 2018, hq: "Park City", recentActivity: 8 },
-  { id: "dev-6", name: "Edge Homes", type: "Builder", unitsInPipeline: 1340, parcelsOwned: 22, jurisdictions: ["Lehi","Saratoga Springs","Vineyard"], founded: 2007, hq: "Lehi", recentActivity: 12 },
-  { id: "dev-7", name: "Garbett Homes", type: "Builder", unitsInPipeline: 720, parcelsOwned: 13, jurisdictions: ["Salt Lake City","South Jordan","Draper"], founded: 1980, hq: "Salt Lake City", recentActivity: 7 },
-  { id: "dev-8", name: "Oquirrh Capital LLC", type: "LLC", unitsInPipeline: 0, parcelsOwned: 38, jurisdictions: ["Tooele","Grantsville"], founded: 2020, hq: "Salt Lake City", recentActivity: 5 },
-  { id: "dev-9", name: "Anderson Development", type: "Investor", unitsInPipeline: 540, parcelsOwned: 19, jurisdictions: ["Spanish Fork","Vineyard"], founded: 1999, hq: "Provo", recentActivity: 9 },
-  { id: "dev-10", name: "Suburban Land Reserve", type: "LLC", unitsInPipeline: 0, parcelsOwned: 52, jurisdictions: ["Eagle Mountain","Bluffdale","Herriman"], founded: 1976, hq: "Salt Lake City", recentActivity: 6 },
-  { id: "dev-11", name: "Hamlet Homes", type: "Builder", unitsInPipeline: 480, parcelsOwned: 11, jurisdictions: ["South Jordan","Draper","Bluffdale"], founded: 1996, hq: "South Jordan", recentActivity: 5 },
-  { id: "dev-12", name: "Brighton Homes", type: "Builder", unitsInPipeline: 920, parcelsOwned: 18, jurisdictions: ["Lehi","Saratoga Springs"], founded: 2001, hq: "Lehi", recentActivity: 11 },
-  { id: "dev-13", name: "Toll Brothers Utah", type: "Builder", unitsInPipeline: 410, parcelsOwned: 9, jurisdictions: ["Draper","South Jordan"], founded: 2014, hq: "Draper", recentActivity: 4 },
-  { id: "dev-14", name: "Stack Real Estate", type: "REIT", unitsInPipeline: 1240, parcelsOwned: 16, jurisdictions: ["Salt Lake City","Vineyard"], founded: 2015, hq: "Salt Lake City", recentActivity: 8 },
-  { id: "dev-15", name: "Mountain View Capital LLC", type: "LLC", unitsInPipeline: 0, parcelsOwned: 29, jurisdictions: ["Tooele","Spanish Fork"], founded: 2019, hq: "Lehi", recentActivity: 3 },
+  { id: "dev-1",  name: "Ivory Homes",              type: "Builder",   unitsInPipeline: 2840, parcelsOwned: 47, jurisdictions: ["Lehi","Saratoga Springs","Eagle Mountain","Herriman","South Jordan"], founded: 1988, hq: "Salt Lake City", recentActivity: 23 },
+  { id: "dev-2",  name: "Fieldstone Homes",          type: "Builder",   unitsInPipeline: 1620, parcelsOwned: 28, jurisdictions: ["Eagle Mountain","Tooele","Grantsville"],                             founded: 1995, hq: "Lehi",           recentActivity: 14 },
+  { id: "dev-3",  name: "Lennar Utah",               type: "Builder",   unitsInPipeline: 2210, parcelsOwned: 31, jurisdictions: ["Lehi","Vineyard","Herriman","Bluffdale"],                            founded: 2002, hq: "Draper",         recentActivity: 19 },
+  { id: "dev-4",  name: "D.R. Horton",               type: "Builder",   unitsInPipeline: 1890, parcelsOwned: 26, jurisdictions: ["Saratoga Springs","Eagle Mountain","Spanish Fork"],                  founded: 1978, hq: "Lehi",           recentActivity: 16 },
+  { id: "dev-5",  name: "Wasatch Land Holdings LLC",  type: "LLC",       unitsInPipeline: 0,    parcelsOwned: 64, jurisdictions: ["Tooele","Grantsville","Eagle Mountain"],                             founded: 2018, hq: "Park City",      recentActivity: 8  },
+  { id: "dev-6",  name: "Edge Homes",                type: "Builder",   unitsInPipeline: 1340, parcelsOwned: 22, jurisdictions: ["Lehi","Saratoga Springs","Vineyard"],                                founded: 2007, hq: "Lehi",           recentActivity: 12 },
+  { id: "dev-7",  name: "Garbett Homes",             type: "Builder",   unitsInPipeline: 720,  parcelsOwned: 13, jurisdictions: ["Salt Lake City","South Jordan","Draper"],                            founded: 1980, hq: "Salt Lake City", recentActivity: 7  },
+  { id: "dev-8",  name: "Oquirrh Capital LLC",        type: "LLC",       unitsInPipeline: 0,    parcelsOwned: 38, jurisdictions: ["Tooele","Grantsville"],                                              founded: 2020, hq: "Salt Lake City", recentActivity: 5  },
+  { id: "dev-9",  name: "Anderson Development",       type: "Investor",  unitsInPipeline: 540,  parcelsOwned: 19, jurisdictions: ["Spanish Fork","Vineyard"],                                           founded: 1999, hq: "Provo",          recentActivity: 9  },
+  { id: "dev-10", name: "Suburban Land Reserve",      type: "LLC",       unitsInPipeline: 0,    parcelsOwned: 52, jurisdictions: ["Eagle Mountain","Bluffdale","Herriman"],                             founded: 1976, hq: "Salt Lake City", recentActivity: 6  },
+  { id: "dev-11", name: "Hamlet Homes",              type: "Builder",   unitsInPipeline: 480,  parcelsOwned: 11, jurisdictions: ["South Jordan","Draper","Bluffdale"],                                 founded: 1996, hq: "South Jordan",   recentActivity: 5  },
+  { id: "dev-12", name: "Brighton Homes",            type: "Builder",   unitsInPipeline: 920,  parcelsOwned: 18, jurisdictions: ["Lehi","Saratoga Springs"],                                           founded: 2001, hq: "Lehi",           recentActivity: 11 },
+  { id: "dev-13", name: "Toll Brothers Utah",         type: "Builder",   unitsInPipeline: 410,  parcelsOwned: 9,  jurisdictions: ["Draper","South Jordan"],                                             founded: 2014, hq: "Draper",         recentActivity: 4  },
+  { id: "dev-14", name: "Stack Real Estate",          type: "REIT",      unitsInPipeline: 1240, parcelsOwned: 16, jurisdictions: ["Salt Lake City","Vineyard"],                                         founded: 2015, hq: "Salt Lake City", recentActivity: 8  },
+  { id: "dev-15", name: "Mountain View Capital LLC",  type: "LLC",       unitsInPipeline: 0,    parcelsOwned: 29, jurisdictions: ["Tooele","Spanish Fork"],                                             founded: 2019, hq: "Lehi",           recentActivity: 3  },
 ];
 
 // Deterministic pseudo-random
@@ -90,7 +60,7 @@ function rng(seed: number) {
 export interface Parcel {
   id: string;
   apn: string;
-  jurisdiction: Jurisdiction;
+  jurisdiction: string;
   acres: number;
   centroid: [number, number];
   polygon: [number, number][];
@@ -100,7 +70,7 @@ export interface Parcel {
   ownerId: string;
   ownerName: string;
   ownershipYears: number;
-  utilitiesScore: number; // 0-100
+  utilitiesScore: number;
   adjacencyScore: number;
   politicalRisk: number;
   residualLandValue: number;
@@ -113,6 +83,7 @@ function makeParcels(): Parcel[] {
   let pid = 1000;
   for (const city of JURISDICTIONS) {
     const center = CITY_CENTERS[city];
+    if (!center) continue;
     const count = 14 + Math.floor(r() * 6);
     for (let i = 0; i < count; i++) {
       const dx = (r() - 0.5) * 0.12;
@@ -156,10 +127,13 @@ function makeParcels(): Parcel[] {
 
 export const PARCELS: Parcel[] = makeParcels();
 
+// Mock AgendaItem — shape used by MapCanvas, ParcelDeepDive, search.tsx.
+// Different from the real AgendaItem in types.ts (which is parsed from the CSV).
+// Will be replaced in Phase 3 when the map is wired to real geocoded data.
 export interface AgendaItem {
   id: string;
-  date: string; // ISO
-  jurisdiction: Jurisdiction;
+  date: string;
+  jurisdiction: string;
   type: AgendaType;
   applicant: string;
   applicantId: string;
@@ -168,7 +142,7 @@ export interface AgendaItem {
   units: number | null;
   acres: number;
   status: Status;
-  signal: number; // 0-100
+  signal: number;
   title: string;
   summary: string;
   centroid: [number, number];
@@ -217,119 +191,24 @@ function makeAgendas(): AgendaItem[] {
 
 export const AGENDAS: AgendaItem[] = makeAgendas();
 
-export interface SignalWireItem {
-  id: string;
-  date: string;
-  source: "Agenda" | "News" | "Rumor" | "Filing";
-  jurisdiction: Jurisdiction;
-  headline: string;
-  excerpt: string;
-  signal: number;
-  proximity: number; // miles to nearest watchlist
-  agendaId?: string;
-}
-
-export const SIGNAL_WIRE: SignalWireItem[] = (() => {
-  const r = rng(99);
-  const items: SignalWireItem[] = [];
-  for (let i = 0; i < 60; i++) {
-    const a = AGENDAS[Math.floor(r() * 80)];
-    const sources: SignalWireItem["source"][] = ["Agenda", "News", "Rumor", "Filing"];
-    const source = sources[Math.floor(r() * sources.length)];
-    const headlines = [
-      `${a.applicant} files for ${a.type.toLowerCase()} in ${a.jurisdiction}`,
-      `${a.jurisdiction} planning commission tables ${a.units ?? "?"} unit project`,
-      `Developer assembling parcels along ${a.jurisdiction} corridor`,
-      `${a.applicant} optioned ${a.acres} acres near ${a.jurisdiction} interchange`,
-      `Rumor: big-box anchor evaluating ${a.jurisdiction} site`,
-    ];
-    items.push({
-      id: `wire-${i + 1}`,
-      date: a.date,
-      source,
-      jurisdiction: a.jurisdiction,
-      headline: headlines[Math.floor(r() * headlines.length)],
-      excerpt: a.summary,
-      signal: a.signal,
-      proximity: +(r() * 12).toFixed(1),
-      agendaId: a.id,
-    });
-  }
-  return items.sort((a, b) => +new Date(b.date) - +new Date(a.date));
-})();
-
-export interface Watchlist {
-  id: string;
-  name: string;
-  type: "Geography" | "Applicant" | "Parcel Set" | "Saved Search";
-  hits: number;
-  lastHit: string;
-  signalThreshold: number;
-  alerts: { inApp: boolean; email: boolean };
-}
-
-export const WATCHLISTS: Watchlist[] = [
-  { id: "w-1", name: "Eagle Mountain growth corridor", type: "Geography", hits: 24, lastHit: AGENDAS[0].date, signalThreshold: 60, alerts: { inApp: true, email: true } },
-  { id: "w-2", name: "Ivory Homes filings", type: "Applicant", hits: 18, lastHit: AGENDAS[3].date, signalThreshold: 50, alerts: { inApp: true, email: false } },
-  { id: "w-3", name: "Tooele Valley land assembly", type: "Geography", hits: 12, lastHit: AGENDAS[8].date, signalThreshold: 40, alerts: { inApp: true, email: true } },
-  { id: "w-4", name: "Mixed-use rezones >100 units", type: "Saved Search", hits: 31, lastHit: AGENDAS[1].date, signalThreshold: 70, alerts: { inApp: true, email: true } },
-  { id: "w-5", name: "I-15 South parcels (28)", type: "Parcel Set", hits: 9, lastHit: AGENDAS[12].date, signalThreshold: 55, alerts: { inApp: false, email: true } },
-];
-
-export type DealStage = "Prospect" | "Diligence" | "LOI" | "Under Contract" | "Closed/Dead";
-export const DEAL_STAGES: DealStage[] = ["Prospect", "Diligence", "LOI", "Under Contract", "Closed/Dead"];
-
-export interface Deal {
-  id: string;
-  parcelId: string;
-  parcelApn: string;
-  jurisdiction: Jurisdiction;
-  stage: DealStage;
-  acres: number;
-  residualLandValue: number;
-  nextAction: string;
-  contact: string;
-  updatedAt: string;
-  notes: string;
-}
-
-export const DEALS: Deal[] = (() => {
-  const r = rng(13);
-  return PARCELS.slice(0, 18).map((p, i) => ({
-    id: `deal-${i + 1}`,
-    parcelId: p.id,
-    parcelApn: p.apn,
-    jurisdiction: p.jurisdiction,
-    stage: DEAL_STAGES[Math.floor(r() * DEAL_STAGES.length)],
-    acres: p.acres,
-    residualLandValue: p.residualLandValue,
-    nextAction: ["Send LOI draft","Order title","Call planner","Walk site","Negotiate price","Tabling — owner unresponsive"][Math.floor(r() * 6)],
-    contact: ["J. Mortensen","R. Allen","S. Park","M. Davis","K. Larsen","T. Chen"][Math.floor(r() * 6)],
-    updatedAt: AGENDAS[Math.floor(r() * 50)].date,
-    notes: `${p.ownerName} held ${p.ownershipYears} yrs. Utilities score ${p.utilitiesScore}. Residual ~$${(p.residualLandValue/1000).toFixed(0)}k.`,
-  }));
-})();
-
-// Transcript snippet samples
 export const TRANSCRIPT_SAMPLES: Record<string, { speaker: string; line: string }[]> = {
   default: [
-    { speaker: "Chair Henderson", line: "Next on the agenda: a request for general plan amendment on parcel along the corridor." },
+    { speaker: "Chair Henderson",  line: "Next on the agenda: a request for general plan amendment on parcel along the corridor." },
     { speaker: "Applicant counsel", line: "We're proposing 248 townhome units consistent with the city's growth strategy. Density is 14 du/acre." },
     { speaker: "Commissioner Park", line: "I have concerns about the school capacity and traffic on the arterial." },
-    { speaker: "Planning staff", line: "Staff recommends approval with conditions related to roadway dedication and a 6-foot masonry wall." },
-    { speaker: "Public comment", line: "I live two doors down. We oppose any rezone to medium density. This neighborhood was sold to us as low-density." },
-    { speaker: "Chair Henderson", line: "Motion to table for one cycle pending traffic study." },
-    { speaker: "Vote", line: "Motion carries 4-1. Item tabled." },
+    { speaker: "Planning staff",   line: "Staff recommends approval with conditions related to roadway dedication and a 6-foot masonry wall." },
+    { speaker: "Public comment",   line: "I live two doors down. We oppose any rezone to medium density. This neighborhood was sold to us as low-density." },
+    { speaker: "Chair Henderson",  line: "Motion to table for one cycle pending traffic study." },
+    { speaker: "Vote",             line: "Motion carries 4-1. Item tabled." },
   ],
 };
 
 export const SITE_PLAN_SAMPLES = [
   { id: "sp-1", name: "Ivory — Saratoga Crossing Phase 4", units: 312, density: 12.4, parcelId: PARCELS[5]?.id },
-  { id: "sp-2", name: "Lennar — Vineyard Reserve", units: 198, density: 8.1, parcelId: PARCELS[42]?.id },
-  { id: "sp-3", name: "Edge — Lehi Tech Plaza", units: 0, density: 0, parcelId: PARCELS[18]?.id },
+  { id: "sp-2", name: "Lennar — Vineyard Reserve",         units: 198, density: 8.1,  parcelId: PARCELS[42]?.id },
+  { id: "sp-3", name: "Edge — Lehi Tech Plaza",            units: 0,   density: 0,    parcelId: PARCELS[18]?.id },
 ];
 
-// Helper utilities
 export function signalLabel(s: number): "Low" | "Med" | "High" | "Critical" {
   if (s >= 80) return "Critical";
   if (s >= 60) return "High";
@@ -341,5 +220,5 @@ export function signalToken(s: number): string {
   const l = signalLabel(s);
   return l === "Critical" ? "signal-critical"
     : l === "High" ? "signal-high"
-    : l === "Med" ? "signal-med" : "signal-low";
+    : l === "Med"  ? "signal-med"  : "signal-low";
 }

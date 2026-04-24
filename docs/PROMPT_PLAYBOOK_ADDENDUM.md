@@ -13,34 +13,35 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          2
-phase_name:     "Read-only routes with weighted aggregation"
+phase:          3
+phase_name:     "Geocoding backfill"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-24
-updater:        "Claude Code (Sonnet 4.6) — Phase 1 deploy-fix session"
+updater:        "Claude Code (Sonnet 4.6) — Phase 2 session"
 
 last_completed:
-  phase:        1
-  phase_name:   "Backend foundation + /api/agendas (with parser schema upgrade)"
+  phase:        2
+  phase_name:   "Read-only routes with weighted aggregation"
   completed_on: 2026-04-24
 
 next_after_current:
-  phase:        3
-  phase_name:   "Geocoding backfill"
+  phase:        4
+  phase_name:   "STIP overlay + polygon renderer"
 
 blockers: []
 
 notes:          |
-  Phase 1 fully done. Live URL: https://wasatch-intel.cam-s-rigby.workers.dev
-  (Workers, not Pages — deploy model changed from cloudflare/pages-action to
-  wrangler deploy during the Cloudflare fix sprint). /api/agendas returns 136
-  live items (freshness: live) from the tooele-land-intel CSV.
-  Key architectural note: createAPIFileRoute from @tanstack/react-start/api was
-  NOT picked up by the server runtime. Fixed by replacing it with a custom CF
-  Worker entry (src/server/entry.ts) that intercepts /api/agendas before TanStack
-  Start's SSR. wrangler.jsonc main now points to src/server/entry.ts. Future API
-  routes should follow this pattern (add an if-branch in entry.ts) until Hono is
-  wired in Phase 7.
+  Phase 2 fully done. All 6 new API endpoints wired in src/server/entry.ts:
+  /api/digest, /api/developers, /api/signal-wire, /api/parcels (empty),
+  /api/watchlists (empty), /api/deals (empty). Routes feed.tsx, developers.tsx,
+  pipeline.tsx, watchlists.tsx, index.tsx all replaced mock data with real
+  TanStack Query hooks. mock-data.ts shrunk by ~150 lines — only MapCanvas/
+  ParcelDeepDive/search.tsx mock shapes remain (Phase 3 scope). Python
+  aggregate_city_signals.py committed to tooele-land-intel@500e0d0 and produces
+  city_signal_scores.json with weighted rollup (Grantsville 100.0/A, Erda 12.1/D).
+  Two AgendaItem shapes still coexist: mock (centroid+applicant+signal) in
+  mock-data.ts for map components, real (lat/lng+developer+growthScore) in
+  types.ts for API. Phase 3 resolves this by geocoding real items onto the map.
 ```
 
 ---
@@ -198,6 +199,16 @@ Do NOT reuse CM_RE's specific gas_station/miniflex scoring logic — only the
 weighted-aggregation pattern. TLI is tracking activity, not ranking sites
 for a specific use.
 ```
+
+### PHASE 2 COMPLETION NOTES
+- **Date:** 2026-04-24
+- **By:** Claude Code (Sonnet 4.6) — Phase 2 session
+- **Built:** `aggregate_city_signals.py` + `city_signal_scores.json` in tooele-land-intel; 6 new API endpoints in `src/server/entry.ts`; `loadDevelopers()`, `loadSignalWire()`, `loadDigest()` in `csv-loader.ts`; feed.tsx, developers.tsx, pipeline.tsx, watchlists.tsx all wired to real data; `mock-data.ts` shrunk ~150 lines.
+- **Key commits:** wasatch-intel@<see this commit>, tooele-land-intel@500e0d0
+- **Decisions (not from the addendum):** Two `AgendaItem` shapes intentionally kept coexisting — mock shape (MapCanvas/ParcelDeepDive) vs real shape (API). Phase 3 resolves this when geocoding puts real items on the map. CITY_CENTERS and JURISDICTIONS moved from mock-data.ts to types.ts (authoritative for both frontend and server).
+- **Deviations from the addendum:** `/api/parcels` returns empty array (no geocoding yet — Phase 3). `/api/watchlists` and `/api/deals` return empty arrays (D1 persistence is Phase 8).
+- **Surprises / gotchas:** `renderInline()` in feed.tsx must NOT have an explicit `React.ReactNode` return type without importing React — TypeScript errors. Removed the annotation; inference works fine.
+- **Deferred:** Actual geocoded parcel data on the map (Phase 3). Real watchlist/deal persistence (Phase 8). Item-type filter chip in feed.tsx sidebar is UI-only (no state wired — no state to wire yet).
 
 ---
 

@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-24
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 1 deploy-fix session
-**Active phase:** Phase 2 — Read-only routes with weighted aggregation (NOT STARTED)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 2 session
+**Active phase:** Phase 3 — Geocoding backfill (NOT STARTED)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -18,12 +18,13 @@ Update this file at the end of every work session. The "Current Status" section 
 ### What's done
 - Phase 0: Cloudflare Workers deploy pipeline live (GitHub Actions → wrangler deploy)
 - Phase 1: /api/agendas endpoint live (136 items, freshness=live from tooele-land-intel CSV)
+- Phase 2: /api/digest, /api/developers, /api/signal-wire live; feed.tsx, developers.tsx, pipeline.tsx, watchlists.tsx wired to real data; mock-data.ts shrunk; weighted aggregator (aggregate_city_signals.py) in tooele-land-intel
 - types.ts, csv-loader.ts, api-client.ts, agendas.tsx — all wired, real data loading
 - Parser schema upgraded in tooele-land-intel (CM_RE signal taxonomy, 23-col CSV)
 - CM_RE reference tree at `tooele-land-intel/vendor/cm_re/`
 
 ### What's next
-- Phase 2: /api/digest, /api/developers, weighted aggregation (see PROMPT_PLAYBOOK_ADDENDUM.md)
+- Phase 3: Geocoding backfill — geocode real agenda items to lat/lng, replace mock AgendaItem on map
 
 ### Open questions / blockers
 - None currently
@@ -339,6 +340,20 @@ creating `src/server/entry.ts`, a thin CF Worker wrapper that intercepts
 `wrangler.jsonc main` at it. Verified live: https://wasatch-intel.cam-s-rigby.workers.dev
 returns 200 + React app; `/api/agendas` returns 200 + 136 real JSON items (freshness=live).
 Phase 2 is next.
+
+### 2026-04-24 — Phase 2 (DONE) — Claude Code (Sonnet 4.6)
+Executed Phase 2 end-to-end. In tooele-land-intel: wrote `scripts/aggregate_city_signals.py`
+porting the CM_RE weighted-rollup pattern (type weights × status multipliers × growth_score),
+committed `data/city_signal_scores.json` (Grantsville 100.0/A, Erda 12.1/D). In wasatch-intel:
+added `loadDevelopers()`, `loadSignalWire()`, `loadDigest()` to `csv-loader.ts`; wired 6 new
+API endpoints into `src/server/entry.ts` (/api/digest, /api/developers, /api/signal-wire,
+/api/parcels, /api/watchlists, /api/deals); rewired feed.tsx, developers.tsx, pipeline.tsx,
+watchlists.tsx to TanStack Query hooks backed by real data; shrunk `mock-data.ts` by ~150 lines
+(removed SIGNAL_WIRE, WATCHLISTS, DEALS, DEAL_STAGES, JURISDICTIONS, CITY_CENTERS, SignalWireItem,
+Watchlist, Deal, DealStage — moved to types.ts or API-backed). Two AgendaItem shapes intentionally
+coexist (mock for MapCanvas, real for /api/agendas) until Phase 3 geocoding. CITY_CENTERS and
+JURISDICTIONS are now authoritative in types.ts and imported by mock-data.ts. No Node.js on local
+machine — build verification is via GitHub Actions.
 
 ---
 

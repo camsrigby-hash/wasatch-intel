@@ -9,7 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { JURISDICTIONS, AGENDA_TYPES, type Parcel, type AgendaItem, signalLabel } from "@/lib/mock-data";
+import { JURISDICTIONS, signalLabel } from "@/lib/types";
+import { AGENDA_TYPES, type Parcel, type AgendaItem } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 

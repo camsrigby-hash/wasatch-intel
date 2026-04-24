@@ -172,3 +172,98 @@ export function signalToken(score: number): string {
     : l === "Med"    ? "signal-med"
     : "signal-low";
 }
+
+// ── City-level signal aggregation (Phase 2 — from city_signal_scores.json) ───
+
+export interface CityScore {
+  city:               string;
+  growthScore:        number;
+  grade:              "A" | "B" | "C" | "D";
+  totalSignals:       number;
+  signalCounts:       Partial<Record<SignalType, number>>;
+  activeDevelopers:   string[];
+  mostRecentActivity: string | null;
+}
+
+// ── Digest (Phase 2 — latest_digest.md + city scores) ────────────────────────
+
+export interface DigestContent {
+  markdown:     string;
+  generatedAt:  string | null;
+  itemCount:    number | null;
+  totalCostUsd: number | null;
+  cityScores:   CityScore[];
+}
+
+// ── Developer summary (Phase 2 — derived from agenda CSV) ────────────────────
+
+export interface DeveloperSummary {
+  id:             string;
+  name:           string;
+  totalFilings:   number;
+  recentActivity: number;
+  jurisdictions:  string[];
+  lastSeen:       string | null;
+  signalTypes:    Partial<Record<SignalType, number>>;
+}
+
+// ── Signal wire item (Phase 2 — agenda; Phase 6 — news/Reddit) ───────────────
+
+export interface SignalWireItem {
+  id:           string;
+  date:         string;
+  source:       "Agenda" | "News" | "Rumor" | "Filing";
+  jurisdiction: string;
+  headline:     string;
+  excerpt:      string | null;
+  signal:       number;
+  agendaId?:    string;
+}
+
+// ── Watchlist (Phase 7 — D1 backed; [] for now) ──────────────────────────────
+
+export interface Watchlist {
+  id:              string;
+  name:            string;
+  type:            "Geography" | "Applicant" | "Parcel Set" | "Saved Search";
+  hits:            number;
+  lastHit:         string | null;
+  signalThreshold: number;
+  alerts:          { inApp: boolean; email: boolean };
+}
+
+// ── Deal pipeline (Phase 8 — D1 backed; [] for now) ──────────────────────────
+
+export type DealStage = "Prospect" | "Diligence" | "LOI" | "Under Contract" | "Closed/Dead";
+export const DEAL_STAGES: DealStage[] = ["Prospect", "Diligence", "LOI", "Under Contract", "Closed/Dead"];
+
+export interface Deal {
+  id:                string;
+  parcelApn:         string;
+  jurisdiction:      string;
+  stage:             DealStage;
+  acres:             number | null;
+  residualLandValue: number | null;
+  nextAction:        string;
+  contact:           string;
+  updatedAt:         string;
+  notes:             string;
+}
+
+// ── City center coordinates [lon, lat] (authoritative, moved from mock-data) ─
+
+export const CITY_CENTERS: Record<string, [number, number]> = {
+  "Salt Lake City":   [-111.891,  40.7608],
+  "Lehi":            [-111.8508, 40.3916],
+  "Saratoga Springs": [-111.9047, 40.3497],
+  "Eagle Mountain":  [-112.0058, 40.3144],
+  "Vineyard":        [-111.7547, 40.3169],
+  "Herriman":        [-112.0330, 40.5141],
+  "Tooele":          [-112.2983, 40.5308],
+  "Grantsville":     [-112.4644, 40.5994],
+  "Erda":            [-112.3803, 40.6086],
+  "Draper":          [-111.8638, 40.5247],
+  "South Jordan":    [-111.9388, 40.5621],
+  "Bluffdale":       [-111.9388, 40.4837],
+  "Spanish Fork":    [-111.6549, 40.1149],
+};
