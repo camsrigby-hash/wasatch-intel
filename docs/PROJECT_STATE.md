@@ -29,6 +29,11 @@ Update this file at the end of every work session. The "Current Status" section 
 ### Open questions / blockers
 - None currently
 
+### Open items (non-blocking, track here until resolved)
+- **`growth_score` empty in CSV** — all 136 rows in `agenda_items_split.csv` have an empty `growth_score` column; the Haiku enrichment workflow has not yet run on these items. Result: `/api/signal-wire` returns `signal: 0` for every item. Fix: trigger the enrichment workflow in tooele-land-intel (Phase 5 / whenever enrichment is scheduled).
+- **`meeting_date: nan` in CSV** — 1 row has an empty meeting_date ("nan" string). The `loadSignalWire()` date-filter (`a.date >= cutoff`) silently includes it (string comparison with "nan" is unpredictable). Fix: add a `!isNaN(Date.parse(a.date))` guard in `loadSignalWire()` — trivial, but deferring until enrichment is wired (Phase 5) so we know the full date quality picture.
+- **`mostRecentActivity: "nan"` in city_signal_scores.json** — Grantsville's `most_recent_activity` field is "nan" (pandas NaN not serialized to null). Fix: in `aggregate_city_signals.py`, replace `pd.NaT`/`nan` with `None` before `json.dumps`. Trivial one-liner; deferring to Phase 5 sweep.
+
 ---
 
 ## WORKING STYLE — read this before doing anything
@@ -354,6 +359,16 @@ Watchlist, Deal, DealStage — moved to types.ts or API-backed). Two AgendaItem 
 coexist (mock for MapCanvas, real for /api/agendas) until Phase 3 geocoding. CITY_CENTERS and
 JURISDICTIONS are now authoritative in types.ts and imported by mock-data.ts. No Node.js on local
 machine — build verification is via GitHub Actions.
+
+### 2026-04-24 — Phase 2 verification — Claude Code (Sonnet 4.6)
+Pre-Phase 3 endpoint verification run against the live Workers URL (https://wasatch-intel.cam-s-rigby.workers.dev).
+Note: https://wasatch-intel.pages.dev returns 404 (deploy model is Workers, not Pages — already noted in KNOWN GOTCHAS #10).
+All endpoints green: /api/digest (200, hasMarkdown=true, cityScores embedded), /api/signal-wire (200, 54 items),
+/api/developers (200, 24 developers), /api/parcels (200, []), /api/watchlists (200, []), /api/deals (200, []).
+City scores confirmed exposed at /api/digest → data.cityScores (Grantsville 100/A, Erda 12.1/D) — no new endpoint
+needed. Debt sweep: tree clean, zero TODO/FIXME/XXX in src/. Three non-blocking data quality issues logged
+under "Open items" above (growth_score empty, 1 nan date, mostRecentActivity="nan" in JSON) — all upstream
+CSV/Python issues, not TypeScript bugs. No code changes made. Phase 3 is clear to start.
 
 ---
 
