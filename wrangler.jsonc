@@ -4,4 +4,17 @@
   "compatibility_date": "2025-09-24",
   "compatibility_flags": ["nodejs_compat"],
   "main": "src/server/entry.ts",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wasatch-intel-db",
+      // Run: npx wrangler d1 create wasatch-intel-db
+      // Then paste the returned database_id here.
+      "database_id": "YOUR_DATABASE_ID"
+    }
+  ],
+  "triggers": {
+    // Watchlist alert cron — runs every hour at :00
+    "crons": ["0 * * * *"]
+  }
 }

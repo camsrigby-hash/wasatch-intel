@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-25
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 6 session
-**Active phase:** Phase 7 — Watchlists + D1 persistence (NOT STARTED)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 7 session
+**Active phase:** Phase 7 — Watchlists + D1 persistence (BLOCKED — code complete, D1 + Resend activation required)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -28,11 +28,16 @@ Update this file at the end of every work session. The "Current Status" section 
 
 - Phase 6: Rumor signal pipeline (Reddit + news RSS + Haiku correlation) — DONE
 
+- Phase 7: Watchlists + D1 persistence — CODE COMPLETE, BLOCKED (D1 + Resend not yet provisioned)
+  - Schema, d1-client, email, cron checker, WatchlistWizard, CRUD UI all written
+  - User must: (1) wrangler d1 create wasatch-intel-db + plug in database_id, (2) wrangler d1 execute schema.sql, (3) wrangler secret put RESEND_API_KEY
+
 ### What's next
-- Phase 7: Watchlists + D1 persistence
+- Phase 7 activation (user action — see blockers in PROMPT_PLAYBOOK_ADDENDUM.md)
+- Phase 8: Deal pipeline persistence (after Phase 7 is activated + verified)
 
 ### Open questions / blockers
-- None currently
+- **Phase 7 activation:** (1) `npx wrangler d1 create wasatch-intel-db` → paste `database_id` into `wrangler.jsonc`; (2) `npx wrangler d1 execute wasatch-intel-db --file src/server/lib/schema.sql`; (3) sign up at resend.com → `npx wrangler secret put RESEND_API_KEY`. Then push to main and verify watchlist CRUD persists.
 
 ### Open items (non-blocking, track here until resolved)
 - **`growth_score` empty in CSV** — all 136 rows in `agenda_items_split.csv` have an empty `growth_score` column; the Haiku enrichment workflow has not yet run on these items. Result: `/api/signal-wire` returns `signal: 0` for every item. Fix: trigger the enrichment workflow in tooele-land-intel.
@@ -487,6 +492,23 @@ signals_reddit.csv + signal_correlations.csv; agendaId populated from best-match
 correlation; external signal score derived from keyword hit count. Signal-wire endpoint
 source metadata updated. Key decision: Reddit scraper writes empty CSV (not an error) if
 creds absent — pipeline produces news-only output until user configures GitHub Secrets.
+
+### 2026-04-25 — Phase 7 (code complete, BLOCKED) — Claude Code (Sonnet 4.6)
+All Phase 7 code written in wasatch-intel. No tooele-land-intel changes needed (Python side
+unchanged). New files: `src/server/lib/schema.sql` (D1 schema: watchlists, watchlist_hits,
+alert_log), `src/server/lib/d1-client.ts` (CRUD helpers + Env type), `src/server/lib/email.ts`
+(Resend HTML alert), `src/server/cron/watchlist-checker.ts` (hourly cron: matches today's
+signals against each watchlist by type/criteria, records hits, fires email alerts). Updated:
+`wrangler.jsonc` (D1 binding + hourly cron trigger), `src/lib/types.ts` (WatchlistCriteria
+discriminated union, WatchlistHit, CreateWatchlistPayload; Watchlist extended with criteria +
+createdAt), `src/server/entry.ts` (GET/POST/PATCH/DELETE/hits endpoints for /api/watchlists,
+`scheduled` cron export, proper Env type replacing `unknown`), `src/lib/api-client.ts`
+(useWatchlistHits, useCreateWatchlist, useUpdateWatchlist, useDeleteWatchlist mutation hooks),
+`src/routes/watchlists.tsx` (full CRUD page with WatchlistCard settings panel, HitsPanel,
+delete confirm dialog), new `src/components/WatchlistWizard.tsx` (3-step wizard with
+maplibre-gl-draw polygon support). Added `@cloudflare/workers-types` + `@mapbox/mapbox-gl-draw`
+to package.json; `@cloudflare/workers-types` to tsconfig.json. Deploy will succeed with graceful
+empty-state on watchlists route. Phase 7 remains BLOCKED until user provisions D1 + Resend.
 
 ---
 

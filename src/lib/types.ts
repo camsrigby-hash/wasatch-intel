@@ -220,16 +220,44 @@ export interface SignalWireItem {
   agendaId?:    string;
 }
 
-// ── Watchlist (Phase 7 — D1 backed; [] for now) ──────────────────────────────
+// ── Watchlist (Phase 7 — D1 backed) ──────────────────────────────────────────
+
+export type WatchlistType = "Geography" | "Applicant" | "Parcel Set" | "Saved Search";
+
+export type WatchlistCriteria =
+  | { type: "Geography"; jurisdictions: string[]; polygon?: number[][][] }
+  | { type: "Applicant"; developerName: string }
+  | { type: "Parcel Set"; apns: string[] }
+  | { type: "Saved Search"; signalTypes?: SignalType[]; jurisdictions?: string[]; minScore?: number };
 
 export interface Watchlist {
   id:              string;
   name:            string;
-  type:            "Geography" | "Applicant" | "Parcel Set" | "Saved Search";
+  type:            WatchlistType;
+  criteria:        WatchlistCriteria;
   hits:            number;
   lastHit:         string | null;
   signalThreshold: number;
   alerts:          { inApp: boolean; email: boolean };
+  createdAt:       string;
+}
+
+export interface WatchlistHit {
+  id:             string;
+  watchlistId:    string;
+  signalId:       string;
+  signalHeadline: string | null;
+  signalSource:   string | null;
+  signalScore:    number | null;
+  firedAt:        string;
+}
+
+export interface CreateWatchlistPayload {
+  name:            string;
+  type:            WatchlistType;
+  criteria:        WatchlistCriteria;
+  signalThreshold?: number;
+  alerts?:         { inApp: boolean; email: boolean };
 }
 
 // ── Deal pipeline (Phase 8 — D1 backed; [] for now) ──────────────────────────

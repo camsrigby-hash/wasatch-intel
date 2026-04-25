@@ -1,13 +1,15 @@
 // src/lib/api-client.ts
 // TanStack Query hooks for every /api/* endpoint.
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AgendaItem,
   DigestContent,
   DeveloperSummary,
   SignalWireItem,
   Watchlist,
+  WatchlistHit,
+  CreateWatchlistPayload,
   Deal,
   ApiEnvelope,
   ParcelDetail,
@@ -104,13 +106,58 @@ export function useParcels() {
   });
 }
 
-// ── /api/watchlists ───────────────────────────────────────────────────────────
+// ── /api/watchlists — Phase 7 CRUD ────────────────────────────────────────────
 
 export function useWatchlists() {
   return useQuery<ApiEnvelope<Watchlist[]>, Error>({
     queryKey:  ["watchlists"],
     queryFn:   () => get<Watchlist[]>("/api/watchlists"),
     staleTime: STALE_5M,
+  });
+}
+
+export function useWatchlistHits(id: string | null) {
+  return useQuery<ApiEnvelope<WatchlistHit[]>, Error>({
+    queryKey:  ["watchlist-hits", id],
+    queryFn:   () => get<WatchlistHit[]>(`/api/watchlists/${encodeURIComponent(id!)}/hits`),
+    enabled:   id != null,
+    staleTime: STALE_5M,
+  });
+}
+
+export function useCreateWatchlist() {
+  const qc = useQueryClient();
+  return useMutation<ApiEnvelope<Watchlist>, Error, CreateWatchlistPayload>({
+    mutationFn: (payload) =>
+      fetch("/api/watchlists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).then((r) => { if (!r.ok) throw new Error(`create watchlist ${r.status}`); return r.json() as Promise<ApiEnvelope<Watchlist>>; }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["watchlists"] }); },
+  });
+}
+
+export function useUpdateWatchlist() {
+  const qc = useQueryClient();
+  return useMutation<ApiEnvelope<Watchlist>, Error, { id: string; patch: Partial<CreateWatchlistPayload> }>({
+    mutationFn: ({ id, patch }) =>
+      fetch(`/api/watchlists/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      }).then((r) => { if (!r.ok) throw new Error(`update watchlist ${r.status}`); return r.json() as Promise<ApiEnvelope<Watchlist>>; }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["watchlists"] }); },
+  });
+}
+
+export function useDeleteWatchlist() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) =>
+      fetch(`/api/watchlists/${encodeURIComponent(id)}`, { method: "DELETE" })
+        .then((r) => { if (r.status !== 204 && !r.ok) throw new Error(`delete watchlist ${r.status}`); }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["watchlists"] }); },
   });
 }
 

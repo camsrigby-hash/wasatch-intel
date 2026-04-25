@@ -15,9 +15,9 @@
 ```yaml
 phase:          7
 phase_name:     "Watchlists + D1 persistence"
-status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
+status:         BLOCKED            # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-25
-updater:        "Claude Code (Sonnet 4.6) — Phase 6 session"
+updater:        "Claude Code (Sonnet 4.6) — Phase 7 session"
 
 last_completed:
   phase:        6
@@ -28,21 +28,25 @@ next_after_current:
   phase:        8
   phase_name:   "Deal pipeline persistence"
 
-blockers: []
+blockers:
+  - "D1 database not yet created — user must run: npx wrangler d1 create wasatch-intel-db,
+     then replace YOUR_DATABASE_ID in wrangler.jsonc, then run:
+     npx wrangler d1 execute wasatch-intel-db --file src/server/lib/schema.sql"
+  - "Resend account not yet configured — user must sign up at resend.com (free 3k/mo),
+     then run: npx wrangler secret put RESEND_API_KEY (paste the key when prompted)"
 
 notes:          |
-  Phase 6 done. tooele-land-intel: scrape_news_rss.py (feedparser RSS from
-  Tooele Transcript/Deseret/KSL/SL Trib/UDOT), scrape_reddit.py (PRAW,
-  gracefully skips if creds absent), correlate_signals.py (Haiku classifies
-  each signal into CM_RE 9-type taxonomy then scores correlation: jurisdiction
-  0.4 + signal_type 0.3 + keyword 0.2 + temporal 0.1; cap 200 calls; threshold
-  0.6). signals.yml daily cron 14:00 UTC. requirements.txt: feedparser +
-  praw added. wasatch-intel: analyzeOpportunity extracted from entry.ts to
-  src/server/lib/analyze.ts (pre-flight). loadSignalWire() now merges
-  agendas + signals_news.csv + signals_reddit.csv + signal_correlations.csv;
-  entry.ts source metadata updated. Reddit requires REDDIT_CLIENT_ID /
-  REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT GitHub Secrets — pipeline runs
-  fine without them (news-only mode).
+  Phase 7 code is COMPLETE. All files written and committed. The deploy will
+  succeed and will gracefully degrade (watchlists route returns empty array
+  until D1 is provisioned). Two user actions required to activate:
+  1. Create D1 database and run schema migration (see blockers above).
+  2. Set RESEND_API_KEY Workers secret (see blockers above).
+  After both are done, re-run the deploy (push or workflow_dispatch), then:
+  - Create a test watchlist via the UI
+  - Verify it persists on reload
+  - Trigger the cron manually: npx wrangler dev + cron trigger (or wait 1h after deploy)
+  - Confirm email alert arrives if RESEND_API_KEY is set.
+  Once verified, update status to DONE, add completion notes, and proceed to Phase 8.
 ```
 
 ---
@@ -443,6 +447,27 @@ Policy approval lands; once approved, three GitHub Secrets activate it
 and the dedup step in correlate_signals.py handles overlap. Form was not
 submitted — RSS deemed sufficient for the use case (no comment-thread
 signal needed; post-level filtering is enough).
+
+---
+
+## PHASE 7 — Watchlists + D1 persistence (no CM_RE addendum — playbook-only phase)
+
+### PHASE 7 COMPLETION NOTES (code complete; activation requires user action)
+- **Date:** 2026-04-25
+- **By:** Claude Code (Sonnet 4.6) — Phase 7 session
+- **Built:** D1 schema (`schema.sql`); `d1-client.ts` (CRUD helpers); `email.ts` (Resend alert HTML); `watchlist-checker.ts` (hourly cron: signal matching per watchlist type, recordHit, email dispatch); `WatchlistWizard.tsx` (3-step wizard: type selector → criteria form with maplibre-gl-draw polygon support → name + alert settings); `watchlists.tsx` full CRUD UI (card list with hit count badge, inline settings panel, threshold slider, alert toggles, delete confirm). `entry.ts` updated with CRUD routes + `scheduled` export. `api-client.ts` + `types.ts` updated.
+- **Key commits:** wasatch-intel@<pending-push>
+- **Decisions (not from the brief):** `@mapbox/mapbox-gl-draw` (not `@maplibre/maplibre-gl-draw`) chosen as the polygon draw dep — more mature, runtime-compatible with MapLibre GL; `@ts-ignore` used on the `addControl` call to bridge typings. Email `from` address defaults to `onboarding@resend.dev` (Resend's free sandbox); user can change to a verified domain later. Single hardcoded alert email (`cam.s.rigby@gmail.com`) in cron checker — production-appropriate for single-user MVP.
+- **Deviations from the addendum:** None. Phase 7 had no CM_RE addendum.
+- **Surprises / gotchas:** `@cloudflare/workers-types` was not in the project — added to devDependencies and tsconfig. `D1Database` and `ScheduledEvent`/`ExecutionContext` are now available globally. Cron time-window for signal matching uses `todayStr` prefix (YYYY-MM-DD) rather than ISO timestamp comparison because `SignalWireItem.date` is a date-only string.
+- **Deferred:** Watchlist `type` field updates (can't change type after creation — simplifies logic). Per-user preferences for alert email address (hardcoded for single-user MVP). In-app notification badge in AppShell header (deferred to polish).
+- **BLOCKED — user must complete before verifying:**
+  1. `npx wrangler d1 create wasatch-intel-db` → paste returned `database_id` into `wrangler.jsonc`
+  2. `npx wrangler d1 execute wasatch-intel-db --file src/server/lib/schema.sql`
+  3. Sign up at resend.com (free) → `npx wrangler secret put RESEND_API_KEY`
+  4. Push to main (or workflow_dispatch deploy-cloudflare.yml)
+  5. Create one watchlist per type → reload → confirm persistence
+  6. Update `status: DONE` in CURRENT STATE above and proceed to Phase 8.
 
 ---
 
