@@ -425,6 +425,12 @@ COMMERCIAL_PROJECT in the same jurisdiction within 30 days is a high-
 confidence match. Without shared taxonomy, correlation is keyword-only.
 ```
 
+### Pre-flight notes (added 2026-04-25 from Phase 5 verification)
+
+The `analyzeOpportunity` function and its helpers are currently inlined in `src/server/entry.ts`. As Phase 6 adds analysis variants (per `CM_RE_INTEGRATION.md`), extract to `src/lib/analyze.ts` BEFORE adding new logic. `entry.ts` should only contain routing — analysis logic is its own module. Estimated extraction: 15 minutes, zero behavior change.
+
+Also: the early-return guard at the top of `entry.ts` (the one that handles non-GET methods) was found in Phase 5 to incorrectly block POST requests to handler routes — fixed in `796acd9`. When refactoring, preserve that fix and add a comment explaining why the guard must check the path, not just the method.
+
 ---
 
 ## PHASE 9 — Per-city expansion via PMN (NEW full prompt)
