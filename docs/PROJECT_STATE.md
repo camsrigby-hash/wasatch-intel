@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-24
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 3 session
-**Active phase:** Phase 4 — STIP overlay + polygon renderer (NOT STARTED)
+**Last agent:** Claude Code (Opus 4.7) — Phase 4 session
+**Active phase:** Phase 5 — Parcel Deep Dive with live ArcGIS (NOT STARTED)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -20,12 +20,13 @@ Update this file at the end of every work session. The "Current Status" section 
 - Phase 1: /api/agendas endpoint live (136 items, freshness=live from tooele-land-intel CSV)
 - Phase 2: /api/digest, /api/developers, /api/signal-wire live; feed.tsx, developers.tsx, pipeline.tsx, watchlists.tsx wired to real data; mock-data.ts shrunk; weighted aggregator (aggregate_city_signals.py) in tooele-land-intel
 - Phase 3: geocode_items.py + geocode.yml; arcgis.py resilient; MapCanvas accepts real AgendaItem[] with uniform pins; index.tsx wired to useAgendas() with counter + popover; csv-loader tries items_geocoded.csv first. 12/136 items geocoded in initial local run; full run (Haiku strategies) needs geocode.yml workflow trigger.
+- Phase 4: tooele-land-intel scripts/fetch_stip.py (UDOT EPM Projects_as_Lines, 227 features, Tooele bbox) + scripts/build_gap_layer.py (Erda+Tooele-uninc+Grantsville zoning unioned with County 2022 GP, 10,665 parcels, 33 high-gap A-20→HIR in Erda) + monthly gap-layer.yml cron. wasatch-intel: /api/gap-layer + /api/stip endpoints, useGapLayer/useStip hooks, MapCanvas rewritten with three real GeoJSON sources (gap-score-interpolated parcel fill, yellow STIP lines, agenda pins). routes/index.tsx shows temporary parcel-properties popover (full ParcelDeepDive deferred to Phase 5). Layer rail has gap-gradient legend + partial-GP-coverage caveat.
 - types.ts, csv-loader.ts, api-client.ts, agendas.tsx — all wired, real data loading
 - Parser schema upgraded in tooele-land-intel (CM_RE signal taxonomy, 23-col CSV)
 - CM_RE reference tree at `tooele-land-intel/vendor/cm_re/`
 
 ### What's next
-- Phase 4: STIP overlay + polygon renderer
+- Phase 5: Parcel Deep Dive with live ArcGIS (rewrite ParcelDeepDive against UGRC parcels + zoning + GP, replace temp popover wired in Phase 4)
 
 ### Open questions / blockers
 - None currently
@@ -391,6 +392,49 @@ Two AgendaItem shapes resolved: types.ts shape used everywhere on the map; mock
 shape remains only for PARCELS polygon layer (Phase 4 replaces it). GH CLI not
 authenticated locally — geocode.yml trigger needs GitHub UI or waits for next
 weekly-digest.yml run (Monday). Phase 4 is next.
+
+### Phase 4 — STIP overlay + polygon renderer (2026-04-24)
+Two-repo phase. In **tooele-land-intel**, wrote `scripts/fetch_stip.py` (UDOT
+EPM Projects_as_Lines for Tooele bbox `[-112.60,40.35,-112.00,40.95]` →
+`data/stip_projects.geojson`, 227 features, 783 KB) and
+`scripts/build_gap_layer.py` (unions zoning sublayers 1/4/7 from Tooele County
+tcgisws — Erda, Tooele uninc., Grantsville — into one STRtree, point-in-polygon
+matches each parcel centroid against zoning + County 2022 GP, scores
+`gap = max(0, gp_intensity - zoning_intensity)` via hand-curated intensity
+tables; outputs `data/gap_layer.geojson` with 10,665 parcels, 60% scored in
+Erda, 33 high-gap A-20→HIR parcels confirmed in Erda; 6dp coord rounding +
+minified JSON → 6.7 MB). Added `.github/workflows/gap-layer.yml` monthly cron
+(`0 9 1 * *`). Vendored CM_RE STIP URL was stale (different org); switched to
+live UDOT host `services.arcgis.com/pA2nEVnB6tquxgOW`. First gap-layer run
+scored 0 — root cause: Erda zoning layer #1 and County GP cover disjoint
+geographies (incorporated vs unincorporated), required unioning all three
+zoning sublayers and handling layer 7's `Zoning` vs layers 1/4's `Zone`
+field-name difference. Grantsville GP coverage is ~3% — null gap_scores
+rendered transparent with caveat in layer rail. In **wasatch-intel**, added
+`/api/gap-layer` and `/api/stip` GET endpoints in `src/server/entry.ts` (5-min
+Worker cache via existing `csv-loader.ts` shape; new `loadGapLayer`/`loadStip`
+functions are JSON pass-throughs). `src/lib/api-client.ts` got `useGapLayer()`
+and `useStip()` hooks (30-min staleTime). `src/components/MapCanvas.tsx`
+rewritten — mock `PARCELS` import gone, three real GeoJSON sources
+(`parcels`, `stip`, `agendas`), gap-score interpolated fuchsia fill expression
+(0→8+), yellow STIP `line + line-blur glow`, prop-driven sources synced via
+separate effects so layer-toggle changes don't tear down the map. Map now
+centers on Tooele Valley `[-112.42, 40.6]` zoom 10.5. `src/routes/index.tsx`
+calls `useGapLayer()`/`useStip()`, passes data into `MapCanvas`, replaced the
+broken `selectedParcel`/`Parcel` shape wiring with a temporary parcel-
+properties popover (apn/jurisdiction/zoning/general_plan/gap_score/owner)
+because Phase 4's brief explicitly defers the full drawer to Phase 5
+("show parcel detail in the existing ParcelDeepDive drawer (already wired
+for click in Phase 5 — for now just log to console or show a basic popup)").
+ParcelDeepDive component + mock Parcel type still in tree but unimported; both
+get rewritten in Phase 5 to consume live ArcGIS. Layer-rail "Site plan
+overlays" relabeled "STIP / UDOT projects"; gap-gradient swatch + partial-
+GP-coverage caveat added inline under the gap toggle. Local typecheck not
+run — Node toolchain not on PATH in this session, no `node_modules` installed
+on this machine; relied on careful prop-shape edits and pushed for the
+Cloudflare Workers build to validate. Commits: tooele-land-intel@687be58
+(`Phase 4: zoning/GP gap layer + STIP overlay`), wasatch-intel@ea394a3
+(`Phase 4: wire gap-layer + STIP into map UI`). Phase 5 is next.
 
 ---
 

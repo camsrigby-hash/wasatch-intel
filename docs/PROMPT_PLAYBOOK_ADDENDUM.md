@@ -13,35 +13,41 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          4
-phase_name:     "STIP overlay + polygon renderer"
+phase:          5
+phase_name:     "Parcel Deep Dive with live ArcGIS"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-24
-updater:        "Claude Code (Sonnet 4.6) — Phase 3 session"
+updater:        "Claude Code (Opus 4.7) — Phase 4 session"
 
 last_completed:
-  phase:        3
-  phase_name:   "Geocoding backfill"
+  phase:        4
+  phase_name:   "STIP overlay + polygon renderer"
   completed_on: 2026-04-24
 
 next_after_current:
-  phase:        5
-  phase_name:   "Parcel Deep Dive with live ArcGIS"
+  phase:        6
+  phase_name:   "Developer profile + agenda detail panes"
 
 blockers: []
 
 notes:          |
-  Phase 3 done. geocode_items.py committed with 4-strategy pipeline (parcel_id →
-  UGRC, location → Nominatim, title regex → Nominatim, Haiku → Nominatim capped
-  at 100 calls). Initial local run produced 12/136 geocoded items (parcel=10,
-  nominatim=2); 124 remaining need Haiku → trigger geocode.yml workflow with
-  ANTHROPIC_API_KEY to complete the full run. Map route wired to useAgendas()
-  with real AgendaItem (types.ts) — pins render UNIFORMLY (comment in MapCanvas
-  explains Phase 5 deferral). "X of Y items plotted" counter live in layer rail.
-  arcgis.py now resilient (Retry + disk cache). Two AgendaItem shapes resolved:
-  mock shape remains only for PARCELS layer (Phase 4 replaces it); map click
-  handler and popover use real types.ts AgendaItem. pages.dev refs purged from
-  both docs.
+  Phase 4 done. tooele-land-intel: scripts/fetch_stip.py pulls UDOT EPM
+  Projects_as_Lines (services.arcgis.com/pA2nEVnB6tquxgOW) for Tooele Valley
+  bbox → 227 features. scripts/build_gap_layer.py unions Erda + Tooele-uninc
+  + Grantsville zoning sublayers (1/4/7) with Tooele Co 2022 GP, scoring
+  gap = max(0, gp_intensity - zoning_intensity) via hand-curated tables →
+  10,665 parcels, 60% scored in Erda, 33 high-gap parcels in Erda incl. the
+  expected A-20 → HIR (gap_score=7) clusters. Monthly cron in gap-layer.yml.
+  wasatch-intel: /api/gap-layer + /api/stip endpoints (5-min Worker cache),
+  useGapLayer/useStip hooks (30-min staleTime). MapCanvas rewritten — mock
+  PARCELS gone, three real GeoJSON sources, gap fill interpolates fuchsia
+  by gap_score, STIP renders as yellow line+glow. routes/index.tsx replaces
+  ParcelDeepDive with a temporary parcel-properties popover (real drawer is
+  Phase 5's job per the addendum). Layer rail has gap-gradient legend +
+  partial-GP-coverage caveat. "Site plan overlays" toggle relabeled
+  "STIP / UDOT projects" (re-purposed). NOTE: ParcelDeepDive component +
+  mock Parcel type are still in the tree but no longer imported; Phase 5
+  will rewrite ParcelDeepDive to consume live ArcGIS and wire it back in.
 ```
 
 ---
@@ -302,6 +308,16 @@ filter panel — that's reference for UX ideas (transparency slider, score
 threshold, acreage filter) but the TLI production renderer is React-side in
 MapCanvas, not a standalone HTML file.
 ```
+
+### PHASE 4 COMPLETION NOTES
+- **Date:** 2026-04-24
+- **By:** Claude Code (Opus 4.7) — Phase 4 session
+- **Built:** tooele-land-intel `fetch_stip.py` (227 UDOT projects in Tooele bbox) + `build_gap_layer.py` (10,665 parcels, 60% scored in Erda, 33 high-gap A-20→HIR confirmed) + monthly `gap-layer.yml` cron. wasatch-intel: `/api/gap-layer` + `/api/stip` endpoints, `useGapLayer/useStip` hooks, MapCanvas rewritten with three real GeoJSON sources (gap-score-interpolated parcel fill, yellow STIP lines, agenda pins).
+- **Key commits:** wasatch-intel@ea394a3, tooele-land-intel@687be58
+- **Decisions (not from the addendum):** Vendored CM_RE STIP URL (`services1.arcgis.com/vdNDkVykv9vEWFX4/...EPM_Projects_Lines`) was stale — that host belongs to a different org. Switched to live UDOT public ArcGIS host `services.arcgis.com/pA2nEVnB6tquxgOW/Projects_as_Lines/FeatureServer/0` and rewrote field schema (pin/public_desc/pin_stat_nm/etc.). Coord-rounded gap_layer.geojson to 6dp + minified → 6.7 MB.
+- **Deviations from the addendum:** Did NOT use the brief's per-parcel `parcel_polygon_map.py` BATCH_SIZE=50 polygon fetch — instead pulled polygons in the same parcels query as zoning-by-centroid (single ArcGIS call per city, returnGeometry=true), which is simpler and stays under the layer's 6000 row cap with `--max 6000`. Per-parcel batched fetch is unnecessary at this scale.
+- **Surprises / gotchas:** First gap-layer run scored 0 parcels — Erda's own zoning layer (#1) and the County GP layer cover geographically disjoint areas (incorporated Erda vs unincorporated county). Fixed by unioning all three zoning sublayers into one STRtree, handling layer 7's `Zoning` vs layers 1/4's `Zone` field-name difference. Also: layer 7 (Grantsville) had ~3% GP coverage — partial-GP-caveat note added to the layer rail, null gap_score rendered transparent.
+- **Deferred:** ParcelDeepDive drawer rewrite to consume live ArcGIS instead of mock Parcel shape (Phase 5). Currently `routes/index.tsx` shows a temporary parcel-properties popover (apn/zoning/gp/gap_score/owner). Mock `Parcel` type and `ParcelDeepDive` component still in tree but unimported.
 
 ---
 
