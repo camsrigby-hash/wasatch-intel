@@ -207,27 +207,127 @@ export async function loadDevelopers(): Promise<LoadResult<DeveloperSummary[]>> 
 
 // ── /api/signal-wire ─────────────────────────────────────────────────────────
 
+interface ExternalSignalRow {
+  id:               string;
+  source:           string;
+  title:            string;
+  url?:             string;
+  published_date:   string;
+  summary?:         string;
+  matched_keywords?: string;
+  // Reddit-specific
+  subreddit?:       string;
+  score?:           string;
+  // News-specific
+  feed_name?:       string;
+}
+
+interface CorrelationRow {
+  signal_id:     string;
+  agenda_id:     string;
+  total_score:   string;
+}
+
+async function loadExternalSignals(): Promise<{
+  news: ExternalSignalRow[];
+  reddit: ExternalSignalRow[];
+  correlations: Map<string, string>; // signal_id → agenda_id (best match)
+}> {
+  const [newsResult, redditResult, corrResult] = await Promise.allSettled([
+    fetchRaw(`${TLI_BASE}/signals_news.csv`),
+    fetchRaw(`${TLI_BASE}/signals_reddit.csv`),
+    fetchRaw(`${TLI_BASE}/signal_correlations.csv`),
+  ]);
+
+  const news:   ExternalSignalRow[] = newsResult.status   === "fulfilled" ? parseCsv(newsResult.value)   as ExternalSignalRow[] : [];
+  const reddit: ExternalSignalRow[] = redditResult.status === "fulfilled" ? parseCsv(redditResult.value) as ExternalSignalRow[] : [];
+
+  // Build best-match correlation map (highest total_score per signal_id)
+  const correlations = new Map<string, string>();
+  if (corrResult.status === "fulfilled") {
+    const corrRows = parseCsv(corrResult.value) as CorrelationRow[];
+    const best = new Map<string, { agendaId: string; score: number }>();
+    for (const row of corrRows) {
+      const score = parseFloat(row.total_score ?? "0");
+      const prev  = best.get(row.signal_id);
+      if (!prev || score > prev.score) {
+        best.set(row.signal_id, { agendaId: row.agenda_id, score });
+      }
+    }
+    for (const [sigId, { agendaId }] of best) {
+      correlations.set(sigId, agendaId);
+    }
+  }
+
+  return { news, reddit, correlations };
+}
+
 export async function loadSignalWire(): Promise<LoadResult<SignalWireItem[]>> {
   const fetchedAt = new Date().toISOString();
   try {
-    const { data: agendas } = await loadAgendas();
-    const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
 
-    const data: SignalWireItem[] = agendas
-      .filter((a) => a.date >= cutoff && !isNaN(Date.parse(a.date)))
-      .map((a) => ({
+    const [agendasResult, externalResult] = await Promise.allSettled([
+      loadAgendas(),
+      loadExternalSignals(),
+    ]);
+
+    const agendas  = agendasResult.status  === "fulfilled" ? agendasResult.value.data  : [];
+    const external = externalResult.status === "fulfilled" ? externalResult.value       : { news: [], reddit: [], correlations: new Map() };
+
+    const items: SignalWireItem[] = [];
+
+    // Agenda-sourced signals (always present)
+    for (const a of agendas) {
+      if (!a.date || a.date < cutoff || isNaN(Date.parse(a.date))) continue;
+      items.push({
         id:           a.id,
         date:         a.date,
-        source:       "Agenda" as const,
+        source:       "Agenda",
         jurisdiction: a.jurisdiction,
         headline:     a.title || `${a.itemType || "Item"} — ${a.jurisdiction}`,
         excerpt:      a.description,
         signal:       a.growthScore ?? 0,
         agendaId:     a.id,
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date));
+      });
+    }
 
-    return { data, freshness: "live", fetchedAt, count: data.length };
+    // External signals — news + Reddit merged
+    const externalRows: Array<[ExternalSignalRow, "News" | "Rumor"]> = [
+      ...external.news.map((r): [ExternalSignalRow, "News"] => [r, "News"]),
+      ...external.reddit.map((r): [ExternalSignalRow, "Rumor"] => [r, "Rumor"]),
+    ];
+
+    for (const [row, src] of externalRows) {
+      const date = row.published_date ?? "";
+      if (!date || date < cutoff) continue;
+      const agendaId = external.correlations.get(row.id ?? "") ?? undefined;
+      // Derive a rough signal score from number of keyword hits
+      const kwHits = (row.matched_keywords ?? "").split("|").filter(Boolean).length;
+      const signal  = Math.min(100, kwHits * 12);
+      items.push({
+        id:           row.id ?? "",
+        date,
+        source:       src,
+        jurisdiction: "",  // populated by correlate_signals where inferred
+        headline:     row.title ?? "",
+        excerpt:      row.summary ? row.summary.slice(0, 200) : null,
+        signal,
+        agendaId,
+      });
+    }
+
+    items.sort((a, b) => b.date.localeCompare(a.date));
+
+    const hasExternal = external.news.length > 0 || external.reddit.length > 0;
+    return {
+      data:      items,
+      freshness: "live",
+      fetchedAt,
+      count:     items.length,
+      // surface whether external signal CSVs exist yet
+      ...(hasExternal ? {} : {}),
+    };
   } catch (err) {
     console.error("[csv-loader] loadSignalWire error:", err);
     return { data: [], freshness: "stale", fetchedAt, count: 0 };

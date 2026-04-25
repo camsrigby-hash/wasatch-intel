@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-04-24
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 5 session
-**Active phase:** Phase 6 — Developer profile + agenda detail panes (NOT STARTED)
+**Last updated:** 2026-04-25
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 6 session
+**Active phase:** Phase 7 — Watchlists + D1 persistence (NOT STARTED)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -26,8 +26,10 @@ Update this file at the end of every work session. The "Current Status" section 
 - Parser schema upgraded in tooele-land-intel (CM_RE signal taxonomy, 23-col CSV)
 - CM_RE reference tree at `tooele-land-intel/vendor/cm_re/`
 
+- Phase 6: Rumor signal pipeline (Reddit + news RSS + Haiku correlation) — DONE
+
 ### What's next
-- Phase 6: Developer profile + agenda detail panes
+- Phase 7: Watchlists + D1 persistence
 
 ### Open questions / blockers
 - None currently
@@ -466,6 +468,25 @@ open={!!selectedApn} onClose={...} />`. Key decision: opportunity analysis runs 
 the Worker — no GitHub Actions trigger, no live ArcGIS buffer calls — marked `simplified: true`.
 Road enrichment data will populate after first workflow run; drawer gracefully shows "—" until then.
 Phase 6 is next.
+
+### 2026-04-25 — Phase 6 (DONE) — Claude Code (Sonnet 4.6)
+Rumor signal pipeline. In **tooele-land-intel**: wrote `scripts/scrape_news_rss.py`
+(feedparser, 6 RSS feeds: Tooele Transcript, Deseret, KSL, SL Trib, UDOT; keyword-
+filtered to 30 land-development terms; graceful per-feed error handling);
+`scripts/scrape_reddit.py` (PRAW, r/Utah + r/SaltLakeCity + r/UtahPolitics + r/tooele;
+gracefully exits with empty CSV when REDDIT_CLIENT_ID/SECRET/USER_AGENT not set so the
+pipeline continues in news-only mode); `scripts/correlate_signals.py` (Haiku 4.5
+classifies each signal into the shared CM_RE 9-type taxonomy, then scores correlation on
+4 axes: jurisdiction 0.4 + signal_type 0.3 + keyword_overlap 0.2 + temporal 0.1; 200-call
+cap; threshold 0.6 configurable via env); `.github/workflows/signals.yml` (daily cron
+14:00 UTC). Added feedparser>=6.0.0 and praw>=7.7.0 to requirements.txt. In
+**wasatch-intel**: pre-flight extraction of `analyzeOpportunity` + helpers from `entry.ts`
+into `src/server/lib/analyze.ts` (zero behavior change, entry.ts now imports from module);
+`loadSignalWire()` in csv-loader.ts rewritten to merge agendas + signals_news.csv +
+signals_reddit.csv + signal_correlations.csv; agendaId populated from best-match
+correlation; external signal score derived from keyword hit count. Signal-wire endpoint
+source metadata updated. Key decision: Reddit scraper writes empty CSV (not an error) if
+creds absent — pipeline produces news-only output until user configures GitHub Secrets.
 
 ---
 

@@ -13,41 +13,36 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          6
-phase_name:     "Developer profile + agenda detail panes"
+phase:          7
+phase_name:     "Watchlists + D1 persistence"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
-updated:        2026-04-24
-updater:        "Claude Code (Sonnet 4.6) — Phase 5 session"
+updated:        2026-04-25
+updater:        "Claude Code (Sonnet 4.6) — Phase 6 session"
 
 last_completed:
-  phase:        5
-  phase_name:   "Parcel Deep Dive with live ArcGIS"
-  completed_on: 2026-04-24
+  phase:        6
+  phase_name:   "Rumor signal pipeline"
+  completed_on: 2026-04-25
 
 next_after_current:
-  phase:        7
-  phase_name:   "Watchlists + D1 persistence"
+  phase:        8
+  phase_name:   "Deal pipeline persistence"
 
 blockers: []
 
 notes:          |
-  Phase 5 done. tooele-land-intel: enrich_roads.py ports CM_RE road_adjacency.py
-  for Tooele Valley bbox (UGRC Utah Roads, CARTOCODE 1-5 arterials); writes
-  data/roads_enrichment.json keyed by APN with nearest_arterial_name/aadt/
-  distance_mi, nearest_road_class, is_corner, corner_roads. gap-layer.yml
-  updated to run enrich_roads.py and commit roads_enrichment.json. Fixed
-  aggregate_city_signals.py NaN date bug (nan/None strings leaked into
-  mostRecentActivity). wasatch-intel: ParcelDetail/ParcelNeighbor/AnalysisResult
-  types added to types.ts. csv-loader.ts: loadParcelDetail (gap-layer APN
-  lookup + road enrichment + linked agendas), loadParcelAdjacency (0.5km
-  radius, cap 12). entry.ts: GET /api/parcel/:apn, /adjacency, POST /analyze
-  endpoints + full opportunity analysis engine (5 strategies, marked
-  simplified=true). api-client.ts: useParcelDetail/Adjacency/Analyze hooks.
-  ParcelDeepDive.tsx rewritten — 5 tabs (Overview, Agendas, Adjacency, Comps
-  placeholder, Notes/localStorage), live data, skeletons, GapBadge, StrategyRow.
-  index.tsx: parcelPopover state replaced with selectedApn, drawer wired.
-  Road enrichment data not yet generated (enrich_roads.py needs first workflow
-  run) — drawer shows "—" for road fields gracefully until then.
+  Phase 6 done. tooele-land-intel: scrape_news_rss.py (feedparser RSS from
+  Tooele Transcript/Deseret/KSL/SL Trib/UDOT), scrape_reddit.py (PRAW,
+  gracefully skips if creds absent), correlate_signals.py (Haiku classifies
+  each signal into CM_RE 9-type taxonomy then scores correlation: jurisdiction
+  0.4 + signal_type 0.3 + keyword 0.2 + temporal 0.1; cap 200 calls; threshold
+  0.6). signals.yml daily cron 14:00 UTC. requirements.txt: feedparser +
+  praw added. wasatch-intel: analyzeOpportunity extracted from entry.ts to
+  src/server/lib/analyze.ts (pre-flight). loadSignalWire() now merges
+  agendas + signals_news.csv + signals_reddit.csv + signal_correlations.csv;
+  entry.ts source metadata updated. Reddit requires REDDIT_CLIENT_ID /
+  REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT GitHub Secrets — pipeline runs
+  fine without them (news-only mode).
 ```
 
 ---
@@ -430,6 +425,16 @@ confidence match. Without shared taxonomy, correlation is keyword-only.
 The `analyzeOpportunity` function and its helpers are currently inlined in `src/server/entry.ts`. As Phase 6 adds analysis variants (per `CM_RE_INTEGRATION.md`), extract to `src/lib/analyze.ts` BEFORE adding new logic. `entry.ts` should only contain routing — analysis logic is its own module. Estimated extraction: 15 minutes, zero behavior change.
 
 Also: the early-return guard at the top of `entry.ts` (the one that handles non-GET methods) was found in Phase 5 to incorrectly block POST requests to handler routes — fixed in `796acd9`. When refactoring, preserve that fix and add a comment explaining why the guard must check the path, not just the method.
+
+### PHASE 6 COMPLETION NOTES
+- **Date:** 2026-04-25
+- **By:** Claude Code (Sonnet 4.6) — Phase 6 session
+- **Built:** tooele-land-intel: `scrape_news_rss.py` (feedparser, 6 RSS feeds, keyword-filtered); `scrape_reddit.py` (PRAW, 4 subreddits, graceful no-creds exit); `correlate_signals.py` (Haiku classify → 4-axis scoring, 200-call cap); `signals.yml` daily cron; `feedparser`+`praw` in requirements.txt. wasatch-intel: `analyzeOpportunity` extracted from `entry.ts` → `src/server/lib/analyze.ts` (pre-flight); `loadSignalWire()` merges agendas + news + Reddit + correlations; entry.ts source metadata updated.
+- **Key commits:** tooele-land-intel@7c90aaf, wasatch-intel@<pending>
+- **Decisions (not from the addendum):** Reddit scraper writes empty CSV (not an error) when env vars absent so the workflow succeeds on news-only. Correlation jurisdiction lookup uses an alias map (e.g. "tooele" → "Tooele") to handle colloquial city references. External signal score is derived from keyword hit count (hits × 12, capped at 100) since signals_news/reddit don't have a growthScore field.
+- **Deviations from the addendum:** Phase 6 brief title in PROMPT_PLAYBOOK.md says "Developer profile + agenda detail panes" but that was a mislabeling in the playbook — the addendum correctly calls it "Rumor signal pipeline." Executed the addendum's version.
+- **Surprises / gotchas:** Phase 6 pre-flight note said to extract analyzeOpportunity BEFORE adding new logic — done. The early-return guard in entry.ts (checks path + method, not just method) was already fixed in 796acd9 and preserved correctly.
+- **Deferred:** Reddit signals pending user adding GitHub Secrets. News RSS signals will begin flowing with the next daily signals.yml run.
 
 ---
 
