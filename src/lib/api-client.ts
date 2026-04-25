@@ -1,7 +1,7 @@
 // src/lib/api-client.ts
 // TanStack Query hooks for every /api/* endpoint.
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   AgendaItem,
   DigestContent,
@@ -10,6 +10,9 @@ import type {
   Watchlist,
   Deal,
   ApiEnvelope,
+  ParcelDetail,
+  ParcelNeighbor,
+  AnalysisResult,
 } from "./types";
 
 const STALE_5M = 5 * 60 * 1000;
@@ -118,5 +121,35 @@ export function useDeals() {
     queryKey:  ["deals"],
     queryFn:   () => get<Deal[]>("/api/deals"),
     staleTime: STALE_5M,
+  });
+}
+
+// ── /api/parcel/:apn — Phase 5 ───────────────────────────────────────────────
+
+export function useParcelDetail(apn: string | null) {
+  return useQuery<ApiEnvelope<ParcelDetail>, Error>({
+    queryKey:  ["parcel", apn],
+    queryFn:   () => get<ParcelDetail>(`/api/parcel/${encodeURIComponent(apn!)}`),
+    enabled:   apn != null,
+    staleTime: STALE_30M,
+    retry: 1,
+  });
+}
+
+export function useParcelAdjacency(apn: string | null) {
+  return useQuery<ApiEnvelope<ParcelNeighbor[]>, Error>({
+    queryKey:  ["parcel-adjacency", apn],
+    queryFn:   () => get<ParcelNeighbor[]>(`/api/parcel/${encodeURIComponent(apn!)}/adjacency`),
+    enabled:   apn != null,
+    staleTime: STALE_30M,
+    retry: 1,
+  });
+}
+
+export function useParcelAnalyze(apn: string | null) {
+  return useMutation<ApiEnvelope<AnalysisResult>, Error>({
+    mutationFn: () =>
+      fetch(`/api/parcel/${encodeURIComponent(apn!)}/analyze`, { method: "POST" })
+        .then((r) => { if (!r.ok) throw new Error(`analyze ${r.status}`); return r.json() as Promise<ApiEnvelope<AnalysisResult>>; }),
   });
 }

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Layers, MapPin } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MapCanvas } from "@/components/MapCanvas";
+import { ParcelDeepDive } from "@/components/ParcelDeepDive";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -47,7 +48,7 @@ function pickStr(p: ParcelProps, ...keys: string[]): string | null {
 function MapPage() {
   const [layers, setLayers] = useState({ parcels: true, gap: true, agendas: true, heatmap: false, sitePlans: false });
   const [railOpen, setRailOpen] = useState(true);
-  const [parcelPopover, setParcelPopover] = useState<ParcelProps | null>(null);
+  const [selectedApn, setSelectedApn] = useState<string | null>(null);
   const [agendaPopover, setAgendaPopover] = useState<AgendaItem | null>(null);
 
   const { data: agendasEnvelope } = useAgendas();
@@ -70,7 +71,10 @@ function MapPage() {
         agendaItems={plottedAgendas}
         gapLayer={gapLayer}
         stipLayer={stipLayer}
-        onParcelClick={setParcelPopover}
+        onParcelClick={(props) => {
+          const apn = pickStr(props, "apn", "PARCEL_ID", "parcel_id");
+          if (apn) setSelectedApn(apn);
+        }}
         onAgendaClick={setAgendaPopover}
       />
 
@@ -192,35 +196,11 @@ function MapPage() {
         </div>
       )}
 
-      {/* Parcel popover — Phase 5 will replace with full ParcelDeepDive drawer */}
-      {parcelPopover && (
-        <div className="absolute bottom-4 right-4 z-20 w-80 bg-background border border-border rounded-md shadow-lg p-3">
-          <div className="flex items-center justify-between mb-2">
-            <Badge variant="outline" className="text-[10px]">Parcel</Badge>
-            <button className="text-muted-foreground hover:text-foreground text-xs" onClick={() => setParcelPopover(null)}>×</button>
-          </div>
-          <div className="text-xs font-medium">
-            APN {pickStr(parcelPopover, "apn", "PARCEL_ID", "parcel_id") ?? "—"}
-          </div>
-          <div className="text-[11px] text-muted-foreground mt-0.5">
-            {pickStr(parcelPopover, "jurisdiction", "city") ?? "Tooele Valley"}
-            {pickStr(parcelPopover, "acres") && ` · ${pickStr(parcelPopover, "acres")} ac`}
-          </div>
-          <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px]">
-            <span className="text-muted-foreground">Zoning</span>
-            <span>{pickStr(parcelPopover, "zoning", "zone") ?? "—"}</span>
-            <span className="text-muted-foreground">General Plan</span>
-            <span>{pickStr(parcelPopover, "general_plan", "generalPlan", "gp") ?? "—"}</span>
-            <span className="text-muted-foreground">Gap score</span>
-            <span>{pickStr(parcelPopover, "gap_score") ?? "null (no GP coverage)"}</span>
-            <span className="text-muted-foreground">Owner</span>
-            <span>{pickStr(parcelPopover, "owner", "OWNER") ?? "—"}</span>
-          </div>
-          <p className="text-[9px] text-muted-foreground/70 mt-2">
-            Full deep-dive drawer arrives in Phase 5.
-          </p>
-        </div>
-      )}
+      <ParcelDeepDive
+        apn={selectedApn}
+        open={!!selectedApn}
+        onClose={() => setSelectedApn(null)}
+      />
     </AppShell>
   );
 }

@@ -250,6 +250,66 @@ export interface Deal {
   notes:             string;
 }
 
+// ── Parcel detail (/api/parcel/:apn — Phase 5) ───────────────────────────────
+
+export interface ParcelDetail {
+  apn:                      string;
+  acres:                    number | null;
+  owner:                    string | null;
+  address:                  string | null;
+  zoning:                   string | null;
+  zoningJurisdiction:       string | null;
+  currentZoneLabel:         string | null;
+  generalPlan:              string | null;
+  gpDesignationLabel:       string | null;
+  zoningIntensity:          number | null;
+  gpIntensity:              number | null;
+  gapScore:                 number | null;
+  developable:              boolean;
+  jurisdiction:             string | null;
+  centroid:                 [number, number] | null;  // [lon, lat]
+  // Road enrichment — null until enrich_roads.py runs
+  nearestArterialName:      string | null;
+  nearestArterialAadt:      number | null;
+  nearestArterialDistanceMi: number | null;
+  nearestRoadClass:         string | null;
+  isCorner:                 boolean | null;
+  cornerRoads:              string[] | null;
+  // Linked agenda items (proximity + APN text match)
+  agendaItems:              AgendaItem[];
+}
+
+// ── Parcel neighbor (/api/parcel/:apn/adjacency) ──────────────────────────────
+
+export interface ParcelNeighbor {
+  apn:          string;
+  owner:        string | null;
+  acres:        number | null;
+  gapScore:     number | null;
+  jurisdiction: string | null;
+  developable:  boolean;
+  centroid:     [number, number] | null;
+  distanceKm:   number;
+}
+
+// ── Opportunity analysis (/api/parcel/:apn/analyze) ───────────────────────────
+
+export interface OpportunityStrategy {
+  strategy:   string;
+  score:      number;  // 0–5
+  components: Record<string, number>;
+  notes:      string;
+  unknowns:   string[];
+}
+
+export interface AnalysisResult {
+  apn:              string;
+  corridors:        Array<{ name: string; distanceM: number }>;
+  strategiesRanked: OpportunityStrategy[];
+  headline:         string;
+  simplified:       boolean;  // true = 1-mile buffer context not included
+}
+
 // ── City center coordinates [lon, lat] (authoritative, moved from mock-data) ─
 
 export const CITY_CENTERS: Record<string, [number, number]> = {

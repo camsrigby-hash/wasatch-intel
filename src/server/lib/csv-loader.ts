@@ -1,7 +1,7 @@
 // src/server/lib/csv-loader.ts
 // Fetch, cache, and parse CSV/JSON data files from the public tooele-land-intel repo.
 
-import type { AgendaItem, AgendaStatus, SignalType, DeveloperSummary, SignalWireItem, DigestContent, CityScore } from "../../lib/types";
+import type { AgendaItem, AgendaStatus, SignalType, DeveloperSummary, SignalWireItem, DigestContent, CityScore, ParcelDetail, ParcelNeighbor } from "../../lib/types";
 
 const TLI_BASE = "https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data";
 
@@ -214,7 +214,7 @@ export async function loadSignalWire(): Promise<LoadResult<SignalWireItem[]>> {
     const cutoff = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
 
     const data: SignalWireItem[] = agendas
-      .filter((a) => a.date >= cutoff)
+      .filter((a) => a.date >= cutoff && !isNaN(Date.parse(a.date)))
       .map((a) => ({
         id:           a.id,
         date:         a.date,
@@ -266,6 +266,142 @@ export async function loadStip(): Promise<LoadResult<unknown>> {
       freshness: "stale", fetchedAt, count: 0,
     };
   }
+}
+
+// ── Parcel helpers (Phase 5) ──────────────────────────────────────────────────
+
+type GeoFeature = {
+  type: "Feature";
+  geometry: { type: string; coordinates: unknown[] };
+  properties: Record<string, unknown>;
+};
+
+function polygonCentroid(f: GeoFeature): [number, number] | null {
+  if (!f.geometry || f.geometry.type !== "Polygon") return null;
+  const ring = (f.geometry.coordinates as number[][][])[0];
+  if (!ring?.length) return null;
+  const lon = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+  const lat = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+  return [lon, lat];
+}
+
+function haversineKm(lon1: number, lat1: number, lon2: number, lat2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+interface RoadEntry {
+  nearest_arterial_name: string | null;
+  nearest_arterial_aadt: number | null;
+  nearest_arterial_distance_mi: number | null;
+  nearest_road_class: string | null;
+  is_corner: boolean;
+  corner_roads: string[];
+}
+
+export async function loadRoadsEnrichment(): Promise<Record<string, RoadEntry>> {
+  try {
+    const text = await fetchRaw(`${TLI_BASE}/roads_enrichment.json`);
+    return JSON.parse(text) as Record<string, RoadEntry>;
+  } catch {
+    return {};
+  }
+}
+
+export async function loadParcelDetail(apn: string): Promise<ParcelDetail | null> {
+  const [gapResult, agendasResult, roads] = await Promise.all([
+    loadGapLayer(),
+    loadAgendas(),
+    loadRoadsEnrichment(),
+  ]);
+
+  const fc = gapResult.data as { type: string; features: GeoFeature[] };
+  const feature = fc.features.find((f) => f.properties?.apn === apn);
+  if (!feature) return null;
+
+  const p = feature.properties;
+  const centroid = polygonCentroid(feature);
+  const roadData: RoadEntry | null = roads[apn] ?? null;
+
+  const linked = agendasResult.data.filter((a) => {
+    const haystack = `${a.title} ${a.notes ?? ""} ${a.description ?? ""}`.toLowerCase();
+    if (apn && haystack.includes(apn.toLowerCase())) return true;
+    if (centroid && a.lat != null && a.lng != null) {
+      return haversineKm(centroid[0], centroid[1], a.lng, a.lat) < 0.5;
+    }
+    return false;
+  }).slice(0, 20);
+
+  return {
+    apn:                      String(p.apn ?? apn),
+    acres:                    typeof p.acres === "number" ? p.acres : null,
+    owner:                    p.owner != null ? String(p.owner) : null,
+    address:                  p.address != null ? String(p.address) : null,
+    zoning:                   p.zoning != null ? String(p.zoning) : null,
+    zoningJurisdiction:       p.zoning_jurisdiction != null ? String(p.zoning_jurisdiction) : null,
+    currentZoneLabel:         p.current_zone_label != null ? String(p.current_zone_label) : null,
+    generalPlan:              p.generalPlan != null ? String(p.generalPlan) : null,
+    gpDesignationLabel:       p.gp_designation_label != null ? String(p.gp_designation_label) : null,
+    zoningIntensity:          typeof p.zoning_intensity === "number" ? p.zoning_intensity : null,
+    gpIntensity:              typeof p.gp_intensity === "number" ? p.gp_intensity : null,
+    gapScore:                 typeof p.gap_score === "number" ? p.gap_score : null,
+    developable:              Boolean(p.developable),
+    jurisdiction:             p.jurisdiction != null ? String(p.jurisdiction) : null,
+    centroid,
+    nearestArterialName:       roadData?.nearest_arterial_name ?? null,
+    nearestArterialAadt:       roadData?.nearest_arterial_aadt ?? null,
+    nearestArterialDistanceMi: roadData?.nearest_arterial_distance_mi ?? null,
+    nearestRoadClass:          roadData?.nearest_road_class ?? null,
+    isCorner:                  roadData ? roadData.is_corner : null,
+    cornerRoads:               roadData?.corner_roads ?? null,
+    agendaItems:               linked,
+  };
+}
+
+export async function loadParcelAdjacency(apn: string): Promise<ParcelNeighbor[]> {
+  const { data } = await loadGapLayer();
+  const fc = data as { type: string; features: GeoFeature[] };
+
+  const target = fc.features.find((f) => f.properties?.apn === apn);
+  if (!target) return [];
+
+  const targetCentroid = polygonCentroid(target);
+  if (!targetCentroid) return [];
+
+  const [tLon, tLat] = targetCentroid;
+  const RADIUS_KM = 0.5;
+
+  const neighbors: Array<{ dist: number; item: ParcelNeighbor }> = [];
+
+  for (const f of fc.features) {
+    if (f.properties?.apn === apn) continue;
+    const c = polygonCentroid(f);
+    if (!c) continue;
+    const dist = haversineKm(tLon, tLat, c[0], c[1]);
+    if (dist > RADIUS_KM) continue;
+    const p = f.properties;
+    neighbors.push({
+      dist,
+      item: {
+        apn:          String(p.apn ?? ""),
+        owner:        p.owner != null ? String(p.owner) : null,
+        acres:        typeof p.acres === "number" ? p.acres : null,
+        gapScore:     typeof p.gap_score === "number" ? p.gap_score : null,
+        jurisdiction: p.jurisdiction != null ? String(p.jurisdiction) : null,
+        developable:  Boolean(p.developable),
+        centroid:     c,
+        distanceKm:   Math.round(dist * 1000) / 1000,
+      },
+    });
+  }
+
+  neighbors.sort((a, b) => a.dist - b.dist);
+  return neighbors.slice(0, 12).map((n) => n.item);
 }
 
 // ── /api/digest ───────────────────────────────────────────────────────────────

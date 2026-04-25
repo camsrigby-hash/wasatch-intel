@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-24
-**Last agent:** Claude Code (Opus 4.7) — Phase 4 session
-**Active phase:** Phase 5 — Parcel Deep Dive with live ArcGIS (NOT STARTED)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 5 session
+**Active phase:** Phase 6 — Developer profile + agenda detail panes (NOT STARTED)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -21,20 +21,21 @@ Update this file at the end of every work session. The "Current Status" section 
 - Phase 2: /api/digest, /api/developers, /api/signal-wire live; feed.tsx, developers.tsx, pipeline.tsx, watchlists.tsx wired to real data; mock-data.ts shrunk; weighted aggregator (aggregate_city_signals.py) in tooele-land-intel
 - Phase 3: geocode_items.py + geocode.yml; arcgis.py resilient; MapCanvas accepts real AgendaItem[] with uniform pins; index.tsx wired to useAgendas() with counter + popover; csv-loader tries items_geocoded.csv first. 12/136 items geocoded in initial local run; full run (Haiku strategies) needs geocode.yml workflow trigger.
 - Phase 4: tooele-land-intel scripts/fetch_stip.py (UDOT EPM Projects_as_Lines, 227 features, Tooele bbox) + scripts/build_gap_layer.py (Erda+Tooele-uninc+Grantsville zoning unioned with County 2022 GP, 10,665 parcels, 33 high-gap A-20→HIR in Erda) + monthly gap-layer.yml cron. wasatch-intel: /api/gap-layer + /api/stip endpoints, useGapLayer/useStip hooks, MapCanvas rewritten with three real GeoJSON sources (gap-score-interpolated parcel fill, yellow STIP lines, agenda pins). routes/index.tsx shows temporary parcel-properties popover (full ParcelDeepDive deferred to Phase 5). Layer rail has gap-gradient legend + partial-GP-coverage caveat.
+- Phase 5: tooele-land-intel enrich_roads.py (UGRC Utah Roads CARTOCODE 1-5 arterials, haversine proximity, corner detection → data/roads_enrichment.json keyed by APN) + aggregate_city_signals.py NaN date fix + gap-layer.yml updated to run enrich_roads and commit roads_enrichment.json. wasatch-intel: ParcelDetail/ParcelNeighbor/AnalysisResult types; loadParcelDetail (gap-layer APN lookup + road enrichment + linked agendas) + loadParcelAdjacency (0.5km, cap 12); /api/parcel/:apn + /adjacency + POST /analyze endpoints + full opportunity analysis engine (5 strategies, simplified=true); useParcelDetail/Adjacency/Analyze hooks; ParcelDeepDive.tsx full rewrite (5 tabs: Overview, Agendas, Adjacency, Comps placeholder, Notes/localStorage); index.tsx parcelPopover replaced with selectedApn, drawer wired.
 - types.ts, csv-loader.ts, api-client.ts, agendas.tsx — all wired, real data loading
 - Parser schema upgraded in tooele-land-intel (CM_RE signal taxonomy, 23-col CSV)
 - CM_RE reference tree at `tooele-land-intel/vendor/cm_re/`
 
 ### What's next
-- Phase 5: Parcel Deep Dive with live ArcGIS (rewrite ParcelDeepDive against UGRC parcels + zoning + GP, replace temp popover wired in Phase 4)
+- Phase 6: Developer profile + agenda detail panes
 
 ### Open questions / blockers
 - None currently
 
 ### Open items (non-blocking, track here until resolved)
-- **`growth_score` empty in CSV** — all 136 rows in `agenda_items_split.csv` have an empty `growth_score` column; the Haiku enrichment workflow has not yet run on these items. Result: `/api/signal-wire` returns `signal: 0` for every item. Fix: trigger the enrichment workflow in tooele-land-intel (Phase 5 / whenever enrichment is scheduled).
-- **`meeting_date: nan` in CSV** — 1 row has an empty meeting_date ("nan" string). The `loadSignalWire()` date-filter (`a.date >= cutoff`) silently includes it (string comparison with "nan" is unpredictable). Fix: add a `!isNaN(Date.parse(a.date))` guard in `loadSignalWire()` — trivial, but deferring until enrichment is wired (Phase 5) so we know the full date quality picture.
-- **`mostRecentActivity: "nan"` in city_signal_scores.json** — Grantsville's `most_recent_activity` field is "nan" (pandas NaN not serialized to null). Fix: in `aggregate_city_signals.py`, replace `pd.NaT`/`nan` with `None` before `json.dumps`. Trivial one-liner; deferring to Phase 5 sweep.
+- **`growth_score` empty in CSV** — all 136 rows in `agenda_items_split.csv` have an empty `growth_score` column; the Haiku enrichment workflow has not yet run on these items. Result: `/api/signal-wire` returns `signal: 0` for every item. Fix: trigger the enrichment workflow in tooele-land-intel.
+- **roads_enrichment.json not yet generated** — enrich_roads.py script is written and wired into gap-layer.yml, but the workflow hasn't run yet. Parcel deep-dive drawer shows "—" for all road fields until first workflow run.
+- **46 unplotted agenda items** — subdivision names Nominatim can't resolve. Needs Haiku full-PDF-body extraction of parcel IDs / legal descriptions / cross-streets (deferred from Phase 5).
 
 ---
 
@@ -435,6 +436,36 @@ on this machine; relied on careful prop-shape edits and pushed for the
 Cloudflare Workers build to validate. Commits: tooele-land-intel@687be58
 (`Phase 4: zoning/GP gap layer + STIP overlay`), wasatch-intel@ea394a3
 (`Phase 4: wire gap-layer + STIP into map UI`). Phase 5 is next.
+
+### 2026-04-24 — Phase 5 (DONE) — Claude Code (Sonnet 4.6)
+Two-repo phase. In **tooele-land-intel**: wrote `scripts/enrich_roads.py` porting CM_RE
+`road_adjacency.py` for Tooele Valley bbox (UGRC Utah Roads FeatureServer/0, CARTOCODE 1–5
+arterials, haversine distance to parcel centroid + polygon edge midpoints, corner detection,
+disk-cached roads JSON); outputs `data/roads_enrichment.json` keyed by APN with
+`nearest_arterial_name`, `nearest_arterial_aadt`, `nearest_arterial_distance_mi`,
+`nearest_road_class`, `is_corner`, `corner_roads`. Fixed `aggregate_city_signals.py`
+`mostRecentActivity: "nan"` bug (pandas NaN string was not filtered before sort). Updated
+`gap-layer.yml` monthly cron to run `enrich_roads.py` and commit `roads_enrichment.json`.
+CRE scorer curves (score_aadt, score_arterial_access) deliberately NOT ported — TLI shows
+raw AADT for human interpretation. In **wasatch-intel**: added `ParcelDetail`,
+`ParcelNeighbor`, `OpportunityStrategy`, `AnalysisResult` types to `types.ts`. In
+`csv-loader.ts`: added `polygonCentroid()`, `haversineKm()`, `loadRoadsEnrichment()` (graceful
+{}  on 404), `loadParcelDetail()` (gap-layer APN linear scan + road enrichment + dual-strategy
+agenda linking: APN text match OR ≤500m centroid proximity), `loadParcelAdjacency()` (0.5km
+radius, capped at 12). Fixed signal-wire NaN date guard. In `entry.ts`: added routing block
+for `/api/parcel/:apn` (GET detail, GET adjacency, POST analyze) + full opportunity analysis
+engine (5 strategies × 4 scoring components, scored /8 → /5, `simplified: true`). In
+`api-client.ts`: added `useParcelDetail`, `useParcelAdjacency`, `useParcelAnalyze` hooks.
+Rewrote `ParcelDeepDive.tsx` from scratch (~270 lines): `{ apn, open, onClose }` props,
+`useParcelDetail/Adjacency/Analyze` hooks, 5 tabs (Overview, Agendas with count badge,
+Adjacency, Comps placeholder, Notes/localStorage), loading skeletons, `GapBadge` (color-coded
+0–7), `StrategyRow`, road-access display. Updated `index.tsx`: replaced `parcelPopover:
+ParcelProps | null` state + temp popover div with `selectedApn: string | null`, imported
+`ParcelDeepDive`, wired `onParcelClick` to APN extraction, renders `<ParcelDeepDive apn={selectedApn}
+open={!!selectedApn} onClose={...} />`. Key decision: opportunity analysis runs pure TypeScript in
+the Worker — no GitHub Actions trigger, no live ArcGIS buffer calls — marked `simplified: true`.
+Road enrichment data will populate after first workflow run; drawer gracefully shows "—" until then.
+Phase 6 is next.
 
 ---
 

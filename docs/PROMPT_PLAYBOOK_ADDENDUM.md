@@ -13,41 +13,41 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          5
-phase_name:     "Parcel Deep Dive with live ArcGIS"
+phase:          6
+phase_name:     "Developer profile + agenda detail panes"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-24
-updater:        "Claude Code (Opus 4.7) — Phase 4 session"
+updater:        "Claude Code (Sonnet 4.6) — Phase 5 session"
 
 last_completed:
-  phase:        4
-  phase_name:   "STIP overlay + polygon renderer"
+  phase:        5
+  phase_name:   "Parcel Deep Dive with live ArcGIS"
   completed_on: 2026-04-24
 
 next_after_current:
-  phase:        6
-  phase_name:   "Developer profile + agenda detail panes"
+  phase:        7
+  phase_name:   "Watchlists + D1 persistence"
 
 blockers: []
 
 notes:          |
-  Phase 4 done. tooele-land-intel: scripts/fetch_stip.py pulls UDOT EPM
-  Projects_as_Lines (services.arcgis.com/pA2nEVnB6tquxgOW) for Tooele Valley
-  bbox → 227 features. scripts/build_gap_layer.py unions Erda + Tooele-uninc
-  + Grantsville zoning sublayers (1/4/7) with Tooele Co 2022 GP, scoring
-  gap = max(0, gp_intensity - zoning_intensity) via hand-curated tables →
-  10,665 parcels, 60% scored in Erda, 33 high-gap parcels in Erda incl. the
-  expected A-20 → HIR (gap_score=7) clusters. Monthly cron in gap-layer.yml.
-  wasatch-intel: /api/gap-layer + /api/stip endpoints (5-min Worker cache),
-  useGapLayer/useStip hooks (30-min staleTime). MapCanvas rewritten — mock
-  PARCELS gone, three real GeoJSON sources, gap fill interpolates fuchsia
-  by gap_score, STIP renders as yellow line+glow. routes/index.tsx replaces
-  ParcelDeepDive with a temporary parcel-properties popover (real drawer is
-  Phase 5's job per the addendum). Layer rail has gap-gradient legend +
-  partial-GP-coverage caveat. "Site plan overlays" toggle relabeled
-  "STIP / UDOT projects" (re-purposed). NOTE: ParcelDeepDive component +
-  mock Parcel type are still in the tree but no longer imported; Phase 5
-  will rewrite ParcelDeepDive to consume live ArcGIS and wire it back in.
+  Phase 5 done. tooele-land-intel: enrich_roads.py ports CM_RE road_adjacency.py
+  for Tooele Valley bbox (UGRC Utah Roads, CARTOCODE 1-5 arterials); writes
+  data/roads_enrichment.json keyed by APN with nearest_arterial_name/aadt/
+  distance_mi, nearest_road_class, is_corner, corner_roads. gap-layer.yml
+  updated to run enrich_roads.py and commit roads_enrichment.json. Fixed
+  aggregate_city_signals.py NaN date bug (nan/None strings leaked into
+  mostRecentActivity). wasatch-intel: ParcelDetail/ParcelNeighbor/AnalysisResult
+  types added to types.ts. csv-loader.ts: loadParcelDetail (gap-layer APN
+  lookup + road enrichment + linked agendas), loadParcelAdjacency (0.5km
+  radius, cap 12). entry.ts: GET /api/parcel/:apn, /adjacency, POST /analyze
+  endpoints + full opportunity analysis engine (5 strategies, marked
+  simplified=true). api-client.ts: useParcelDetail/Adjacency/Analyze hooks.
+  ParcelDeepDive.tsx rewritten — 5 tabs (Overview, Agendas, Adjacency, Comps
+  placeholder, Notes/localStorage), live data, skeletons, GapBadge, StrategyRow.
+  index.tsx: parcelPopover state replaced with selectedApn, drawer wired.
+  Road enrichment data not yet generated (enrich_roads.py needs first workflow
+  run) — drawer shows "—" for road fields gracefully until then.
 ```
 
 ---
@@ -381,6 +381,16 @@ The Deep Dive drawer will consume /api/gap-layer features. Each feature's proper
 Drawer should default-filter on developable=true. Parcels with null gap_score should render as "No General Plan coverage" rather than as "gap=0" (semantically different — missing data vs. aligned zoning).
 
 Current counts: 11,138 total, 11,095 developable, 86 with gap_score ≥ 6 + developable. These are your universe sizes for pagination/list design.
+
+### PHASE 5 COMPLETION NOTES
+- **Date:** 2026-04-24
+- **By:** Claude Code (Sonnet 4.6) — Phase 5 session
+- **Built:** tooele-land-intel: `enrich_roads.py` (UGRC Utah Roads CARTOCODE 1-5, haversine proximity, corner detection, APN-keyed JSON output); `aggregate_city_signals.py` NaN date fix; `gap-layer.yml` updated to run enrich_roads + commit roads_enrichment.json. wasatch-intel: `ParcelDetail/ParcelNeighbor/AnalysisResult` types; `loadParcelDetail/loadParcelAdjacency` in csv-loader; 3 API endpoints in entry.ts + full opportunity analysis engine (5 strategies scored /8→/5); `useParcelDetail/Adjacency/Analyze` hooks; `ParcelDeepDive.tsx` full rewrite (5 tabs, live data, skeletons); `index.tsx` drawer wired.
+- **Key commits:** wasatch-intel@<pending>, tooele-land-intel@<pending>
+- **Decisions (not from the addendum):** Opportunity analysis ported directly to TypeScript in the Worker (not a Python GitHub Actions trigger). Marked `simplified: true` to caveat that 1-mile ArcGIS buffer context is excluded. Agenda-to-parcel linking uses dual strategy: APN text match OR ≤500m centroid proximity. `enrich_roads.py` output not yet generated — drawer gracefully shows "—" for road fields.
+- **Deviations from the addendum:** Did NOT add geocoding-gap haiku enrichment (parcel_id_extracted etc.) — that is a separate concern from the road adjacency deliverable. Roads enrichment data will populate after first workflow run.
+- **Surprises / gotchas:** Worker serves gap_layer.geojson from memory (cached at first request). No per-parcel ArcGIS calls needed — entire detail comes from the in-memory layer + roads JSON + agendas CSV.
+- **Deferred:** Geocoding improvement (46 unplotted items with subdivision names) — still deferred. Comps tab in ParcelDeepDive is a placeholder (Phase 8/9). Notes tab localStorage will sync to D1 in Phase 8.
 
 ---
 
