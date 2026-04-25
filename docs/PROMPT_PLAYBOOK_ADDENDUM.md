@@ -440,7 +440,9 @@ Also: the early-return guard at the top of `entry.ts` (the one that handles non-
 scrape_news_rss.py (4 subreddits, no auth required). PRAW-based ingestion
 in scrape_reddit.py remains intact and soft-fails until Responsible Builder
 Policy approval lands; once approved, three GitHub Secrets activate it
-and the dedup step in correlate_signals.py handles overlap.
+and the dedup step in correlate_signals.py handles overlap. Form was not
+submitted — RSS deemed sufficient for the use case (no comment-thread
+signal needed; post-level filtering is enough).
 
 ---
 
