@@ -3,15 +3,14 @@ import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Layers, MapPin } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MapCanvas } from "@/components/MapCanvas";
-import { ParcelDeepDive } from "@/components/ParcelDeepDive";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { JURISDICTIONS, signalLabel, type AgendaItem } from "@/lib/types";
-import { AGENDA_TYPES, type Parcel } from "@/lib/mock-data";
-import { useAgendas } from "@/lib/api-client";
+import { AGENDA_TYPES } from "@/lib/mock-data";
+import { useAgendas, useGapLayer, useStip } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -32,19 +31,33 @@ const LAYER_DEFS = [
   { key: "gap", label: "Zoning vs General Plan gap", color: "bg-[var(--color-gap)]" },
   { key: "agendas", label: "Agenda pins", color: "bg-[var(--color-signal-high)]" },
   { key: "heatmap", label: "Developer activity heatmap", color: "bg-[var(--color-heat)]" },
-  { key: "sitePlans", label: "Site plan overlays", color: "bg-[var(--color-opportunity)]" },
+  { key: "sitePlans", label: "STIP / UDOT projects", color: "bg-[var(--color-opportunity)]" },
 ] as const;
+
+type ParcelProps = Record<string, unknown>;
+
+function pickStr(p: ParcelProps, ...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = p[k];
+    if (v != null && v !== "") return String(v);
+  }
+  return null;
+}
 
 function MapPage() {
   const [layers, setLayers] = useState({ parcels: true, gap: true, agendas: true, heatmap: false, sitePlans: false });
   const [railOpen, setRailOpen] = useState(true);
-  const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
+  const [parcelPopover, setParcelPopover] = useState<ParcelProps | null>(null);
   const [agendaPopover, setAgendaPopover] = useState<AgendaItem | null>(null);
 
   const { data: agendasEnvelope } = useAgendas();
-  const allAgendas = agendasEnvelope?.data ?? [];
+  const { data: gapEnvelope } = useGapLayer();
+  const { data: stipEnvelope } = useStip();
 
-  // Items with geocoded coordinates — shown as pins on the map
+  const allAgendas = agendasEnvelope?.data ?? [];
+  const gapLayer = gapEnvelope?.data as GeoJSON.FeatureCollection | undefined;
+  const stipLayer = stipEnvelope?.data as GeoJSON.FeatureCollection | undefined;
+
   const plottedAgendas = useMemo(
     () => allAgendas.filter((a) => a.lat != null && a.lng != null),
     [allAgendas],
@@ -55,9 +68,10 @@ function MapPage() {
       <MapCanvas
         layers={layers}
         agendaItems={plottedAgendas}
-        onParcelClick={setSelectedParcel}
+        gapLayer={gapLayer}
+        stipLayer={stipLayer}
+        onParcelClick={setParcelPopover}
         onAgendaClick={setAgendaPopover}
-        selectedParcelId={selectedParcel?.id ?? null}
       />
 
       {/* Filter bar */}
@@ -97,7 +111,19 @@ function MapPage() {
                       onCheckedChange={(v) => setLayers((s) => ({ ...s, [l.key]: v }))}
                     />
                   </div>
-                  {layers[l.key] && (
+                  {l.key === "gap" && layers.gap && (
+                    <div className="pl-4.5 space-y-1">
+                      <div className="h-1.5 rounded-sm bg-gradient-to-r from-fuchsia-500/0 via-fuchsia-500/45 to-fuchsia-800/85" />
+                      <div className="flex justify-between text-[9px] text-muted-foreground">
+                        <span>Low gap</span><span>High gap (8+)</span>
+                      </div>
+                      <p className="text-[9px] text-muted-foreground/80 leading-tight">
+                        Tooele Co 2022 GP coverage is partial — Grantsville incorp. area
+                        often shows null (rendered transparent).
+                      </p>
+                    </div>
+                  )}
+                  {layers[l.key] && l.key !== "gap" && (
                     <Slider defaultValue={[80]} max={100} step={5} className="px-0.5" />
                   )}
                 </div>
@@ -139,7 +165,7 @@ function MapPage() {
         </div>
       </aside>
 
-      {/* Agenda item popover (real AgendaItem from types.ts) */}
+      {/* Agenda item popover */}
       {agendaPopover && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-80 bg-background border border-border rounded-md shadow-lg p-3">
           <div className="flex items-center justify-between mb-1">
@@ -166,7 +192,35 @@ function MapPage() {
         </div>
       )}
 
-      <ParcelDeepDive parcel={selectedParcel} open={!!selectedParcel} onClose={() => setSelectedParcel(null)} />
+      {/* Parcel popover — Phase 5 will replace with full ParcelDeepDive drawer */}
+      {parcelPopover && (
+        <div className="absolute bottom-4 right-4 z-20 w-80 bg-background border border-border rounded-md shadow-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <Badge variant="outline" className="text-[10px]">Parcel</Badge>
+            <button className="text-muted-foreground hover:text-foreground text-xs" onClick={() => setParcelPopover(null)}>×</button>
+          </div>
+          <div className="text-xs font-medium">
+            APN {pickStr(parcelPopover, "apn", "PARCEL_ID", "parcel_id") ?? "—"}
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-0.5">
+            {pickStr(parcelPopover, "jurisdiction", "city") ?? "Tooele Valley"}
+            {pickStr(parcelPopover, "acres") && ` · ${pickStr(parcelPopover, "acres")} ac`}
+          </div>
+          <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[11px]">
+            <span className="text-muted-foreground">Zoning</span>
+            <span>{pickStr(parcelPopover, "zoning", "zone") ?? "—"}</span>
+            <span className="text-muted-foreground">General Plan</span>
+            <span>{pickStr(parcelPopover, "general_plan", "generalPlan", "gp") ?? "—"}</span>
+            <span className="text-muted-foreground">Gap score</span>
+            <span>{pickStr(parcelPopover, "gap_score") ?? "null (no GP coverage)"}</span>
+            <span className="text-muted-foreground">Owner</span>
+            <span>{pickStr(parcelPopover, "owner", "OWNER") ?? "—"}</span>
+          </div>
+          <p className="text-[9px] text-muted-foreground/70 mt-2">
+            Full deep-dive drawer arrives in Phase 5.
+          </p>
+        </div>
+      )}
     </AppShell>
   );
 }

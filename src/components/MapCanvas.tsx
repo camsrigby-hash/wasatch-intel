@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import maplibregl, { Map as MLMap, LngLatBoundsLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { AgendaItem } from "@/lib/types";
-import { PARCELS, type Parcel } from "@/lib/mock-data";
 
 interface MapCanvasProps {
   layers: {
@@ -10,13 +9,16 @@ interface MapCanvasProps {
     gap: boolean;
     agendas: boolean;
     heatmap: boolean;
-    sitePlans: boolean;
+    sitePlans: boolean;   // re-purposed in Phase 4 as the STIP overlay toggle
   };
-  agendaItems?: AgendaItem[];          // real geocoded items from /api/agendas
-  onParcelClick?: (parcel: Parcel) => void;
+  agendaItems?: AgendaItem[];               // real geocoded items from /api/agendas
+  gapLayer?: GeoJSON.FeatureCollection;     // /api/gap-layer
+  stipLayer?: GeoJSON.FeatureCollection;    // /api/stip
   onAgendaClick?: (agenda: AgendaItem) => void;
-  selectedParcelId?: string | null;
+  onParcelClick?: (props: GeoJsonProperties) => void;
 }
+
+type GeoJsonProperties = NonNullable<GeoJSON.Feature["properties"]>;
 
 const SATELLITE_STYLE: maplibregl.StyleSpecification = {
   version: 8,
@@ -41,6 +43,8 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
   ],
 };
 
+const EMPTY_FC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
+
 function buildAgendaGeoJSON(items: AgendaItem[]): GeoJSON.FeatureCollection {
   const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
   for (const a of items) {
@@ -55,9 +59,6 @@ function buildAgendaGeoJSON(items: AgendaItem[]): GeoJSON.FeatureCollection {
         jurisdiction: a.jurisdiction,
         date: a.date,
         title: a.title,
-        // growthScore intentionally not used for pin styling until Phase 5 Haiku
-        // enrichment populates real values — all 136 items have growthScore=null.
-        // Pins render UNIFORMLY until Phase 5 adds signal-weighted styling.
       },
       geometry: { type: "Point", coordinates: [a.lng, a.lat] },
     });
@@ -65,35 +66,52 @@ function buildAgendaGeoJSON(items: AgendaItem[]): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
-export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, selectedParcelId }: MapCanvasProps) {
+export function MapCanvas({
+  layers,
+  agendaItems,
+  gapLayer,
+  stipLayer,
+  onAgendaClick,
+  onParcelClick,
+}: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MLMap | null>(null);
   const loadedRef = useRef(false);
   const agendaItemsRef = useRef<AgendaItem[]>(agendaItems ?? []);
 
-  // Keep ref current so click handlers always see latest data without re-registering
-  useEffect(() => {
-    agendaItemsRef.current = agendaItems ?? [];
-  }, [agendaItems]);
+  useEffect(() => { agendaItemsRef.current = agendaItems ?? []; }, [agendaItems]);
 
-  // Update "agendas" source when real data arrives
+  // ── Sync GeoJSON sources when props change ──────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     const src = map.getSource("agendas") as maplibregl.GeoJSONSource | undefined;
-    if (src) {
-      src.setData(buildAgendaGeoJSON(agendaItems ?? []));
-    }
+    src?.setData(buildAgendaGeoJSON(agendaItems ?? []));
   }, [agendaItems]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const src = map.getSource("parcels") as maplibregl.GeoJSONSource | undefined;
+    src?.setData(gapLayer ?? EMPTY_FC);
+  }, [gapLayer]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const src = map.getSource("stip") as maplibregl.GeoJSONSource | undefined;
+    src?.setData(stipLayer ?? EMPTY_FC);
+  }, [stipLayer]);
+
+  // ── Map init ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: SATELLITE_STYLE,
-      center: [-111.95, 40.55],
-      zoom: 9.2,
+      center: [-112.42, 40.6],     // Tooele Valley
+      zoom: 10.5,
       maxBounds: [[-113.5, 39.5], [-110.5, 41.5]] as LngLatBoundsLike,
       attributionControl: { compact: true },
     });
@@ -112,35 +130,38 @@ export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, s
       loadedRef.current = true;
       resizeMap();
 
-      // Parcel polygon layer (mock data — replaced in Phase 4)
-      map.addSource("parcels", {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: PARCELS.map((p) => ({
-            type: "Feature",
-            id: p.id,
-            properties: {
-              id: p.id,
-              apn: p.apn,
-              hasGap: p.hasGap,
-              jurisdiction: p.jurisdiction,
-              zoning: p.zoning,
-              generalPlan: p.generalPlan,
-              acres: p.acres,
-            },
-            geometry: { type: "Polygon", coordinates: [p.polygon] },
-          })),
-        },
-      });
+      // ── Parcels (real polygons from /api/gap-layer) ─────────────────────────
+      map.addSource("parcels", { type: "geojson", data: gapLayer ?? EMPTY_FC });
 
+      // Base parcel fill — uniform tint when "Parcels" is on but "Gap" is off
       map.addLayer({
         id: "parcels-fill",
         type: "fill",
         source: "parcels",
         paint: {
-          "fill-color": ["case", ["get", "hasGap"], "#c026d3", "#6366f1"],
-          "fill-opacity": ["case", ["boolean", ["feature-state", "selected"], false], 0.55, 0.18],
+          "fill-color": "#6366f1",
+          "fill-opacity": 0.10,
+        },
+      });
+
+      // Gap-score overlay — fades from transparent (0/null) → deep purple (8+).
+      // gap_score is null where GP coverage doesn't reach (Tooele Co 2022 GP is
+      // partial — see layer-rail caveat).
+      map.addLayer({
+        id: "parcels-gap",
+        type: "fill",
+        source: "parcels",
+        filter: ["all", ["has", "gap_score"], ["!=", ["get", "gap_score"], null]],
+        paint: {
+          "fill-color": [
+            "interpolate", ["linear"], ["coalesce", ["get", "gap_score"], 0],
+            0, "rgba(192, 38, 211, 0)",       // transparent
+            2, "rgba(192, 38, 211, 0.25)",
+            4, "rgba(192, 38, 211, 0.45)",
+            6, "rgba(168, 28, 184, 0.65)",
+            8, "rgba(136, 22, 150, 0.85)",
+          ],
+          "fill-opacity": 0.85,
         },
       });
 
@@ -148,13 +169,34 @@ export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, s
         id: "parcels-outline",
         type: "line",
         source: "parcels",
+        paint: { "line-color": "#a5b4fc", "line-width": 0.4, "line-opacity": 0.5 },
+      });
+
+      // ── STIP (UDOT future road projects, line features) ─────────────────────
+      map.addSource("stip", { type: "geojson", data: stipLayer ?? EMPTY_FC });
+      map.addLayer({
+        id: "stip-lines-glow",
+        type: "line",
+        source: "stip",
         paint: {
-          "line-color": ["case", ["get", "hasGap"], "#e879f9", "#a5b4fc"],
-          "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 2.5, 1],
+          "line-color": "#facc15",
+          "line-width": 6,
+          "line-opacity": 0.25,
+          "line-blur": 2,
+        },
+      });
+      map.addLayer({
+        id: "stip-lines",
+        type: "line",
+        source: "stip",
+        paint: {
+          "line-color": "#facc15",
+          "line-width": 2.2,
+          "line-opacity": 0.95,
         },
       });
 
-      // Agenda pins — real geocoded data from /api/agendas
+      // ── Agenda pins ──────────────────────────────────────────────────────────
       map.addSource("agendas", {
         type: "geojson",
         data: buildAgendaGeoJSON(agendaItemsRef.current),
@@ -183,8 +225,6 @@ export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, s
         source: "agendas",
         filter: ["!", ["has", "point_count"]],
         paint: {
-          // Uniform styling — growthScore is 0 for all items until Phase 5 Haiku
-          // enrichment runs. Signal-weighted size/color/opacity belongs in Phase 5.
           "circle-color": "#4338ca",
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 1.5,
@@ -199,27 +239,28 @@ export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, s
         source: "agendas",
         maxzoom: 13,
         paint: {
-          "heatmap-weight": 1,  // uniform weight — signal weighting deferred to Phase 5
+          "heatmap-weight": 1,
           "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 1, 13, 3],
           "heatmap-color": [
             "interpolate", ["linear"], ["heatmap-density"],
-            0,   "rgba(0,0,0,0)",
+            0, "rgba(0,0,0,0)",
             0.2, "rgba(99,102,241,0.4)",
             0.5, "rgba(234,179,8,0.6)",
             0.8, "rgba(234,88,12,0.75)",
-            1,   "rgba(220,38,38,0.85)",
+            1, "rgba(220,38,38,0.85)",
           ],
           "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 8, 13, 40],
           "heatmap-opacity": 0.7,
         },
       });
 
-      map.on("click", "parcels-fill", (e) => {
+      // ── Click handlers ───────────────────────────────────────────────────────
+      const parcelClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
         const f = e.features?.[0];
-        if (!f) return;
-        const p = PARCELS.find((x) => x.id === f.properties?.id);
-        if (p) onParcelClick?.(p);
-      });
+        if (f && onParcelClick) onParcelClick(f.properties ?? {});
+      };
+      map.on("click", "parcels-gap", parcelClick);
+      map.on("click", "parcels-fill", parcelClick);
 
       map.on("click", "agenda-points", (e) => {
         const f = e.features?.[0];
@@ -235,7 +276,7 @@ export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, s
         map.easeTo({ center: coords, zoom: (map.getZoom() || 9) + 2 });
       });
 
-      ["parcels-fill", "agenda-points", "agenda-clusters"].forEach((layerId) => {
+      ["parcels-gap", "parcels-fill", "agenda-points", "agenda-clusters", "stip-lines"].forEach((layerId) => {
         map.on("mouseenter", layerId, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; });
       });
@@ -251,8 +292,9 @@ export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, s
       mapRef.current = null;
       loadedRef.current = false;
     };
-  }, [onParcelClick, onAgendaClick]);
+  }, [onAgendaClick, onParcelClick]); // gapLayer/stipLayer set via separate effects above
 
+  // ── Layer-toggle visibility ─────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -261,34 +303,15 @@ export function MapCanvas({ layers, agendaItems, onParcelClick, onAgendaClick, s
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis ? "visible" : "none");
     };
 
-    setVis("parcels-fill", layers.parcels);
-    setVis("parcels-outline", layers.parcels);
+    setVis("parcels-fill", layers.parcels && !layers.gap);
+    setVis("parcels-outline", layers.parcels || layers.gap);
+    setVis("parcels-gap", layers.gap);
     setVis("agenda-points", layers.agendas);
     setVis("agenda-clusters", layers.agendas);
     setVis("agenda-heat", layers.heatmap);
-
-    if (map.getLayer("parcels-fill")) {
-      map.setPaintProperty(
-        "parcels-fill",
-        "fill-color",
-        layers.gap ? ["case", ["get", "hasGap"], "#c026d3", "#6366f1"] : "#6366f1",
-      );
-    }
+    setVis("stip-lines", layers.sitePlans);
+    setVis("stip-lines-glow", layers.sitePlans);
   }, [layers]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-
-    PARCELS.forEach((p) => {
-      map.setFeatureState({ source: "parcels", id: p.id }, { selected: p.id === selectedParcelId });
-    });
-
-    if (selectedParcelId) {
-      const p = PARCELS.find((x) => x.id === selectedParcelId);
-      if (p) map.easeTo({ center: p.centroid, zoom: Math.max(map.getZoom(), 14), duration: 600 });
-    }
-  }, [selectedParcelId]);
 
   return <div ref={containerRef} className="absolute inset-0 min-h-full w-full bg-muted" />;
 }

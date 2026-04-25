@@ -234,6 +234,40 @@ export async function loadSignalWire(): Promise<LoadResult<SignalWireItem[]>> {
   }
 }
 
+// ── /api/gap-layer + /api/stip — raw GeoJSON pass-through ────────────────────
+
+export async function loadGapLayer(): Promise<LoadResult<unknown>> {
+  const fetchedAt = new Date().toISOString();
+  try {
+    const text = await fetchRaw(`${TLI_BASE}/gap_layer.geojson`);
+    const data = JSON.parse(text);
+    const count = Array.isArray(data?.features) ? data.features.length : 0;
+    return { data, freshness: "live", fetchedAt, count };
+  } catch (err) {
+    console.error("[csv-loader] loadGapLayer error:", err);
+    return {
+      data: { type: "FeatureCollection", features: [] },
+      freshness: "stale", fetchedAt, count: 0,
+    };
+  }
+}
+
+export async function loadStip(): Promise<LoadResult<unknown>> {
+  const fetchedAt = new Date().toISOString();
+  try {
+    const text = await fetchRaw(`${TLI_BASE}/stip_projects.geojson`);
+    const data = JSON.parse(text);
+    const count = Array.isArray(data?.features) ? data.features.length : 0;
+    return { data, freshness: "live", fetchedAt, count };
+  } catch (err) {
+    console.error("[csv-loader] loadStip error:", err);
+    return {
+      data: { type: "FeatureCollection", features: [] },
+      freshness: "stale", fetchedAt, count: 0,
+    };
+  }
+}
+
 // ── /api/digest ───────────────────────────────────────────────────────────────
 
 export async function loadDigest(): Promise<LoadResult<DigestContent>> {

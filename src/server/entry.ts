@@ -1,5 +1,5 @@
 import tanstack from "@tanstack/react-start/server-entry";
-import { loadAgendas, loadDevelopers, loadSignalWire, loadDigest } from "./lib/csv-loader";
+import { loadAgendas, loadDevelopers, loadSignalWire, loadDigest, loadGapLayer, loadStip } from "./lib/csv-loader";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
@@ -109,9 +109,43 @@ export default {
       } catch { return err500(); }
     }
 
-    // ── /api/parcels — empty until Phase 3 ───────────────────────────────────
+    // ── /api/parcels — empty until Phase 5 (per-parcel deep dive) ────────────
     if (url.pathname === "/api/parcels") {
-      return emptyOk("phase3:not-yet-geocoded");
+      return emptyOk("phase5:per-parcel-endpoint");
+    }
+
+    // ── /api/gap-layer ────────────────────────────────────────────────────────
+    if (url.pathname === "/api/gap-layer") {
+      try {
+        const result = await loadGapLayer();
+        return ok(
+          result.data,
+          {
+            source: "https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data/gap_layer.geojson",
+            freshness: result.freshness,
+            count: result.count,
+            fetchedAt: result.fetchedAt,
+          },
+          result.freshness === "stale" ? ["Gap layer unavailable upstream"] : [],
+        );
+      } catch { return err500(); }
+    }
+
+    // ── /api/stip ─────────────────────────────────────────────────────────────
+    if (url.pathname === "/api/stip") {
+      try {
+        const result = await loadStip();
+        return ok(
+          result.data,
+          {
+            source: "https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data/stip_projects.geojson",
+            freshness: result.freshness,
+            count: result.count,
+            fetchedAt: result.fetchedAt,
+          },
+          result.freshness === "stale" ? ["STIP unavailable upstream"] : [],
+        );
+      } catch { return err500(); }
     }
 
     // ── /api/watchlists — empty until Phase 7 (D1) ───────────────────────────

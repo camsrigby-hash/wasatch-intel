@@ -64,6 +64,33 @@ export function useSignalWire() {
   });
 }
 
+// ── /api/gap-layer + /api/stip — Phase 4 GeoJSON layers ─────────────────────
+
+export interface GeoJsonFC {
+  type: "FeatureCollection";
+  features: GeoJSON.Feature[];
+}
+
+const STALE_30M = 30 * 60 * 1000;
+
+export function useGapLayer() {
+  return useQuery<ApiEnvelope<GeoJsonFC>, Error>({
+    queryKey:  ["gap-layer"],
+    queryFn:   () => get<GeoJsonFC>("/api/gap-layer"),
+    staleTime: STALE_30M,
+    retry: 2,
+  });
+}
+
+export function useStip() {
+  return useQuery<ApiEnvelope<GeoJsonFC>, Error>({
+    queryKey:  ["stip"],
+    queryFn:   () => get<GeoJsonFC>("/api/stip"),
+    staleTime: STALE_30M,
+    retry: 2,
+  });
+}
+
 // ── /api/parcels ─────────────────────────────────────────────────────────────
 
 export function useParcels() {
