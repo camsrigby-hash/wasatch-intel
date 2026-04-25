@@ -144,9 +144,15 @@ export function MapCanvas({
         },
       });
 
-      // Gap-score overlay — fades from transparent (0/null) → deep purple (8+).
-      // gap_score is null where GP coverage doesn't reach (Tooele Co 2022 GP is
-      // partial — see layer-rail caveat).
+      // Gap-score overlay. Scores are 0–7 (integer, bimodal: most parcels are 0,
+      // high-gap parcels cluster at 7). Nulls (no GP coverage) render gray.
+      map.addLayer({
+        id: "parcels-gap-null",
+        type: "fill",
+        source: "parcels",
+        filter: ["any", ["!", ["has", "gap_score"]], ["==", ["get", "gap_score"], null]],
+        paint: { "fill-color": "rgba(150, 150, 150, 0.20)" },
+      });
       map.addLayer({
         id: "parcels-gap",
         type: "fill",
@@ -154,12 +160,12 @@ export function MapCanvas({
         filter: ["all", ["has", "gap_score"], ["!=", ["get", "gap_score"], null]],
         paint: {
           "fill-color": [
-            "interpolate", ["linear"], ["coalesce", ["get", "gap_score"], 0],
-            0, "rgba(192, 38, 211, 0)",       // transparent
+            "interpolate", ["linear"], ["get", "gap_score"],
+            0, "rgba(192, 38, 211, 0)",
             2, "rgba(192, 38, 211, 0.25)",
             4, "rgba(192, 38, 211, 0.45)",
             6, "rgba(168, 28, 184, 0.65)",
-            8, "rgba(136, 22, 150, 0.85)",
+            7, "rgba(136, 22, 150, 0.85)",
           ],
           "fill-opacity": 0.85,
         },
@@ -305,6 +311,7 @@ export function MapCanvas({
 
     setVis("parcels-fill", layers.parcels && !layers.gap);
     setVis("parcels-outline", layers.parcels || layers.gap);
+    setVis("parcels-gap-null", layers.gap);
     setVis("parcels-gap", layers.gap);
     setVis("agenda-points", layers.agendas);
     setVis("agenda-clusters", layers.agendas);
