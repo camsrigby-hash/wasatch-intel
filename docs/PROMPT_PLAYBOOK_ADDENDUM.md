@@ -363,6 +363,25 @@ Geocoding gap to close: 46 of 136 agenda items currently fail geocoding because 
 
 Out of scope for Phase 5: anything requiring polygon centroids from a gap layer (that's Phase 4's job).
 
+### Gap-layer data shape (as of Phase 4 post-deploy fixes)
+
+The Deep Dive drawer will consume /api/gap-layer features. Each feature's properties include:
+- apn (string) — parcel ID
+- acres (number)
+- owner (string)
+- zoning (raw code, e.g. "A-20")
+- current_zone_label (human-readable, e.g. "Agricultural (20-acre min)")
+- generalPlan (raw code, e.g. "HIR")
+- gp_designation_label (human-readable, e.g. "High-Intensity Residential")
+- zoning_intensity, gp_intensity (0–8 integers)
+- gap_score (0–7 integer; null where no GP coverage)
+- developable (boolean; false for ROW and public land)
+- jurisdiction (string)
+
+Drawer should default-filter on developable=true. Parcels with null gap_score should render as "No General Plan coverage" rather than as "gap=0" (semantically different — missing data vs. aligned zoning).
+
+Current counts: 11,138 total, 11,095 developable, 86 with gap_score ≥ 6 + developable. These are your universe sizes for pagination/list design.
+
 ---
 
 ## PHASE 6 ADDENDUM — Shared signal taxonomy for correlation
