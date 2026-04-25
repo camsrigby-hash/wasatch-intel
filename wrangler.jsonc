@@ -8,9 +8,7 @@
     {
       "binding": "DB",
       "database_name": "wasatch-intel-db",
-      // Run: npx wrangler d1 create wasatch-intel-db
-      // Then paste the returned database_id here.
-      "database_id": "YOUR_DATABASE_ID"
+      "database_id": "8a8792c9-df0b-4644-8fdb-5ecfc5d6a66a"
     }
   ],
   "triggers": {
