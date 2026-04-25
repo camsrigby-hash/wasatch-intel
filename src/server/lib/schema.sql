@@ -40,3 +40,42 @@ CREATE TABLE IF NOT EXISTS alert_log (
 CREATE INDEX IF NOT EXISTS idx_watchlist_hits_wid   ON watchlist_hits(watchlist_id);
 CREATE INDEX IF NOT EXISTS idx_watchlist_hits_fired ON watchlist_hits(fired_at);
 CREATE INDEX IF NOT EXISTS idx_alert_log_wid        ON alert_log(watchlist_id);
+
+-- Phase 8: Deal pipeline persistence
+CREATE TABLE IF NOT EXISTS deals (
+  id                  TEXT PRIMARY KEY,
+  parcel_apn          TEXT NOT NULL,
+  jurisdiction        TEXT NOT NULL DEFAULT '',
+  stage               TEXT NOT NULL DEFAULT 'Prospect'
+                        CHECK(stage IN ('Prospect','Diligence','LOI','Under Contract','Closed/Dead')),
+  acres               REAL,
+  residual_land_value REAL,
+  next_action         TEXT NOT NULL DEFAULT '',
+  contact             TEXT NOT NULL DEFAULT '',
+  notes               TEXT NOT NULL DEFAULT '',
+  owner_user_id       TEXT NOT NULL DEFAULT 'default',
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS deal_notes (
+  id         TEXT PRIMARY KEY,
+  deal_id    TEXT NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS deal_contacts (
+  id         TEXT PRIMARY KEY,
+  deal_id    TEXT NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  role       TEXT NOT NULL DEFAULT '',
+  phone      TEXT,
+  email      TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_deals_stage         ON deals(stage);
+CREATE INDEX IF NOT EXISTS idx_deals_apn           ON deals(parcel_apn);
+CREATE INDEX IF NOT EXISTS idx_deal_notes_deal     ON deal_notes(deal_id);
+CREATE INDEX IF NOT EXISTS idx_deal_contacts_deal  ON deal_contacts(deal_id);

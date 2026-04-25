@@ -18,9 +18,18 @@ import {
   updateWatchlist,
   deleteWatchlist,
   getWatchlistHits,
+  getDeals,
+  getDeal,
+  createDeal,
+  updateDeal,
+  deleteDeal,
+  getDealNotes,
+  createDealNote,
+  getDealContacts,
+  createDealContact,
 } from "./lib/d1-client";
 import { runWatchlistCheck } from "./cron/watchlist-checker";
-import type { CreateWatchlistPayload } from "../lib/types";
+import type { CreateWatchlistPayload, CreateDealPayload } from "../lib/types";
 
 const JSON_HEADERS = {
   "Content-Type": "application/json",
@@ -88,7 +97,11 @@ export default {
       url.pathname.startsWith("/api/watchlists") &&
       (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE");
 
-    if (request.method !== "GET" && !isParcelAnalyze && !isWatchlistMutation) {
+    const isDealMutation =
+      url.pathname.startsWith("/api/deals") &&
+      (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE");
+
+    if (request.method !== "GET" && !isParcelAnalyze && !isWatchlistMutation && !isDealMutation) {
       return tanstack.fetch(request);
     }
 
@@ -310,9 +323,106 @@ export default {
       }
     }
 
-    // ── /api/deals — empty until Phase 8 (D1) ────────────────────────────────
-    if (url.pathname === "/api/deals") {
-      return emptyOk("d1:deals:phase8");
+    // ── /api/deals — D1-backed CRUD (Phase 8) ────────────────────────────────
+
+    // GET /api/deals — list active deals
+    if (url.pathname === "/api/deals" && request.method === "GET") {
+      if (!env.DB) return emptyOk("d1:deals:not-configured");
+      try {
+        const deals = await getDeals(env.DB);
+        return okNoCache(deals, { source: "d1:deals", freshness: "live", count: deals.length, fetchedAt: new Date().toISOString() });
+      } catch { return err500(); }
+    }
+
+    // POST /api/deals — create
+    if (url.pathname === "/api/deals" && request.method === "POST") {
+      if (!env.DB) return err500();
+      try {
+        const body = await request.json() as CreateDealPayload;
+        if (!body.parcelApn) return err400("parcelApn required");
+        const deal = await createDeal(env.DB, body);
+        return okNoCache(deal, { source: "d1:deals", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
+      } catch { return err500(); }
+    }
+
+    // PATCH/DELETE/sub-routes on /api/deals/:id
+    if (url.pathname.startsWith("/api/deals/")) {
+      const parts = url.pathname.split("/").filter(Boolean); // ["api","deals",id,?sub,?subsub]
+      const id  = parts[2] ? decodeURIComponent(parts[2]) : null;
+      const sub = parts[3] ?? null;
+
+      if (!id) return err400("Missing deal id");
+
+      // GET /api/deals/:id/notes
+      if (sub === "notes" && request.method === "GET") {
+        if (!env.DB) return emptyOk("d1:deal_notes:not-configured");
+        try {
+          const notes = await getDealNotes(env.DB, id);
+          return okNoCache(notes, { source: "d1:deal_notes", freshness: "live", count: notes.length, fetchedAt: new Date().toISOString() });
+        } catch { return err500(); }
+      }
+
+      // POST /api/deals/:id/notes
+      if (sub === "notes" && request.method === "POST") {
+        if (!env.DB) return err500();
+        try {
+          const body = await request.json() as { body: string };
+          if (!body.body?.trim()) return err400("body required");
+          const note = await createDealNote(env.DB, id, body.body.trim());
+          return okNoCache(note, { source: "d1:deal_notes", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
+        } catch { return err500(); }
+      }
+
+      // GET /api/deals/:id/contacts
+      if (sub === "contacts" && request.method === "GET") {
+        if (!env.DB) return emptyOk("d1:deal_contacts:not-configured");
+        try {
+          const contacts = await getDealContacts(env.DB, id);
+          return okNoCache(contacts, { source: "d1:deal_contacts", freshness: "live", count: contacts.length, fetchedAt: new Date().toISOString() });
+        } catch { return err500(); }
+      }
+
+      // POST /api/deals/:id/contacts
+      if (sub === "contacts" && request.method === "POST") {
+        if (!env.DB) return err500();
+        try {
+          const body = await request.json() as { name: string; role?: string; phone?: string; email?: string };
+          if (!body.name?.trim()) return err400("name required");
+          const contact = await createDealContact(env.DB, id, body);
+          return okNoCache(contact, { source: "d1:deal_contacts", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
+        } catch { return err500(); }
+      }
+
+      // PATCH /api/deals/:id — update (esp. stage transitions)
+      if (!sub && request.method === "PATCH") {
+        if (!env.DB) return err500();
+        try {
+          const patch = await request.json() as Partial<Omit<import("../lib/types").Deal, "id" | "createdAt">>;
+          const updated = await updateDeal(env.DB, id, patch);
+          if (!updated) return err404(`Deal not found: ${id}`);
+          return okNoCache(updated, { source: "d1:deals", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
+        } catch { return err500(); }
+      }
+
+      // DELETE /api/deals/:id — soft delete (→ Closed/Dead)
+      if (!sub && request.method === "DELETE") {
+        if (!env.DB) return err500();
+        try {
+          const ok_ = await deleteDeal(env.DB, id);
+          if (!ok_) return err404(`Deal not found: ${id}`);
+          return new Response(null, { status: 204 });
+        } catch { return err500(); }
+      }
+
+      // GET /api/deals/:id — single deal
+      if (!sub && request.method === "GET") {
+        if (!env.DB) return err500();
+        try {
+          const deal = await getDeal(env.DB, id);
+          if (!deal) return err404(`Deal not found: ${id}`);
+          return okNoCache(deal, { source: "d1:deals", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
+        } catch { return err500(); }
+      }
     }
 
     return tanstack.fetch(request);

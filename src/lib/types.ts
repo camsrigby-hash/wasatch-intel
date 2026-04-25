@@ -260,7 +260,7 @@ export interface CreateWatchlistPayload {
   alerts?:         { inApp: boolean; email: boolean };
 }
 
-// ── Deal pipeline (Phase 8 — D1 backed; [] for now) ──────────────────────────
+// ── Deal pipeline (Phase 8 — D1 backed) ──────────────────────────────────────
 
 export type DealStage = "Prospect" | "Diligence" | "LOI" | "Under Contract" | "Closed/Dead";
 export const DEAL_STAGES: DealStage[] = ["Prospect", "Diligence", "LOI", "Under Contract", "Closed/Dead"];
@@ -275,7 +275,36 @@ export interface Deal {
   nextAction:        string;
   contact:           string;
   updatedAt:         string;
+  createdAt:         string;
   notes:             string;
+}
+
+export interface DealNote {
+  id:        string;
+  dealId:    string;
+  body:      string;
+  createdAt: string;
+}
+
+export interface DealContact {
+  id:        string;
+  dealId:    string;
+  name:      string;
+  role:      string;
+  phone:     string | null;
+  email:     string | null;
+  createdAt: string;
+}
+
+export interface CreateDealPayload {
+  parcelApn:          string;
+  jurisdiction:       string;
+  stage?:             DealStage;
+  acres?:             number | null;
+  residualLandValue?: number | null;
+  nextAction?:        string;
+  contact?:           string;
+  notes?:             string;
 }
 
 // ── Parcel detail (/api/parcel/:apn — Phase 5) ───────────────────────────────

@@ -11,6 +11,9 @@ import type {
   WatchlistHit,
   CreateWatchlistPayload,
   Deal,
+  DealNote,
+  DealContact,
+  CreateDealPayload,
   ApiEnvelope,
   ParcelDetail,
   ParcelNeighbor,
@@ -161,13 +164,93 @@ export function useDeleteWatchlist() {
   });
 }
 
-// ── /api/deals ────────────────────────────────────────────────────────────────
+// ── /api/deals — Phase 8 CRUD ─────────────────────────────────────────────────
 
 export function useDeals() {
   return useQuery<ApiEnvelope<Deal[]>, Error>({
     queryKey:  ["deals"],
     queryFn:   () => get<Deal[]>("/api/deals"),
     staleTime: STALE_5M,
+  });
+}
+
+export function useCreateDeal() {
+  const qc = useQueryClient();
+  return useMutation<ApiEnvelope<Deal>, Error, CreateDealPayload>({
+    mutationFn: (payload) =>
+      fetch("/api/deals", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      }).then((r) => { if (!r.ok) throw new Error(`create deal ${r.status}`); return r.json() as Promise<ApiEnvelope<Deal>>; }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["deals"] }); },
+  });
+}
+
+export function useUpdateDeal() {
+  const qc = useQueryClient();
+  return useMutation<ApiEnvelope<Deal>, Error, { id: string; patch: Partial<Deal> }>({
+    mutationFn: ({ id, patch }) =>
+      fetch(`/api/deals/${encodeURIComponent(id)}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(patch),
+      }).then((r) => { if (!r.ok) throw new Error(`update deal ${r.status}`); return r.json() as Promise<ApiEnvelope<Deal>>; }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["deals"] }); },
+  });
+}
+
+export function useDeleteDeal() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: (id) =>
+      fetch(`/api/deals/${encodeURIComponent(id)}`, { method: "DELETE" })
+        .then((r) => { if (r.status !== 204 && !r.ok) throw new Error(`delete deal ${r.status}`); }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["deals"] }); },
+  });
+}
+
+export function useDealNotes(dealId: string | null) {
+  return useQuery<ApiEnvelope<DealNote[]>, Error>({
+    queryKey:  ["deal-notes", dealId],
+    queryFn:   () => get<DealNote[]>(`/api/deals/${encodeURIComponent(dealId!)}/notes`),
+    enabled:   dealId != null,
+    staleTime: STALE_5M,
+  });
+}
+
+export function useCreateDealNote() {
+  const qc = useQueryClient();
+  return useMutation<ApiEnvelope<DealNote>, Error, { dealId: string; body: string }>({
+    mutationFn: ({ dealId, body }) =>
+      fetch(`/api/deals/${encodeURIComponent(dealId)}/notes`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ body }),
+      }).then((r) => { if (!r.ok) throw new Error(`create note ${r.status}`); return r.json() as Promise<ApiEnvelope<DealNote>>; }),
+    onSuccess: (_data, { dealId }) => { void qc.invalidateQueries({ queryKey: ["deal-notes", dealId] }); },
+  });
+}
+
+export function useDealContacts(dealId: string | null) {
+  return useQuery<ApiEnvelope<DealContact[]>, Error>({
+    queryKey:  ["deal-contacts", dealId],
+    queryFn:   () => get<DealContact[]>(`/api/deals/${encodeURIComponent(dealId!)}/contacts`),
+    enabled:   dealId != null,
+    staleTime: STALE_5M,
+  });
+}
+
+export function useCreateDealContact() {
+  const qc = useQueryClient();
+  return useMutation<ApiEnvelope<DealContact>, Error, { dealId: string; name: string; role?: string; phone?: string; email?: string }>({
+    mutationFn: ({ dealId, ...data }) =>
+      fetch(`/api/deals/${encodeURIComponent(dealId)}/contacts`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(data),
+      }).then((r) => { if (!r.ok) throw new Error(`create contact ${r.status}`); return r.json() as Promise<ApiEnvelope<DealContact>>; }),
+    onSuccess: (_data, { dealId }) => { void qc.invalidateQueries({ queryKey: ["deal-contacts", dealId] }); },
   });
 }
 

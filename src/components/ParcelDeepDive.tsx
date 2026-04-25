@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignalBar } from "./SignalBar";
 import { useParcelDetail, useParcelAdjacency, useParcelAnalyze } from "@/lib/api-client";
+import { NewDealDialog } from "@/routes/pipeline";
 import type { ParcelDetail, ParcelNeighbor, AnalysisResult, OpportunityStrategy } from "@/lib/types";
 import { signalLabel } from "@/lib/types";
 import { format } from "date-fns";
-import { MapPin, Navigation, AlertTriangle, TrendingUp, BarChart3, Loader2 } from "lucide-react";
+import { MapPin, Navigation, AlertTriangle, TrendingUp, BarChart3, Loader2, PlusSquare } from "lucide-react";
 
 export function ParcelDeepDive({
   apn,
@@ -31,7 +32,8 @@ export function ParcelDeepDive({
     if (typeof window === "undefined" || !apn) return "";
     return localStorage.getItem(`parcel-notes-${apn}`) ?? "";
   });
-  const [notesSaved, setNotesSaved] = useState(false);
+  const [notesSaved,   setNotesSaved]   = useState(false);
+  const [newDealOpen,  setNewDealOpen]  = useState(false);
 
   function saveNotes() {
     if (!apn) return;
@@ -48,6 +50,9 @@ export function ParcelDeepDive({
         <SheetHeader className="p-4 border-b border-border space-y-1">
           <div className="flex items-center justify-between gap-2">
             <Badge variant="outline" className="font-mono text-[10px]">{apn}</Badge>
+            <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 ml-auto" onClick={() => setNewDealOpen(true)}>
+              <PlusSquare className="h-3 w-3 mr-1" /> Track deal
+            </Button>
             {detail && !detail.developable && (
               <Badge variant="outline" className="text-[10px] text-muted-foreground">ROW / Public land</Badge>
             )}
@@ -255,13 +260,23 @@ export function ParcelDeepDive({
               <Button size="sm" className="h-7 text-xs" onClick={saveNotes}>
                 {notesSaved ? "Saved ✓" : "Save note"}
               </Button>
-              <p className="text-[10px] text-muted-foreground">Saved locally in browser. Syncs to D1 in Phase 8.</p>
+              <p className="text-[10px] text-muted-foreground">Saved locally in browser. Use "Track deal" to persist in the pipeline.</p>
             </TabsContent>
 
           </div>
         </Tabs>
       </SheetContent>
     </Sheet>
+
+    <NewDealDialog
+      open={newDealOpen}
+      onOpenChange={setNewDealOpen}
+      prefill={{
+        parcelApn:    apn ?? undefined,
+        jurisdiction: detail?.jurisdiction ?? undefined,
+        acres:        detail?.acres ?? null,
+      }}
+    />
   );
 }
 

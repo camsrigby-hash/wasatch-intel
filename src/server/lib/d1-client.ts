@@ -1,4 +1,4 @@
-import type { Watchlist, WatchlistHit, WatchlistCriteria } from "../../lib/types";
+import type { Watchlist, WatchlistHit, WatchlistCriteria, Deal, DealNote, DealContact, CreateDealPayload } from "../../lib/types";
 
 export interface Env {
   DB?: D1Database;
@@ -190,4 +190,176 @@ export async function logAlert(
     )
     .bind(id, watchlistId, watchlistName, signalId, deliveredTo, channel)
     .run();
+}
+
+// ── Deal CRUD (Phase 8) ───────────────────────────────────────────────────────
+
+interface DealRow {
+  id: string;
+  parcel_apn: string;
+  jurisdiction: string;
+  stage: string;
+  acres: number | null;
+  residual_land_value: number | null;
+  next_action: string;
+  contact: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToDeal(row: DealRow): Deal {
+  return {
+    id:                row.id,
+    parcelApn:         row.parcel_apn,
+    jurisdiction:      row.jurisdiction,
+    stage:             row.stage as Deal["stage"],
+    acres:             row.acres,
+    residualLandValue: row.residual_land_value,
+    nextAction:        row.next_action,
+    contact:           row.contact,
+    notes:             row.notes,
+    createdAt:         row.created_at,
+    updatedAt:         row.updated_at,
+  };
+}
+
+export async function getDeals(db: D1Database): Promise<Deal[]> {
+  const rows = await db
+    .prepare(
+      `SELECT * FROM deals WHERE owner_user_id = 'default' AND stage != 'Closed/Dead'
+       ORDER BY updated_at DESC`,
+    )
+    .all<DealRow>();
+  return (rows.results ?? []).map(rowToDeal);
+}
+
+export async function getDeal(db: D1Database, id: string): Promise<Deal | null> {
+  const row = await db
+    .prepare(`SELECT * FROM deals WHERE id = ? AND owner_user_id = 'default'`)
+    .bind(id)
+    .first<DealRow>();
+  return row ? rowToDeal(row) : null;
+}
+
+export async function createDeal(db: D1Database, payload: CreateDealPayload): Promise<Deal> {
+  const id  = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO deals
+         (id, parcel_apn, jurisdiction, stage, acres, residual_land_value,
+          next_action, contact, notes, owner_user_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'default', ?, ?)`,
+    )
+    .bind(
+      id,
+      payload.parcelApn,
+      payload.jurisdiction,
+      payload.stage ?? "Prospect",
+      payload.acres ?? null,
+      payload.residualLandValue ?? null,
+      payload.nextAction ?? "",
+      payload.contact ?? "",
+      payload.notes ?? "",
+      now,
+      now,
+    )
+    .run();
+  return {
+    id,
+    parcelApn:         payload.parcelApn,
+    jurisdiction:      payload.jurisdiction,
+    stage:             payload.stage ?? "Prospect",
+    acres:             payload.acres ?? null,
+    residualLandValue: payload.residualLandValue ?? null,
+    nextAction:        payload.nextAction ?? "",
+    contact:           payload.contact ?? "",
+    notes:             payload.notes ?? "",
+    createdAt:         now,
+    updatedAt:         now,
+  };
+}
+
+export async function updateDeal(
+  db: D1Database,
+  id: string,
+  patch: Partial<Omit<Deal, "id" | "createdAt">>,
+): Promise<Deal | null> {
+  const current = await getDeal(db, id);
+  if (!current) return null;
+  const now  = new Date().toISOString();
+  const next = { ...current, ...patch, updatedAt: now };
+  await db
+    .prepare(
+      `UPDATE deals
+       SET parcel_apn=?, jurisdiction=?, stage=?, acres=?, residual_land_value=?,
+           next_action=?, contact=?, notes=?, updated_at=?
+       WHERE id=? AND owner_user_id='default'`,
+    )
+    .bind(
+      next.parcelApn, next.jurisdiction, next.stage,
+      next.acres, next.residualLandValue,
+      next.nextAction, next.contact, next.notes,
+      now, id,
+    )
+    .run();
+  return next;
+}
+
+export async function deleteDeal(db: D1Database, id: string): Promise<boolean> {
+  // Soft delete: move to Closed/Dead
+  const result = await db
+    .prepare(`UPDATE deals SET stage='Closed/Dead', updated_at=? WHERE id=? AND owner_user_id='default'`)
+    .bind(new Date().toISOString(), id)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+export async function getDealNotes(db: D1Database, dealId: string): Promise<DealNote[]> {
+  const rows = await db
+    .prepare(`SELECT * FROM deal_notes WHERE deal_id = ? ORDER BY created_at DESC`)
+    .bind(dealId)
+    .all<{ id: string; deal_id: string; body: string; created_at: string }>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id, dealId: r.deal_id, body: r.body, createdAt: r.created_at,
+  }));
+}
+
+export async function createDealNote(db: D1Database, dealId: string, body: string): Promise<DealNote> {
+  const id  = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db
+    .prepare(`INSERT INTO deal_notes (id, deal_id, body, created_at) VALUES (?, ?, ?, ?)`)
+    .bind(id, dealId, body, now)
+    .run();
+  return { id, dealId, body, createdAt: now };
+}
+
+export async function getDealContacts(db: D1Database, dealId: string): Promise<DealContact[]> {
+  const rows = await db
+    .prepare(`SELECT * FROM deal_contacts WHERE deal_id = ? ORDER BY created_at ASC`)
+    .bind(dealId)
+    .all<{ id: string; deal_id: string; name: string; role: string; phone: string | null; email: string | null; created_at: string }>();
+  return (rows.results ?? []).map((r) => ({
+    id: r.id, dealId: r.deal_id, name: r.name, role: r.role,
+    phone: r.phone, email: r.email, createdAt: r.created_at,
+  }));
+}
+
+export async function createDealContact(
+  db: D1Database,
+  dealId: string,
+  data: { name: string; role?: string; phone?: string; email?: string },
+): Promise<DealContact> {
+  const id  = crypto.randomUUID();
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO deal_contacts (id, deal_id, name, role, phone, email, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(id, dealId, data.name, data.role ?? "", data.phone ?? null, data.email ?? null, now)
+    .run();
+  return { id, dealId, name: data.name, role: data.role ?? "", phone: data.phone ?? null, email: data.email ?? null, createdAt: now };
 }
