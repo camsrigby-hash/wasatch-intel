@@ -178,7 +178,12 @@ export default {
   async fetch(request: Request, env: unknown, ctx: unknown): Promise<Response> {
     const url = new URL(request.url);
 
-    if (request.method !== "GET") {
+    const isParcelAnalyze =
+      url.pathname.startsWith("/api/parcel/") &&
+      url.pathname.endsWith("/analyze") &&
+      request.method === "POST";
+
+    if (request.method !== "GET" && !isParcelAnalyze) {
       return tanstack.fetch(request, env, ctx);
     }
 
