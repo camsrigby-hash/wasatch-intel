@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-25
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 7 activation session
-**Active phase:** Phase 8 — Deal pipeline persistence (NOT STARTED)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 8 session
+**Active phase:** Phase 9 — Per-city expansion via PMN (NOT STARTED)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -34,8 +34,15 @@ Update this file at the end of every work session. The "Current Status" section 
   - Live: https://wasatch-intel.cam-s-rigby.workers.dev/api/watchlists → `{"data":[],"meta":{"source":"d1:watchlists","freshness":"live",...}}`
   - Hourly cron running
 
+- Phase 8: Deal pipeline persistence — DONE
+  - D1 schema extended: deals, deal_notes, deal_contacts tables (run `d1-migrate.yml` to apply to live DB)
+  - Full CRUD: GET/POST /api/deals, GET/PATCH/DELETE /api/deals/:id, notes + contacts sub-routes
+  - Frontend: DnD Kanban with @dnd-kit/core (optimistic stage drag), NewDealDialog, notes auto-save, contacts panel
+  - "+ Track deal" button in ParcelDeepDive prefills deal from parcel data
+
 ### What's next
-- Phase 8: Deal pipeline persistence (D1 deals table + CRUD + deal card UI)
+- **ACTION REQUIRED**: Run `d1-migrate.yml` workflow (workflow_dispatch) in GitHub Actions to apply Phase 8 schema to live D1
+- Phase 9: Per-city expansion via PMN (Tooele City, Stansbury Park, Lake Point, Saratoga Springs, Eagle Mountain, Lehi, Bluffdale…)
 
 ### Open questions / blockers
 None.
@@ -493,6 +500,26 @@ signals_reddit.csv + signal_correlations.csv; agendaId populated from best-match
 correlation; external signal score derived from keyword hit count. Signal-wire endpoint
 source metadata updated. Key decision: Reddit scraper writes empty CSV (not an error) if
 creds absent — pipeline produces news-only output until user configures GitHub Secrets.
+
+### 2026-04-25 — Phase 8 (DONE) — Claude Code (Sonnet 4.6)
+Deal pipeline persistence. In **wasatch-intel**: extended `schema.sql` with three new tables
+(deals, deal_notes, deal_contacts) and four indexes — all `IF NOT EXISTS` so idempotent.
+`d1-client.ts` got a full suite of deal CRUD helpers: getDeals, createDeal, updateDeal,
+deleteDeal (soft → Closed/Dead), getDealNotes, createDealNote, getDealContacts,
+createDealContact. `entry.ts` replaced the empty `/api/deals` stub with 10 route branches
+(list, create, single-get, patch, delete, notes CRUD, contacts CRUD); mutation guard updated
+with `isDealMutation`. `types.ts`: added DealNote, DealContact, CreateDealPayload; added
+createdAt to Deal. `api-client.ts`: 7 new hooks. `pipeline.tsx`: full DnD Kanban rewrite
+using `@dnd-kit/core` — DndContext + KanbanColumn (useDroppable) + DraggableDealCard
+(useDraggable) + DragOverlay; optimistic stage-drag with revert-on-error; NewDealDialog
+(exported for external use), DeleteDealDialog (soft-delete confirm), DealPanels (inline
+notes auto-save 1s idle + contacts mini-form). `ParcelDeepDive.tsx`: "+ Track deal" button
+in sheet header opens NewDealDialog prefilled with parcel APN/jurisdiction/acres; Notes tab
+copy updated. New `d1-migrate.yml` workflow (workflow_dispatch) applies the schema to the
+live D1 DB — must be triggered manually after first deploy. deploy-cloudflare.yml switched
+from `npm ci` to `npm install` to avoid lock file mismatch (no local Node toolchain).
+Key decision: soft delete (stage → Closed/Dead) keeps history; @dnd-kit PointerSensor 6px
+threshold prevents click-vs-drag mis-fires. Commit: wasatch-intel@86d4888.
 
 ### 2026-04-25 — Phase 7 (DONE) — Claude Code (Sonnet 4.6)
 All Phase 7 code written and activated. New files: `src/server/lib/schema.sql` (D1 schema: watchlists,

@@ -13,31 +13,30 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          8
-phase_name:     "Deal pipeline persistence"
+phase:          9
+phase_name:     "Per-city expansion via PMN"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-25
-updater:        "Claude Code (Sonnet 4.6) — Phase 7 activation session"
+updater:        "Claude Code (Sonnet 4.6) — Phase 8 session"
 
 last_completed:
-  phase:        7
-  phase_name:   "Watchlists + D1 persistence"
+  phase:        8
+  phase_name:   "Deal pipeline persistence"
   completed_on: 2026-04-25
 
 next_after_current:
-  phase:        9
-  phase_name:   "Per-city expansion via PMN"
+  phase:        10
+  phase_name:   "Historical backfill"
 
 blockers: []
 
 notes:          |
-  Phase 7 fully activated and verified live. D1 database wasatch-intel-db
-  (UUID 8a8792c9-df0b-4644-8fdb-5ecfc5d6a66a) provisioned, schema applied,
-  RESEND_API_KEY Workers secret set. Live endpoint
-  https://wasatch-intel.cam-s-rigby.workers.dev/api/watchlists returns
-  {"data":[],"meta":{"source":"d1:watchlists","freshness":"live",...}}.
-  Hourly cron running. Ready for Phase 8 (deal pipeline persistence — D1
-  deals table + CRUD + deal card UI).
+  Phase 8 code committed and pushed (wasatch-intel@86d4888). Deploy triggered
+  via GitHub Actions. IMPORTANT: run the d1-migrate.yml workflow (workflow_dispatch)
+  after the deploy succeeds to apply the deals/deal_notes/deal_contacts tables to
+  the live D1 database. Schema is idempotent (IF NOT EXISTS) so safe to re-run.
+  Phase 9 is per-city expansion via PMN — see PHASE 9 ADDENDUM and PROMPT_PLAYBOOK.md
+  for the full brief. Requires tooele-land-intel repo (PMN scraper work lives there).
 ```
 
 ---
@@ -452,6 +451,20 @@ signal needed; post-level filtering is enough).
 - **Deviations from the addendum:** None. Phase 7 had no CM_RE addendum.
 - **Surprises / gotchas:** `@cloudflare/workers-types` was missing — added to devDependencies. `package-lock.json` was out of sync after adding Phase 7 deps (no local Node in PATH), causing `npm ci` failures in the setup workflow; fixed by running `npm install` with the full Node path. Cloudflare API token needed D1 Edit scope added before `wrangler d1 create` could succeed.
 - **Deferred:** Watchlist type-change after creation. Per-user alert email preference. In-app notification badge in AppShell header.
+
+---
+
+## PHASE 8 — Deal pipeline persistence (no CM_RE addendum — playbook-only phase)
+
+### PHASE 8 COMPLETION NOTES
+- **Date:** 2026-04-25
+- **By:** Claude Code (Sonnet 4.6) — Phase 8 session
+- **Built:** schema.sql extended (deals, deal_notes, deal_contacts tables, 4 new indexes); d1-client.ts deal CRUD helpers (getDeals, createDeal, updateDeal, deleteDeal soft-delete, getDealNotes, createDealNote, getDealContacts, createDealContact); entry.ts full CRUD routes (/api/deals GET/POST, /api/deals/:id GET/PATCH/DELETE, /api/deals/:id/notes GET/POST, /api/deals/:id/contacts GET/POST); api-client.ts mutation hooks; pipeline.tsx full DnD Kanban rewrite with @dnd-kit/core (optimistic stage updates, NewDealDialog, DeleteDealDialog, DealPanels with notes auto-save + contacts mini-form); ParcelDeepDive.tsx "+ Track deal" button; d1-migrate.yml workflow.
+- **Key commits:** wasatch-intel@86d4888
+- **Decisions (not from the brief):** Soft delete (stage → Closed/Dead) instead of hard delete, preserves history. @dnd-kit PointerSensor with 6px activation threshold prevents accidental drags on card clicks. NewDealDialog exported from pipeline.tsx rather than a new file (kept file count down). deploy-cloudflare.yml changed npm ci → npm install to avoid lock file mismatch with no local Node.
+- **Deviations from the brief:** None material. d1-migrate.yml is new (not in brief) — needed because no local Node to run wrangler d1 execute manually.
+- **Surprises / gotchas:** D1 schema migration requires a separate workflow trigger after the code deploy — the deploy itself only pushes JS, not SQL. User must manually run d1-migrate.yml from GitHub Actions after first deploy.
+- **Deferred:** Hard delete (currently soft). Per-deal email/phone action wiring (icons render but don't open mailto/tel yet). Outreach templates button (header UI only, no content).
 
 ---
 
