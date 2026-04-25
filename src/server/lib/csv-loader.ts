@@ -239,13 +239,13 @@ async function loadExternalSignals(): Promise<{
     fetchRaw(`${TLI_BASE}/signal_correlations.csv`),
   ]);
 
-  const news:   ExternalSignalRow[] = newsResult.status   === "fulfilled" ? parseCsv(newsResult.value)   as ExternalSignalRow[] : [];
-  const reddit: ExternalSignalRow[] = redditResult.status === "fulfilled" ? parseCsv(redditResult.value) as ExternalSignalRow[] : [];
+  const news:   ExternalSignalRow[] = newsResult.status   === "fulfilled" ? parseCsv(newsResult.value)   as unknown as ExternalSignalRow[] : [];
+  const reddit: ExternalSignalRow[] = redditResult.status === "fulfilled" ? parseCsv(redditResult.value) as unknown as ExternalSignalRow[] : [];
 
   // Build best-match correlation map (highest total_score per signal_id)
   const correlations = new Map<string, string>();
   if (corrResult.status === "fulfilled") {
-    const corrRows = parseCsv(corrResult.value) as CorrelationRow[];
+    const corrRows = parseCsv(corrResult.value) as unknown as CorrelationRow[];
     const best = new Map<string, { agendaId: string; score: number }>();
     for (const row of corrRows) {
       const score = parseFloat(row.total_score ?? "0");
