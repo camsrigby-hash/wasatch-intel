@@ -184,7 +184,7 @@ export default {
       request.method === "POST";
 
     if (request.method !== "GET" && !isParcelAnalyze) {
-      return tanstack.fetch(request, env, ctx);
+      return tanstack.fetch(request);
     }
 
     // ── /api/agendas ──────────────────────────────────────────────────────────
@@ -340,6 +340,6 @@ export default {
       return emptyOk("d1:deals:phase8");
     }
 
-    return tanstack.fetch(request, env, ctx);
+    return tanstack.fetch(request);
   },
 };
