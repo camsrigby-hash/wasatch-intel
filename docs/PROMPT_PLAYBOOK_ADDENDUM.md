@@ -436,6 +436,12 @@ Also: the early-return guard at the top of `entry.ts` (the one that handles non-
 - **Surprises / gotchas:** Phase 6 pre-flight note said to extract analyzeOpportunity BEFORE adding new logic — done. The early-return guard in entry.ts (checks path + method, not just method) was already fixed in 796acd9 and preserved correctly.
 - **Deferred:** Reddit signals pending user adding GitHub Secrets. News RSS signals will begin flowing with the next daily signals.yml run.
 
+2026-04-25: Reddit ingestion now dual-mode. RSS-based ingestion is live via
+scrape_news_rss.py (4 subreddits, no auth required). PRAW-based ingestion
+in scrape_reddit.py remains intact and soft-fails until Responsible Builder
+Policy approval lands; once approved, three GitHub Secrets activate it
+and the dedup step in correlate_signals.py handles overlap.
+
 ---
 
 ## PHASE 9 — Per-city expansion via PMN (NEW full prompt)
