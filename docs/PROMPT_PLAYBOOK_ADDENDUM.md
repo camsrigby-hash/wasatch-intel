@@ -28,7 +28,7 @@ next_after_current:
   phase:        11
   phase_name:   "Future features (see tli-full-spec.md §6)"
 
-blockers: []
+blockers: none
 
 notes:          |
   Phase 9 complete. 11 new cities added to tooele-land-intel/data/jurisdictions.yaml
@@ -566,6 +566,10 @@ STOP and summarize when done.
 - **Surprises / gotchas:** PMN sitemap index URL (https://www.utah.gov/pmn/sitemap/index.html) returns 404 — body IDs were discovered via Google search + individual page fetches. Stansbury Park and Lake Point are unincorporated Tooele County — no PMN bodies, Tyler Meeting Manager, skipped per scope guardrails.
 - **Deferred:** Actual agenda items from expansion cities will only appear after next Monday's agendas-watch.yml run. Geocoding of new items follows on next geocode.yml run. Salt Lake City body IDs not added (high-volume, outside Tooele Valley focus — defer to user decision).
 
+Phase 9 graduated 2026-04-25: 13 jurisdictions live in API, 524 split items, $1.07 split cost. Sample items from Lehi, Eagle Mountain, American Fork all show real titles + PMN URLs + confidence ≥ 0.9 from Haiku split.
+
+Open item (low priority, deferred to Phase 10 or beyond): /api/digest cityScores returns []. Diagnosis: `aggregate_city_signals.py` is NOT wired into weekly-digest.yml (confirmed via grep); `city_signal_scores.json` was last generated before Phase 9 and covers only Erda + Grantsville (2 cities); the Worker reads from that file at `${TLI_BASE}/city_signal_scores.json`; since the script hasn't been re-run against the expanded 13-jurisdiction split CSV, the API either serves stale 2-city scores or returns [] on a cache error. Likely because aggregate_city_signals.py has not been re-run on the expanded 13-jurisdiction dataset since Phase 9. Either trigger that script in weekly-digest.yml or expose it as a manual workflow.
+
 ---
 
 ## PHASE 10 — NAIP land-cover vacancy verification (NEW, deferred)
@@ -640,6 +644,10 @@ intersection-centric.
 
 STOP and summarize when done.
 ```
+
+### Pre-flight notes (added 2026-04-25 from Phase 9 graduation)
+
+cityScores aggregation: Phase 10's historical backfill will produce 24 months × 13 jurisdictions of agenda data. Before backfill commits to live CSVs, ensure `aggregate_city_signals.py` runs against the full dataset and `city_signal_scores.json` reflects all 13 cities. Otherwise `/api/digest` will continue to show stale or empty scores even after backfill lands.
 
 ---
 
