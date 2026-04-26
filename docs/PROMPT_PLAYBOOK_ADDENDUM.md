@@ -13,30 +13,33 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          9
-phase_name:     "Per-city expansion via PMN"
+phase:          10
+phase_name:     "Historical backfill"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-25
-updater:        "Claude Code (Sonnet 4.6) — Phase 8 session"
+updater:        "Claude Code (Sonnet 4.6) — Phase 9 session"
 
 last_completed:
-  phase:        8
-  phase_name:   "Deal pipeline persistence"
+  phase:        9
+  phase_name:   "Per-city expansion via PMN"
   completed_on: 2026-04-25
 
 next_after_current:
-  phase:        10
-  phase_name:   "Historical backfill"
+  phase:        11
+  phase_name:   "Future features (see tli-full-spec.md §6)"
 
 blockers: []
 
 notes:          |
-  Phase 8 code committed and pushed (wasatch-intel@86d4888). Deploy triggered
-  via GitHub Actions. IMPORTANT: run the d1-migrate.yml workflow (workflow_dispatch)
-  after the deploy succeeds to apply the deals/deal_notes/deal_contacts tables to
-  the live D1 database. Schema is idempotent (IF NOT EXISTS) so safe to re-run.
-  Phase 9 is per-city expansion via PMN — see PHASE 9 ADDENDUM and PROMPT_PLAYBOOK.md
-  for the full brief. Requires tooele-land-intel repo (PMN scraper work lives there).
+  Phase 9 complete. 11 new cities added to tooele-land-intel/data/jurisdictions.yaml
+  with PMN body IDs (26 new bodies total). scrape_pmn_all.py now passes canonical
+  jurisdiction labels so names are consistent. persist_to_csv.py has aliases for all
+  new cities. American Fork added to wasatch-intel types.ts JURISDICTIONS + CITY_CENTERS.
+  Non-PMN cities documented in data/pmn_coverage.md (Stansbury Park, Lake Point are
+  Tooele County unincorporated — Tyler Meeting Manager, explicitly out of scope).
+  Next scrape run (Monday 08:00 UTC via agendas-watch.yml) will automatically pick up
+  all new cities. Geocoding will follow in the next geocode.yml run.
+  Phase 10 (historical backfill) is a Python-heavy one-time script — MANUS or Claude Code.
 ```
 
 ---
@@ -552,6 +555,16 @@ Verification:
 
 STOP and summarize when done.
 ```
+
+### PHASE 9 COMPLETION NOTES
+- **Date:** 2026-04-25
+- **By:** Claude Code (Sonnet 4.6) — Phase 9 session
+- **Built:** tooele-land-intel: 11 new city entries in `data/jurisdictions.yaml` with PMN body IDs (26 new PMN bodies total: Tooele City, Lehi, Saratoga Springs, Eagle Mountain, South Jordan, Herriman, Bluffdale, Draper, American Fork, Vineyard, Spanish Fork). Added `--jurisdiction-label` CLI flag to `scrape_utah_pmn.py`; updated `scrape_pmn_all.py` to pass canonical names; added jurisdiction aliases to `persist_to_csv.py`; created `data/pmn_coverage.md`. wasatch-intel: "American Fork" added to Jurisdiction type, JURISDICTIONS array, and CITY_CENTERS in `types.ts`.
+- **Key commits:** tooele-land-intel@<see commit>, wasatch-intel@<see commit>
+- **Decisions (not from the addendum):** PMN body IDs discovered via web search + individual page fetches (PMN sitemap index 404'd). Jurisdiction labels passed explicitly from jurisdictions.yaml rather than relying on PMN entity names to avoid "City of X" vs "X" mismatches. scrape_pmn_all.py was already wired into agendas-watch.yml — no workflow changes needed.
+- **Deviations from the addendum:** Did NOT rename weekly-digest.yml to weekly-agendas.yml (renaming would break existing GitHub Actions references; not worth the churn). `data/pmn_bodies.yaml` was not created as a separate file — the PMN body IDs live in `data/jurisdictions.yaml` per the existing schema (avoids split config). scrape_pmn.py was already built as `scrape_utah_pmn.py` + `scrape_pmn_all.py` in prior sessions.
+- **Surprises / gotchas:** PMN sitemap index URL (https://www.utah.gov/pmn/sitemap/index.html) returns 404 — body IDs were discovered via Google search + individual page fetches. Stansbury Park and Lake Point are unincorporated Tooele County — no PMN bodies, Tyler Meeting Manager, skipped per scope guardrails.
+- **Deferred:** Actual agenda items from expansion cities will only appear after next Monday's agendas-watch.yml run. Geocoding of new items follows on next geocode.yml run. Salt Lake City body IDs not added (high-volume, outside Tooele Valley focus — defer to user decision).
 
 ---
 

@@ -25,7 +25,8 @@ export type Jurisdiction =
   | "Draper"
   | "South Jordan"
   | "Bluffdale"
-  | "Spanish Fork";
+  | "Spanish Fork"
+  | "American Fork";
 
 export const JURISDICTIONS: Jurisdiction[] = [
   "Erda",
@@ -41,6 +42,7 @@ export const JURISDICTIONS: Jurisdiction[] = [
   "South Jordan",
   "Bluffdale",
   "Spanish Fork",
+  "American Fork",
 ];
 
 // ── Signal taxonomy (CM_RE heritage — shared with Python classify) ────────────
@@ -383,4 +385,5 @@ export const CITY_CENTERS: Record<string, [number, number]> = {
   "South Jordan":    [-111.9388, 40.5621],
   "Bluffdale":       [-111.9388, 40.4837],
   "Spanish Fork":    [-111.6549, 40.1149],
+  "American Fork":   [-111.7957, 40.3768],
 };

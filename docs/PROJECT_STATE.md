@@ -9,13 +9,14 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-25
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 8 session
-**Active phase:** Phase 9 — Per-city expansion via PMN (NOT STARTED)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 9 session
+**Active phase:** Phase 10 — Historical backfill (NOT STARTED)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
 
 ### What's done
+- Phase 9: Per-city expansion via PMN — 11 new cities added (Tooele City, Lehi, Saratoga Springs, Eagle Mountain, South Jordan, Herriman, Bluffdale, Draper, American Fork, Vineyard, Spanish Fork). 26 new PMN bodies in jurisdictions.yaml. Jurisdiction pipeline updated to pass canonical names. American Fork added to wasatch-intel types.ts.
 - Phase 0: Cloudflare Workers deploy pipeline live (GitHub Actions → wrangler deploy)
 - Phase 1: /api/agendas endpoint live (136 items, freshness=live from tooele-land-intel CSV)
 - Phase 2: /api/digest, /api/developers, /api/signal-wire live; feed.tsx, developers.tsx, pipeline.tsx, watchlists.tsx wired to real data; mock-data.ts shrunk; weighted aggregator (aggregate_city_signals.py) in tooele-land-intel
@@ -41,8 +42,8 @@ Update this file at the end of every work session. The "Current Status" section 
   - "+ Track deal" button in ParcelDeepDive prefills deal from parcel data
 
 ### What's next
-- **ACTION REQUIRED**: Run `d1-migrate.yml` workflow (workflow_dispatch) in GitHub Actions to apply Phase 8 schema to live D1
-- Phase 9: Per-city expansion via PMN (Tooele City, Stansbury Park, Lake Point, Saratoga Springs, Eagle Mountain, Lehi, Bluffdale…)
+- **ACTION REQUIRED**: Run `d1-migrate.yml` workflow (workflow_dispatch) in GitHub Actions to apply Phase 8 schema to live D1 (if not already done)
+- Phase 10: Historical backfill — 24 months of agenda history for all expansion cities
 
 ### Open questions / blockers
 None.
@@ -520,6 +521,24 @@ live D1 DB — must be triggered manually after first deploy. deploy-cloudflare.
 from `npm ci` to `npm install` to avoid lock file mismatch (no local Node toolchain).
 Key decision: soft delete (stage → Closed/Dead) keeps history; @dnd-kit PointerSensor 6px
 threshold prevents click-vs-drag mis-fires. Commit: wasatch-intel@86d4888.
+
+### 2026-04-25 — Phase 9 (DONE) — Claude Code (Sonnet 4.6)
+Per-city expansion via PMN. In **tooele-land-intel**: discovered PMN public body IDs
+for 11 expansion cities (26 new PMN bodies) via web search + individual page fetches
+(PMN sitemap index returns 404). Added all cities to `data/jurisdictions.yaml` under
+`pmn_body_ids` keys: Tooele City (685/687), Lehi (2512/2651), Saratoga Springs
+(1727/1854), Eagle Mountain (535/536), South Jordan (1031/1032), Herriman (1155/1151),
+Bluffdale (2803 joint), Draper (5555/383), American Fork (180/183), Vineyard (530/531),
+Spanish Fork (5/6). Added `--jurisdiction-label` CLI flag to `scrape_utah_pmn.py` and
+updated `scrape_pmn_all.py` to pass canonical names from jurisdictions.yaml — prevents
+"City of X" vs "X" mismatches. Added 10 new aliases to `persist_to_csv.py`. Created
+`data/pmn_coverage.md` documenting Stansbury Park and Lake Point as Tooele County
+unincorporated (Tyler Meeting Manager, skipped per scope guardrails). The existing
+`agendas-watch.yml` already calls `scrape_pmn_all.py` — no workflow changes needed;
+next Monday run will automatically scrape all new cities. In **wasatch-intel**: added
+"American Fork" to Jurisdiction type union, JURISDICTIONS array, and CITY_CENTERS.
+Key decision: PMN body IDs kept in jurisdictions.yaml (not a separate pmn_bodies.yaml)
+to avoid split config. Salt Lake City deferred — high-volume, outside Tooele Valley focus.
 
 ### 2026-04-25 — Phase 7 (DONE) — Claude Code (Sonnet 4.6)
 All Phase 7 code written and activated. New files: `src/server/lib/schema.sql` (D1 schema: watchlists,
