@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-04-25
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 9 session
-**Active phase:** Phase 10 — Historical backfill (NOT STARTED)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 10 session
+**Active phase:** Phase 11 — Future features (see tli-full-spec.md §6)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -42,8 +42,10 @@ Update this file at the end of every work session. The "Current Status" section 
   - "+ Track deal" button in ParcelDeepDive prefills deal from parcel data
 
 ### What's next
+- **ACTION REQUIRED**: Trigger `backfill.yml` workflow (workflow_dispatch) in GitHub Actions to run the Phase 10 historical backfill across all 13 PMN bodies
 - **ACTION REQUIRED**: Run `d1-migrate.yml` workflow (workflow_dispatch) in GitHub Actions to apply Phase 8 schema to live D1 (if not already done)
-- Phase 10: Historical backfill — 24 months of agenda history for all expansion cities
+- Phase 11: Future features (see tli-full-spec.md §6) — Claude-vision site plan extraction, PMN audio transcription, site plan polygon overlay
+- NAIP land-cover (Phase 10 CM_RE addendum) deferred until ~2026-07-25 (3-month stability window)
 
 ### Open questions / blockers
 None.
@@ -521,6 +523,21 @@ live D1 DB — must be triggered manually after first deploy. deploy-cloudflare.
 from `npm ci` to `npm install` to avoid lock file mismatch (no local Node toolchain).
 Key decision: soft delete (stage → Closed/Dead) keeps history; @dnd-kit PointerSensor 6px
 threshold prevents click-vs-drag mis-fires. Commit: wasatch-intel@86d4888.
+
+### 2026-04-25 — Phase 10 (DONE) — Claude Code (Sonnet 4.6)
+Historical backfill. In **tooele-land-intel**: wrote `scripts/backfill_historical.py`
+(one-time script: runs all 13 PMN bodies with 24-month window via existing
+`scrape_pmn_all.py` → persist/dedup → Haiku split cost-capped at $50 → aggregate
+city signals → geocode; archives itself to `scripts/archive/` on completion to
+prevent accidental re-runs). Created `.github/workflows/backfill.yml` (workflow_dispatch
+only, 120-min timeout, dry-run + months-back + skip-geocode flags). Fixed open item:
+wired `aggregate_city_signals.py` into `weekly-digest.yml` commit step so
+`city_signal_scores.json` reflects all 13 jurisdictions after every Monday run.
+Phase 10 NAIP addendum explicitly deferred — the addendum's own prerequisite
+("3 months of production stability") was not met (Phase 9 completed same day);
+NAIP is documented for Phase 11+ pickup ~2026-07-25. Key action remaining:
+trigger `backfill.yml` from GitHub Actions tab (workflow_dispatch) to execute
+the backfill against live PMN data.
 
 ### 2026-04-25 — Phase 9 (DONE) — Claude Code (Sonnet 4.6)
 Per-city expansion via PMN. In **tooele-land-intel**: discovered PMN public body IDs

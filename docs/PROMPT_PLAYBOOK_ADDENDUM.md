@@ -13,33 +13,34 @@
 ## CURRENT STATE
 
 ```yaml
-phase:          10
-phase_name:     "Historical backfill"
+phase:          11
+phase_name:     "Future features (see tli-full-spec.md §6)"
 status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
 updated:        2026-04-25
-updater:        "Claude Code (Sonnet 4.6) — Phase 9 session"
+updater:        "Claude Code (Sonnet 4.6) — Phase 10 session"
 
 last_completed:
-  phase:        9
-  phase_name:   "Per-city expansion via PMN"
+  phase:        10
+  phase_name:   "Historical backfill"
   completed_on: 2026-04-25
 
 next_after_current:
-  phase:        11
-  phase_name:   "Future features (see tli-full-spec.md §6)"
+  phase:        12
+  phase_name:   "Future features (see tli-full-spec.md §7)"
 
 blockers: none
 
 notes:          |
-  Phase 9 complete. 11 new cities added to tooele-land-intel/data/jurisdictions.yaml
-  with PMN body IDs (26 new bodies total). scrape_pmn_all.py now passes canonical
-  jurisdiction labels so names are consistent. persist_to_csv.py has aliases for all
-  new cities. American Fork added to wasatch-intel types.ts JURISDICTIONS + CITY_CENTERS.
-  Non-PMN cities documented in data/pmn_coverage.md (Stansbury Park, Lake Point are
-  Tooele County unincorporated — Tyler Meeting Manager, explicitly out of scope).
-  Next scrape run (Monday 08:00 UTC via agendas-watch.yml) will automatically pick up
-  all new cities. Geocoding will follow in the next geocode.yml run.
-  Phase 10 (historical backfill) is a Python-heavy one-time script — MANUS or Claude Code.
+  Phase 10 complete. backfill_historical.py written in tooele-land-intel/scripts/;
+  backfill.yml workflow (workflow_dispatch) created in .github/workflows/.
+  aggregate_city_signals.py wired into weekly-digest.yml so cityScores reflects
+  all 13 jurisdictions after every weekly run.
+  NAIP land-cover addendum (Phase 10 CM_RE delta) explicitly skipped — its own
+  prerequisite ("3 months of production stability") was not met (Phase 9 completed
+  same day). NAIP work remains documented in the addendum and can be picked up in
+  a future session as Phase 11+ once the 3-month window passes (~2026-07-25).
+  ACTION REQUIRED: Trigger backfill.yml from GitHub Actions (workflow_dispatch) to
+  actually run the backfill against all 13 PMN bodies.
 ```
 
 ---
@@ -648,6 +649,16 @@ STOP and summarize when done.
 ### Pre-flight notes (added 2026-04-25 from Phase 9 graduation)
 
 cityScores aggregation: Phase 10's historical backfill will produce 24 months × 13 jurisdictions of agenda data. Before backfill commits to live CSVs, ensure `aggregate_city_signals.py` runs against the full dataset and `city_signal_scores.json` reflects all 13 cities. Otherwise `/api/digest` will continue to show stale or empty scores even after backfill lands.
+
+### PHASE 10 COMPLETION NOTES
+- **Date:** 2026-04-25
+- **By:** Claude Code (Sonnet 4.6) — Phase 10 session
+- **Built:** `tooele-land-intel/scripts/backfill_historical.py` (one-time 24-month PMN scrape for all 13 jurisdictions → persist → Haiku split (cost-capped at $50) → aggregate → geocode; archives itself after run); `.github/workflows/backfill.yml` (workflow_dispatch only); `aggregate_city_signals.py` wired into `weekly-digest.yml` so city scores update every Monday.
+- **Key commits:** tooele-land-intel@<see commit>
+- **Decisions (not from the addendum):** NAIP land-cover addendum explicitly skipped — the addendum's own prerequisite ("at least 3 months of production stability data") was not met (Phase 9 completed same day). NAIP documented for Phase 11+ pickup ~2026-07-25.
+- **Deviations from the addendum:** Phase 10 playbook brief says "run the backfill script" as a one-shot execution; since there's no local Node and no way to run Python locally in this session, the deliverable is the script + workflow (to be triggered by the user from GitHub Actions), not a completed scrape run. Pre-flight aggregate_city_signals fix done inline.
+- **Surprises / gotchas:** The existing `scrape_utah_pmn.py` already defaults to `--months-back 24` and `scrape_pmn_all.py` already scrapes all bodies — so the regular weekly run was already doing most of what the "backfill" describes. The backfill script's main value is (1) a one-time complete run across all 13 bodies, (2) cost-guard before Haiku, (3) self-archiving so it can't be accidentally re-run.
+- **Deferred:** Actual backfill execution (user triggers `backfill.yml` from GitHub Actions). NAIP land-cover (~2026-07-25 earliest).
 
 ---
 
