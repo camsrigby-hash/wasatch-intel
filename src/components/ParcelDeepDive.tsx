@@ -45,6 +45,7 @@ export function ParcelDeepDive({
   if (!open || !apn) return null;
 
   return (
+    <>
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col gap-0">
         <SheetHeader className="p-4 border-b border-border space-y-1">
@@ -277,6 +278,7 @@ export function ParcelDeepDive({
         acres:        detail?.acres ?? null,
       }}
     />
+    </>
   );
 }
 
