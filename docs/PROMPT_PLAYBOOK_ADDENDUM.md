@@ -660,6 +660,17 @@ cityScores aggregation: Phase 10's historical backfill will produce 24 months ×
 - **Surprises / gotchas:** The existing `scrape_utah_pmn.py` already defaults to `--months-back 24` and `scrape_pmn_all.py` already scrapes all bodies — so the regular weekly run was already doing most of what the "backfill" describes. The backfill script's main value is (1) a one-time complete run across all 13 bodies, (2) cost-guard before Haiku, (3) self-archiving so it can't be accidentally re-run.
 - **Deferred:** Actual backfill execution (user triggers `backfill.yml` from GitHub Actions). NAIP land-cover (~2026-07-25 earliest).
 
+### PMN history limitation discovered 2026-04-27
+
+Phase 10 dry-run revealed that PMN public body pages only render the ~10 most recent notices each. The `--months-back 24` flag filters nothing because there isn't 24 months of data exposed to scrape — just the current window. The 6,136-row corpus accumulated organically through Phase 1-9 weekly scrapes, not from a bulk pull.
+
+Implications:
+- A true 24-month archive would require PMN's search endpoint by date range, which is a different scraper not in current scope.
+- The existing organic accumulation is actually better than a one-time backfill — it has real provenance and reflects the actual cadence of municipal activity.
+- If deeper history becomes valuable later (e.g. for backtesting a market-prediction model), build a separate "deep-history" scraper that hits PMN's search endpoints directly. Estimated effort: 1-2 days. Estimated value: low until the tool has been used in production for several months and a specific use case demands it.
+
+Phase 10 graduated despite the spec mismatch — the corpus size goal (1,500-3,000 rows minimum) is exceeded by 2x, and the cityScores fix from Phase 9 is closed.
+
 ---
 
 ## END
