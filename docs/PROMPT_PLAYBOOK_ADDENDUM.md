@@ -85,6 +85,150 @@ Phase 11 prompt instructs CC to:
 
 ---
 
+## Phase 11 — Operational Brief
+
+### Goal
+Merge the Lovable frontend handoff into wasatch-intel on a feature branch, wire the MapLibre polygon paint expression so parcels color by score grade under the active profile, and stub D1 schema + Hono endpoints. App must build and run end-to-end against mocked data by end of phase. No real enrichment data lands until Phase 13.
+
+### Inputs
+- Handoff zip at `C:/Users/camsr/Downloads/wasatch-intel-frontend-handoff.zip` produced by Lovable. Includes:
+  - `src/lib/parcel-intel.ts` — vacancy cascade, 3 scoring profiles, score math, Zod schemas (these ARE the API contract)
+  - `src/lib/intel-context.tsx` — IntelProvider with profile state, weight overrides, percentile flag, pipeline mutations, keyboard shortcuts
+  - `src/components/ParcelDetailPanel.tsx` — 720px Sheet with 7 tabs including Wagstaff-template LOI Builder
+  - `src/components/ScoringControls.tsx` — right-side weight panel
+  - `src/components/ParcelThumb.tsx` — square satellite thumbnail
+  - `src/routes/pipeline.tsx` — list-first replacement for the kanban
+  - `src/routes/index.tsx` — augmented `/map`
+  - `src/lib/mock-data.ts` — may diverge from existing
+  - `src/styles.css` — adds stage/grade/vacancy CSS tokens
+  - `DESIGN_NOTES.md` — Lovable's documented deviations
+
+### Branch policy
+- Cut `pipeline-rebuild` from current main.
+- All Phase 11 commits go on that branch.
+- Do NOT merge to main during this phase. Push and let user verify locally.
+
+### Steps
+
+**1. Branch and extract.** Verify clean working tree. `git checkout -b pipeline-rebuild`. Extract handoff zip to `/tmp/handoff` (do NOT extract directly into the repo).
+
+**2. File-by-file merge.**
+
+NEW (just copy in):
+- `src/lib/parcel-intel.ts`
+- `src/lib/intel-context.tsx`
+- `src/components/ParcelDetailPanel.tsx`
+- `src/components/ScoringControls.tsx`
+- `src/components/ParcelThumb.tsx`
+
+MERGE (combine, do not blindly overwrite):
+- `src/lib/mock-data.ts` — handoff may add fields. Preserve existing DEALS, DealStage, and any types referenced by feed.tsx / agendas.tsx / developers.tsx / search.tsx. Add new exports from handoff. If types conflict, prefer handoff shape.
+- `src/styles.css` — append stage/grade/vacancy CSS variables to both `:root` and `.dark` blocks. Do not overwrite existing tokens.
+- `src/components/MapCanvas.tsx` — handoff version accepts new props (parcelColors, fillOpacity, dimMask). Existing MapCanvas has the live MapLibre setup. **Merge** — accept new props, don't replace the file.
+
+REPLACE (handoff is canonical):
+- `src/routes/pipeline.tsx` — kanban dead, use handoff version
+- `src/routes/index.tsx` — handoff is the augmented map page
+- `DESIGN_NOTES.md` — copy to repo root
+
+DO NOT TOUCH:
+- `src/components/ParcelDeepDive.tsx` (cleanup is Phase 14)
+- `src/routes/feed.tsx`, `agendas.tsx`, `developers.tsx`, `search.tsx`, `watchlists.tsx` (still consume legacy DEALS)
+
+**3. Wire MapLibre polygon paint** (highest-visible UI delta).
+
+In merged MapCanvas.tsx:
+- Accept new props: parcelColors (Map<parcelId, hexColor>), fillOpacity (0.2–0.9), dimMask (boolean)
+- When parcelColors changes, iterate parcels GeoJSON source features, set properties.fillColor on each. Update via `map.getSource("parcels").setData(updatedGeoJSON)`. Debounce 50ms.
+- Switch parcels-fill layer paint: fill-color from current expression to `["get","fillColor"]`, fill-opacity to the fillOpacity prop value
+- When dimMask is true, set non-pipeline parcels to fill-opacity 0.10 instead
+
+In routes/index.tsx:
+- Compute parcelColors: memo over [intel.parcels, intel.profile, intel.isCustom], map each parcel through scoreFor → grade → GRADE_COLORS[grade]
+- Pass parcelColors, fillOpacity, dimMask into MapCanvas
+
+Test: `/map` switching profiles → parcels recolor live within 300ms.
+
+**4. IntelProvider into root.** In `src/routes/__root.tsx`, wrap `<Outlet />` with `<IntelProvider>` (from `@/lib/intel-context`). Inside any existing TooltipProvider/ThemeProvider, outside route content.
+
+**5. D1 migration file (do NOT apply to prod).**
+
+Create `migrations/0002_pipeline_rebuild.sql` with these tables:
+- `parcel_records`: id PK, jurisdiction, county, acreage REAL, centroid_lng/lat REAL, zoning_current/gp, vacancy_status, is_corner BOOL, bldg_sqft INT, built_yr INT NULL, prop_class, aadt_primary INT, has_signal BOOL, median_income INT, competition_count INT, commute_corridor_tier, enriched_at TIMESTAMP, polygon_geojson TEXT. Index jurisdiction+county+vacancy_status.
+- `pipeline_entries`: parcel_id PK, stage, outcome NULL, saved_at, stage_changed_at, notes, updated_at. FK to parcel_records.
+- `dd_checklist_items`: id AUTOINCREMENT, parcel_id, item_id, label, done BOOL, notes, is_custom BOOL, created_at. UNIQUE(parcel_id, item_id).
+- `loi_drafts`: parcel_id PK, draft_json TEXT, updated_at.
+- `scoring_profiles`: id PK, name, description, weights_json, flags_json, created_at.
+
+Commit migration file. Do NOT run `wrangler d1 migrations apply` against prod.
+
+**6. Hono endpoint stubs (mocked, Zod-validated).**
+
+In existing Hono app (locate at src/server/index.ts or worker/index.ts), add 10 routes. Import schemas from `parcel-intel.ts` rather than redefining:
+- GET /api/profiles
+- POST /api/profiles
+- GET /api/parcels/search?q=
+- GET /api/parcels?bbox=&profile=&filters=
+- GET /api/parcels/:id?profile=
+- GET /api/pipeline
+- POST /api/pipeline
+- PATCH /api/pipeline/:parcel_id
+- DELETE /api/pipeline/:parcel_id
+- POST /api/parcels/:id/refresh
+
+Each: Zod validation, proper HTTP codes, CORS consistent with existing endpoints. Frontend does NOT yet call these — IntelProvider continues reading in-memory mocks. Phase 14 wires the frontend to the API.
+
+Add smoke test `tests/api-stubs.test.ts` hitting each endpoint and validating responses.
+
+**7. Build verification.**
+1. `bun install` (or npm — check lockfile)
+2. `bun run build` — TS must compile clean. Common: IntelParcel may have fields not on legacy Parcel; use type assertions or add optional fields rather than refactor legacy.
+3. `bun run dev` — server starts, all routes load: /, /pipeline, /feed, /agendas, /developers, /watchlists, /search.
+4. /map: switch profiles (parcels recolor), open parcel (detail panel), open Scoring Controls, toggle "Show: My Pipeline".
+5. /pipeline: see saved parcels, switch stage chips, change sort, click row (same detail panel), toggle map view (placeholder grid).
+6. LOI tab on parcel with stage=LOI: preview renders Wagstaff template, live-updates as form changes.
+
+**8. Commit and push.**
+- Logical chunks: handoff merge → MapCanvas paint → schema → endpoints → tests
+- Push pipeline-rebuild branch
+- Do NOT open PR
+
+**9. Update docs.**
+- Append Phase 11 entry to docs/PROJECT_STATE.md PHASE_LOG: file additions, total LLM cost (~$0), summary
+- Update CURRENT STATE block at top of docs/PROMPT_PLAYBOOK_ADDENDUM.md from "Phase 11" to "Phase 12 — Deferred-feedback bundle"
+- Commit, push
+
+### Acceptance criteria
+1. pipeline-rebuild branch pushed to origin
+2. bun run build: zero TS errors
+3. bun run dev: all 7 routes load
+4. /map parcels recolor on profile change
+5. ParcelDetailPanel opens identically from /map and /pipeline
+6. LOI Builder previews Wagstaff template
+7. migrations/0002_pipeline_rebuild.sql committed, NOT applied to prod
+8. All 10 Hono endpoints respond + smoke tests pass
+9. DESIGN_NOTES.md at repo root
+10. PROJECT_STATE.md PHASE_LOG updated, PROMPT_PLAYBOOK_ADDENDUM.md CURRENT STATE → Phase 12
+11. Legacy routes (Feed/Agendas/Developers/Search/Watchlists) still work — no regressions
+
+### Out of scope
+- Frontend↔API wiring (Phase 14)
+- Real enrichment data (Phase 13)
+- Applying D1 migration to prod (manual after review)
+- Removing legacy code (Phase 14)
+- Polishing visual quirks Lovable noted (cluster zoom split, real pipeline map view) — backlog
+- Merging pipeline-rebuild to main (manual after user verification)
+
+### If stuck
+- Type errors during merge: prefer optional fields over refactor
+- MapLibre source not updating: verify setData called with fresh GeoJSON object reference
+- Zod mismatch: import from `src/lib/parcel-intel.ts`, don't redefine
+- Cloudflare Vite build fails: verify wrangler.jsonc D1 binding name = wasatch-intel-db
+
+Pause and ask if a blocker persists past two attempts.
+
+---
+
 ## Phase 12 — Deferred-feedback bundle (geocoding, Signal Wire sort, Agenda multi-filter, signage filter, cron status, PMN backfill)
 
 **Tool**: Claude Code · **Model**: `/model opusplan` (Opus for the Haiku prompt design, Sonnet for the rest) · **Est. time**: 2–3 hours · **Est. LLM cost**: ~$2–4
