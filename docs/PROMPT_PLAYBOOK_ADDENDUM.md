@@ -1,676 +1,467 @@
-# PROMPT_PLAYBOOK_ADDENDUM.md — CM_RE merge deltas
+# Wasatch Intel — Master Phase Playbook (Phases 11–21)
 
-**How this file relates to `PROMPT_PLAYBOOK.md`:** each section here is a delta to be added *into* the corresponding phase brief before the agent executes. The original playbook phases stay intact; these deltas expand their scope.
+This is the single source of truth for remaining work. Commit it to `docs/PROMPT_PLAYBOOK_ADDENDUM.md` in the wasatch-intel repo. Each phase's kickoff prompt instructs whatever tool runs it (Claude Code, Manus, or Lovable) to **update this file in place** when the phase completes — moving the CURRENT STATE marker forward and appending a PHASE_LOG entry.
 
-**Read order for any agent:** `PROJECT_STATE.md` → `PROMPT_PLAYBOOK.md` (phase brief) → this file (delta for that phase) → `CM_RE_INTEGRATION.md` (why these deltas exist).
-
-**Prerequisite for Phases 1, 3, 4, 5, 6, 9, 10 below:** `cm_re_extract.sh` has been run, so `tooele-land-intel/vendor/cm_re/` exists and is populated.
-
-**This file is living state.** Its `CURRENT STATE` section below is the canonical pointer to the phase an agent should pick up next. Agents update it per the `SELF-UPDATE PROTOCOL` when finishing a phase.
+That means: anyone (you, me in a future chat, or a tool picking up where another left off) can read this file and know exactly where things stand. Come back to me and say "next phase please" — I'll read the CURRENT STATE block, hand you the next prompt, and tell you which tools can run it.
 
 ---
 
-## CURRENT STATE
+## CURRENT STATE — 2026-04-27
 
-```yaml
-phase:          11
-phase_name:     "Future features (see tli-full-spec.md §6)"
-status:         NOT_STARTED        # NOT_STARTED | IN_PROGRESS | BLOCKED | DONE
-updated:        2026-04-25
-updater:        "Claude Code (Sonnet 4.6) — Phase 10 session"
-
-last_completed:
-  phase:        10
-  phase_name:   "Historical backfill"
-  completed_on: 2026-04-25
-
-next_after_current:
-  phase:        12
-  phase_name:   "Future features (see tli-full-spec.md §7)"
-
-blockers: none
-
-notes:          |
-  Phase 10 complete. backfill_historical.py written in tooele-land-intel/scripts/;
-  backfill.yml workflow (workflow_dispatch) created in .github/workflows/.
-  aggregate_city_signals.py wired into weekly-digest.yml so cityScores reflects
-  all 13 jurisdictions after every weekly run.
-  NAIP land-cover addendum (Phase 10 CM_RE delta) explicitly skipped — its own
-  prerequisite ("3 months of production stability") was not met (Phase 9 completed
-  same day). NAIP work remains documented in the addendum and can be picked up in
-  a future session as Phase 11+ once the 3-month window passes (~2026-07-25).
-  ACTION REQUIRED: Trigger backfill.yml from GitHub Actions (workflow_dispatch) to
-  actually run the backfill against all 13 PMN bodies.
-```
+- Phases 0–10 shipped and graduated. MVP live at https://wasatch-intel.cam-s-rigby.workers.dev.
+- **Active phase: Phase 11 — Lovable Pipeline-Rebuild Merge + Polygon Paint + Backend Stubs.**
+- Working branch (when active): `pipeline-rebuild`. Do NOT auto-merge to main; user verifies locally first.
+- Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover.
 
 ---
 
-## SELF-UPDATE PROTOCOL — how to leave this doc for the next session
+## How to use this playbook
 
-When an agent finishes a phase, its **final commit** on each affected repo must update this doc. Steps, in order:
+For any phase below, you (the user) follow this loop:
 
-1. **Update `CURRENT STATE` at the top of this file:**
-   - `phase:` → the next phase number
-   - `phase_name:` → a short name for that phase
-   - `status:` → `NOT_STARTED`
-   - `updated:` → today's ISO date
-   - `updater:` → identifier for the session that made the update (e.g. `"Claude Code — session 2026-04-27"`)
-   - `last_completed.phase` / `phase_name` / `completed_on` → the phase you just finished
-   - `next_after_current` → the phase *after* the new current phase (look it up in `PROMPT_PLAYBOOK.md`)
-   - `blockers:` → list any items needing user input (keep terse)
-   - `notes:` → one-paragraph flag for anything the next session should know
+1. **Ask me** ("Claude in this chat") for the next prompt. I read the CURRENT STATE block above, identify the phase, give you the paste-ready prompt + tool recommendation.
+2. **Pick a tool** from my recommendation. Most phases run in Claude Code; some are better routed to Manus or Lovable for cost efficiency.
+3. **For Claude Code phases**: First message in the CC session is `/model {alias}` (see per-phase note). Second message is the paste-ready prompt. The prompt itself includes instructions to update this file at the end of the phase.
+4. **For Manus/Lovable phases**: paste the prompt into that tool. The prompt instructs the tool to commit a docs update via GitHub at the end.
+5. **Verify the CURRENT STATE block was updated** when the phase finishes. If it wasn't, ping me — something stalled.
 
-2. **Append a completion note to the phase you just executed:**
+### Model selection note
 
-   Below the relevant `## PHASE N ADDENDUM — ...` section, add a subsection titled `### PHASE N COMPLETION NOTES` using this template (keep it ≤ 15 lines — long narratives go in commit messages):
+`/model opusplan` is real and current. It uses **Opus for plan mode and Sonnet for execution mode automatically**. Plan mode is entered explicitly via `Shift+Tab` to enter plan mode (or `/plan`). When the assistant exits plan mode and starts executing, it switches to Sonnet automatically. This is the closest thing to "automatic model switching" — it's not magic, but it works for any phase that wants Opus thinking + Sonnet doing.
 
-   ```markdown
-   ### PHASE N COMPLETION NOTES
-   - **Date:** YYYY-MM-DD
-   - **By:** <session identifier>
-   - **Built:** <2-line summary of concrete deliverables>
-   - **Key commits:** wasatch-intel@<sha>, tooele-land-intel@<sha>
-   - **Decisions (not from the addendum):** <e.g. picked library X over Y because Z>
-   - **Deviations from the addendum:** <if any — honest about what you skipped or did differently>
-   - **Surprises / gotchas:** <anything future-you would want to know>
-   - **Deferred:** <what was explicitly punted, and where it's tracked>
-   ```
+For phases that only need one model: `/model sonnet` or `/model opus` directly.
 
-3. **Update `PROJECT_STATE.md` PHASE_LOG:**
-   Add an entry in the style of existing entries. This is the longer-form narrative; the addendum's completion note is the quick-scan version.
-
-4. **Commit message format (both repos):**
-   `Phase N complete — <one-line summary>`
-   Include the doc updates in this same commit, not a separate "update docs" commit.
-
-5. **If the executed phase had NO addendum in this file** (e.g. Phase 7, Phase 8 — they have no CM_RE deltas), skip step 2. Still do 1, 3, 4.
-
-6. **If BLOCKED**, set `status: BLOCKED` in CURRENT STATE, list the blocker in `blockers:`, write a blocker section below the phase addendum explaining what's needed from the human, commit, push, and stop. Do not update `last_completed` — the phase isn't done.
-
-The next session reads this file, sees the new `CURRENT STATE`, and picks up seamlessly.
+For phases run on Manus or Lovable: model selection is whatever those platforms are using internally, not your concern.
 
 ---
 
-## STANDARD ADDENDUM BANNER (prefix into each modified phase prompt)
+## Phase 11 — Lovable merge + polygon paint + backend stubs
 
-```
-CM_RE ADDENDUM:
-A prior Utah land-intel project ("CM_RE", docs/CM_RE_INTEGRATION.md) built
-much of this phase's infrastructure for Davis + Weber counties. Its source
-code is mounted read-only at tooele-land-intel/vendor/cm_re/. Port patterns
-and logic from there — do NOT import from vendor/cm_re/ at runtime; treat
-it as reference material you read and then rewrite as TLI-native modules.
+**Tool**: Claude Code · **Model**: `/model sonnet` · **Est. time**: 30–45 min · **Est. LLM cost**: ~$0
 
-Scope guardrails (from CM_RE_INTEGRATION.md §3): do not introduce rasterio,
-Google Places API, owner scraping, or CRE-specific scorer weights into this
-phase. Those are out of MVP scope.
-```
+This is mechanical multi-file work guided by an explicit brief. Sonnet handles it cleanly; Opus would be wasted credits.
 
----
+### Pre-flight
 
-## PHASE 1 ADDENDUM — Parser schema upgrade
+1. Place handoff zip at `C:\Users\camsr\Downloads\wasatch-intel-frontend-handoff.zip`.
+2. Clean main: `cd C:/Users/camsr/code/wasatch-intel && git status` shows nothing dangling.
+3. Open Claude Code. First message: `/model sonnet`
 
-**Add to the Phase 1 prompt, after the "Concrete deliverables" section:**
+### Step 1 — Pre-phase prompt (writes the brief, doesn't execute)
 
-```
-ADDITIONAL DELIVERABLE — parser schema upgrade:
+Paste as one CC message:
 
-Before wiring /api/agendas to the existing agenda_items_split.csv, upgrade
-the upstream parser in tooele-land-intel to produce the richer signal schema
-from vendor/cm_re/scraper/parser.py. The upgraded schema adds these fields
-per signal:
+````
+cd C:/Users/camsr/code/wasatch-intel
 
-  signal_type      — REZONE | NEW_SUBDIVISION | COMMERCIAL_PROJECT |
-                     MINIFLEX_OPPORTUNITY | INFRASTRUCTURE | ANNEXATION |
-                     GENERAL_PLAN_AMENDMENT | LARGE_PROJECT |
-                     DEVELOPER_ACTIVITY
-  description      — plain-English summary
-  location         — address or cross-streets as stated
-  acres            — number or null
-  units            — number or null  (for residential signals)
-  developer        — string or null  (applicant / developer entity)
-  zoning_from      — string or null  (existing zone)
-  zoning_to        — string or null  (proposed zone)
-  status           — PROPOSED | APPROVED | DENIED | TABLED | CONTINUED
-  growth_score     — 0-100 (the model's own confidence in signal strength)
-  notes            — free-text context
+I'm setting up Phase 11. Update docs/PROMPT_PLAYBOOK_ADDENDUM.md with the new CURRENT STATE block and append the Phase 11 brief. Do NOT execute the phase yet — just write the docs.
 
-Concrete steps:
-1. In tooele-land-intel/scripts/, replace the existing classify prompt with
-   the prompt template from vendor/cm_re/scraper/parser.py (PROMPT_TEMPLATE
-   constant). Adapt it to call the Anthropic API directly (Haiku 4.5, not
-   Claude Code CLI) — the CM_RE version uses `claude` CLI which is a
-   different execution model.
-2. Update agenda_items_split.csv schema to include the new columns. Keep
-   backward compatibility: old rows with missing columns default to null.
-3. Update docs/python-to-ts-field-mapping.md with the new fields mapped to
-   their TS-side equivalents in src/lib/types.ts (you may need to extend the
-   AgendaItem type — do it).
-4. Haiku cost cap: 1 call per PDF, max 50 PDFs per weekly run. If Haiku
-   returns non-JSON (happens occasionally), strip markdown fences and retry
-   once before falling back to a keyword-only classification.
+The CURRENT STATE block at top should remain pointing to Phase 11 (already does in the master playbook). Append a Phase 11 brief section verbatim from the master playbook (the user has it locally — refer to /docs/PROMPT_PLAYBOOK_ADDENDUM.md if it's already committed, or paste from local notes). Brief content covers:
 
-Verification addendum:
-- Pick 3 recent agenda PDFs. Eyeball-check the extracted signals have
-  developer names, zoning from/to, and status populated.
-- The TS-side AgendaItem type now has optional developer, zoningFrom,
-  zoningTo, status fields.
-```
+- Goal: merge Lovable handoff into wasatch-intel on `pipeline-rebuild` branch, paint MapLibre polygons by score grade, stub D1 schema + Hono endpoints, build clean end-to-end with mocked data.
+- Inputs: handoff zip at C:/Users/camsr/Downloads/wasatch-intel-frontend-handoff.zip
+- Branch policy: cut `pipeline-rebuild` from main; do NOT merge to main during Phase 11.
+- 9 detailed steps covering: branch+extract, file-by-file merge (NEW/MERGE/REPLACE buckets), MapLibre paint expression wiring (key delta — switch fill-color to ["get","fillColor"]), IntelProvider into __root.tsx, D1 migration 0002_pipeline_rebuild.sql with parcel_records / pipeline_entries / dd_checklist_items / loi_drafts / scoring_profiles tables, 10 Hono endpoint stubs validated with Zod schemas imported from src/lib/parcel-intel.ts, build verification, commit+push branch (no PR yet), update PROJECT_STATE.md PHASE_LOG.
+- Acceptance criteria: branch pushed, build clean, /map polygons recolor on profile change, ParcelDetailPanel opens identically from /map and /pipeline, LOI Builder previews Wagstaff template, migration file committed (NOT applied to prod), legacy routes still work.
+- Out of scope: frontend↔API wiring (Phase 14), real enrichment data (Phase 13), D1 prod migration apply (manual), legacy code removal (Phase 13+), main merge.
 
-### PHASE 1 COMPLETION NOTES
-- **Date:** 2026-04-23 (code) / 2026-04-24 (deploy fixed, verified)
-- **By:** Claude Code (Sonnet 4.6) — two sessions (execution + deploy fix)
-- **Built:** Parser schema upgraded (23-col CSV, CM_RE signal taxonomy); `/api/agendas` endpoint live at https://wasatch-intel.cam-s-rigby.workers.dev/api/agendas (136 items, freshness=live); csv-loader, types.ts, api-client.ts, agendas.tsx all wired to real data.
-- **Key commits:** tooele-land-intel@f591fe8, wasatch-intel@6ae0616 (final)
-- **Decisions (not from the addendum):** Deploy model changed from Cloudflare Pages to Cloudflare Workers (wrangler deploy). `createAPIFileRoute` from `@tanstack/react-start/api` never registered with the runtime; replaced by `src/server/entry.ts` — a thin CF Worker wrapper that intercepts `/api/agendas` before TanStack Start SSR. Future routes add if-branches in entry.ts until Hono lands in Phase 7.
-- **Deviations from the addendum:** Haiku eyeball-check of 3 PDFs not done (no Anthropic key in env). Migration derived signal_type heuristically from item_type. No `wrangler dev` local smoke test.
-- **Surprises / gotchas:** `createAPIFileRoute` silently fails — router plugin warns about it but the server runtime never intercepts the route. `dist/server/wrangler.json` uses Workers (not Pages) output format. CLOUDFLARE_API_TOKEN needed "Edit Cloudflare Workers" template scope, not "Pages" scope.
-- **Deferred:** Nothing. Phase 1 fully complete.
+After writing the addendum, stop. Do not execute the phase. Confirm the addendum was updated and I'll send the kickoff prompt next.
+````
+
+### Step 2 — Kickoff prompt (executes the phase)
+
+After Step 1 confirms, paste as next CC message:
+
+````
+cd C:/Users/camsr/code/wasatch-intel, then read docs/CC_BOOTSTRAP.md and begin.
+````
+
+### On completion
+
+Phase 11 prompt instructs CC to:
+- Append a Phase 11 entry to `docs/PROJECT_STATE.md` PHASE_LOG.
+- Update the CURRENT STATE block at the top of `docs/PROMPT_PLAYBOOK_ADDENDUM.md` to point to **Phase 12**.
+- Commit and push `pipeline-rebuild` branch.
 
 ---
 
-## PHASE 2 ADDENDUM — Weighted digest & developer aggregation
+## Phase 12 — Deferred-feedback bundle (geocoding, Signal Wire sort, Agenda multi-filter, signage filter, cron status, PMN backfill)
 
-**Add to the Phase 2 prompt, inside the "Endpoints to build" list:**
+**Tool**: Claude Code · **Model**: `/model opusplan` (Opus for the Haiku prompt design, Sonnet for the rest) · **Est. time**: 2–3 hours · **Est. LLM cost**: ~$2–4
 
-```
-ADDITIONAL BACKING LOGIC for /api/digest and /api/developers:
+The prompt-engineering for the Haiku parcel-ID extraction benefits from one Opus thinking pass. The rest is mechanical.
 
-Port the weighted aggregation from vendor/cm_re/scraper/aggregator.py into a
-new Python script tooele-land-intel/scripts/aggregate_city_signals.py:
+### Kickoff prompt
 
-- Signal type weights (REZONE 1.4, NEW_SUBDIVISION 1.0, COMMERCIAL_PROJECT
-  1.6, MINIFLEX_OPPORTUNITY 1.8, INFRASTRUCTURE 1.5, ANNEXATION 1.3,
-  GENERAL_PLAN_AMENDMENT 1.2, LARGE_PROJECT 1.3, DEVELOPER_ACTIVITY 0.8)
-- Status multipliers (APPROVED 1.0, PROPOSED 0.7, TABLED 0.5, CONTINUED 0.5,
-  DENIED 0.1)
-- Per-signal weighted_score = growth_score * type_weight * status_multiplier
-- City-level aggregate = sum of weighted scores, signal_counts dict, unique
-  developers, unique top_areas, recent_dates[]
+Paste as one CC message after `/model opusplan`:
 
-Write the rollup to data/city_signal_scores.json, committed weekly.
+````
+cd C:/Users/camsr/code/wasatch-intel
 
-/api/digest consumes city_signal_scores.json. /api/developers derives distinct
-applicants from the DEVELOPER_ACTIVITY signals + applicant fields in other
-signal types, aggregating counts and jurisdictions per applicant.
+Phase 12 — Deferred-feedback bundle. First, append a Phase 12 brief to docs/PROMPT_PLAYBOOK_ADDENDUM.md (replacing the CURRENT STATE block to indicate Phase 12 is active). Then execute, then update the addendum to mark Phase 12 complete and point CURRENT STATE to Phase 13.
 
-Do NOT reuse CM_RE's specific gas_station/miniflex scoring logic — only the
-weighted-aggregation pattern. TLI is tracking activity, not ranking sites
-for a specific use.
-```
+The phase covers six items in priority order:
 
-### PHASE 2 COMPLETION NOTES
-- **Date:** 2026-04-24
-- **By:** Claude Code (Sonnet 4.6) — Phase 2 session
-- **Built:** `aggregate_city_signals.py` + `city_signal_scores.json` in tooele-land-intel; 6 new API endpoints in `src/server/entry.ts`; `loadDevelopers()`, `loadSignalWire()`, `loadDigest()` in `csv-loader.ts`; feed.tsx, developers.tsx, pipeline.tsx, watchlists.tsx all wired to real data; `mock-data.ts` shrunk ~150 lines.
-- **Key commits:** wasatch-intel@<see this commit>, tooele-land-intel@500e0d0
-- **Decisions (not from the addendum):** Two `AgendaItem` shapes intentionally kept coexisting — mock shape (MapCanvas/ParcelDeepDive) vs real shape (API). Phase 3 resolves this when geocoding puts real items on the map. CITY_CENTERS and JURISDICTIONS moved from mock-data.ts to types.ts (authoritative for both frontend and server).
-- **Deviations from the addendum:** `/api/parcels` returns empty array (no geocoding yet — Phase 3). `/api/watchlists` and `/api/deals` return empty arrays (D1 persistence is Phase 8).
-- **Surprises / gotchas:** `renderInline()` in feed.tsx must NOT have an explicit `React.ReactNode` return type without importing React — TypeScript errors. Removed the annotation; inference works fine.
-- **Deferred:** Actual geocoded parcel data on the map (Phase 3). Real watchlist/deal persistence (Phase 8). Item-type filter chip in feed.tsx sidebar is UI-only (no state wired — no state to wire yet).
+1. GEOCODING FIX (highest impact). Current plot rate is 27/518 (~5.2%) because subdivision names like "Oquirrh Point Phase 1" don't resolve in Nominatim. Fix: enter plan mode (Shift+Tab) and design a Haiku prompt that reads the FULL PDF body of each agenda item (not just title) and extracts parcel IDs and legal descriptions. Use the existing tooele-land-intel scraper output as input. Target: lift plot rate to 80+/518. After plan-mode design, exit plan mode (auto-switches to Sonnet) and implement: new GHA job extract_parcels_from_pdfs.yml runs after weekly-digest, calls Haiku with the prompt, writes resolved parcel IDs back to D1 against the matching agenda item.
+
+2. SIGNAL WIRE STRENGTH SORT. Data exists (Haiku correlation scores). Wire a sort dropdown on /feed (Signal Wire route) sorting by signal_strength DESC. Small.
+
+3. SIGNAGE-ONLY FILTER on Developers tab. Currently "Golden West Advertising × 4 pole sign filings" appears as the most-prolific developer. Tag item_type=signage at split time in the existing Haiku split step (modify the split prompt to identify signage filings); then default-filter signage from the Developers prolific-list. Add a "Include signage" toggle for completeness.
+
+4. AGENDA MULTI-COLUMN FILTER. The /agendas route table needs filters on column headers — at minimum: jurisdiction, item type, signal strength. Use Radix Select primitives chained.
+
+5. CRON STATUS FOOTER. Footer or settings panel showing last-run / next-run for each cron: weekly-digest, signals, watchlist-checker, gap-layer, geocode. Read from GHA API or a tiny D1 cron_runs table populated by each workflow's final step. The fact that the user couldn't tell whether crons were running surfaces this as a real gap.
+
+6. PMN 24-MONTH BACKFILL SCRAPER. PMN body pages only expose ~10 most recent notices. Build a separate scrape_pmn_archive.py in tooele-land-intel that hits PMN search endpoints by date range, paginates, and deposits 24 months of history into the existing raw agenda CSVs. Run once manually, not as a cron. Estimated 1–2 days; do not over-engineer.
+
+Acceptance: each of the six items either ships with a smoke test or has a clear "deferred to Phase X" note in the addendum.
+
+When done, update docs/PROMPT_PLAYBOOK_ADDENDUM.md: append a Phase 12 PHASE_LOG entry to docs/PROJECT_STATE.md, update CURRENT STATE block to point to Phase 13, commit+push to a phase-12 branch (or main if user has merged pipeline-rebuild by now). Push, do not auto-merge.
+````
 
 ---
 
-## PHASE 3 ADDENDUM — Resilient UGRC fetcher
+## Phase 13 — Real enrichment GHA jobs (the big one)
 
-**Add to the Phase 3 prompt, after "Python work (in tooele-land-intel/)":**
+**Tool**: **Hybrid — Claude Code (Opus) for architecture; Manus for the actual fetchers** · **Models**: CC `/model opus` for architecture session, then Manus for execution sub-tasks · **Est. time**: 1–2 weeks part-time · **Est. LLM cost**: ~$5–10 (mostly Opus arch session; Manus has its own pricing)
 
-```
-ADDITIONAL PATTERN — resilient UGRC fetcher:
+This is the most expensive phase by a wide margin. Splitting it saves CC credits meaningfully. Architecture decisions (multi-source data merge strategy, schema mapping, cache invalidation, rate limiting) want Opus precision. The actual scrapers (UGRC fetcher, UDOT fetcher, Places API integration) are exactly Manus's wheelhouse — long-running, single-purpose, no codebase reasoning needed.
 
-Before writing geocode_items.py, rewrite scripts/arcgis.py to adopt the
-resilient fetch pattern from vendor/cm_re/parcel/parcel_fetcher.py:
+### Sub-phase 13a — Architecture session (Claude Code, Opus)
 
-- Micro-batched queries (50 OBJECTIDs per request — URL-length safe)
-- Per-page disk cache under data/cache/arcgis/ keyed by query hash
-- Retry with exponential backoff on 500/502/503/504
-- Graceful partial-result recovery: if a later page fails, earlier cached
-  pages are still usable on restart
-- Confirmed LIR field schema (see LIR_FIELDS list in parcel_fetcher.py):
-    PARCEL_ID, PARCEL_ADD, PARCEL_CITY, PARCEL_ACRES, PROP_CLASS,
-    PRIMARY_RES, HOUSE_CNT, SUBDIV_NAME, BLDG_SQFT, BUILT_YR, EFFBUILT_YR,
-    TOTAL_MKT_VALUE, LAND_MKT_VALUE, TAXEXEMPT_TYPE, TAX_DISTRICT,
-    COUNTY_NAME
-  (The CM_RE version uses Parcels_Davis_LIR and Parcels_Weber_LIR — TLI's
-  MVP uses Parcels_Tooele_LIR. Service URL pattern is identical.)
+Paste as one CC message after `/model opus`:
 
-This matters because Phase 3 backfills 24 months of historical items, which
-means thousands of parcel-centroid lookups. Without caching and resilience,
-a single 500 from UGRC invalidates the whole run.
-```
+````
+cd C:/Users/camsr/code/wasatch-intel
 
-### Pre-flight notes (added 2026-04-24 from Phase 2 verification)
+Phase 13a — architect the real enrichment pipeline. Append Phase 13 brief to docs/PROMPT_PLAYBOOK_ADDENDUM.md and update CURRENT STATE.
 
-1. Production URL is https://wasatch-intel.cam-s-rigby.workers.dev (Workers, not Pages). The legacy https://wasatch-intel.pages.dev returns 404. Before doing Phase 3 work, run:
+Goal: produce a detailed architecture document at docs/PHASE_13_ENRICHMENT_ARCH.md that specifies how to populate the parcel_records D1 table for all 13 jurisdictions with real scoring-component data, ready for sub-tasks to be handed to Manus.
 
-     grep -rn "pages.dev" docs/ *.md .env.example 2>/dev/null
+Output document must cover:
 
-   in BOTH repos (wasatch-intel and tooele-land-intel) and replace any lingering pages.dev references with the workers.dev host. Commit as part of Phase 3.
+1. DATA SOURCES & ENDPOINTS — concrete URLs and auth for: UGRC (Parcels_Davis_LIR, Parcels_Weber_LIR, plus the equivalents for the other 11 jurisdictions — list the service paths), UDOT AADT API, Google Places API (already wired, document rate-limit budget), WFRC TAZ + on-ramp coordinates (with employment node coordinates: Hill AFB, IHC McKay-Dee, IHC Layton, Amazon Fulfillment NSL, FedEx Davis, Freeport Center, Ogden CBD, Weber State).
 
-2. The `signal` field is currently 0 for all 136 wire items pending Phase 5 Haiku enrichment. When rendering pins on the map, render them UNIFORMLY — do not build signal-weighted pin styling (size, color, opacity by signal score) yet. That work belongs in Phase 5 once enrichment populates real signal values. Note this in the Map route's component comments so future-you knows why the styling is deliberately flat.
+2. SCHEMA MAPPING — for each scoring dimension (corner/aadt/signal/competition/zoning/growth/stip/corridor + vacancy_status), specify: which source feeds it, the field-level mapping, units, default values when source unavailable, freshness requirements (real-time vs daily vs weekly).
 
-3. City scores already live at /api/digest → data.cityScores (Grantsville 100.0/A, Erda 12.1/D). No new endpoint needed. If the Map route or any Phase 3 component wants city-level signal context, fetch it from there.
+3. CACHE STRATEGY — UGRC parcels are ~158k rows for Davis+Weber alone. We can't refetch all of them on every run. Design a delta-fetch strategy: which fields change frequently (assessed value), which never change (parcel_id, polygon), which change infrequently (zoning, ownership). Define the parcel_records.enriched_at semantics and a per-source TTL.
 
-### Deferred to Phase 5 (data quality)
+4. RATE-LIMITING — Google Places API at 158k parcels has cost implications even with caching. Document the per-run budget cap, the cache hit/miss telemetry, and circuit-breaker logic if costs spike.
 
-- growth_score is empty for all 136 CSV rows → upstream Haiku enrichment in tooele-land-intel hasn't run; fix in Phase 5
-- 1 row with meeting_date="nan" leaks through date filter in loadSignalWire — add Date.parse guard when Phase 5 touches the loader
-- mostRecentActivity="nan" in city_signal_scores.json — fix NaN→None in tooele-land-intel/scripts/aggregate_city_signals.py during Phase 5
+5. SUB-TASK BREAKDOWN FOR MANUS — produce a list of 6–10 discrete Manus tasks, each specifying: input data source, output (D1 table writes), success criteria, dependencies on other sub-tasks. Each Manus task should be runnable independently. Mark which can run in parallel.
 
-### PHASE 3 COMPLETION NOTES
-- **Date:** 2026-04-24
-- **By:** Claude Code (Sonnet 4.6) — Phase 3 session
-- **Built:** resilient arcgis.py (Retry+disk cache); geocode_items.py (4-strategy: parcel_id/nominatim/title-regex/haiku); geocode.yml workflow; MapCanvas rewritten to accept real AgendaItem[] with uniform pins + comment; index.tsx wired to useAgendas() with counter + updated popover; csv-loader.ts tries items_geocoded.csv first; pages.dev refs purged.
-- **Key commits:** wasatch-intel@8db1416, tooele-land-intel@018e54d (geocoded CSV), tooele-land-intel@b24a40b (scripts)
-- **Decisions (not from the addendum):** Ran geocode locally without Haiku (no API key available) → 12/136 geocoded. Committed initial items_geocoded.csv so map shows real pins immediately; full run waits for geocode.yml with ANTHROPIC_API_KEY.
-- **Deviations from the addendum:** Nominatim strategies added city name appendage only when needed (not always "Tooele County, UT" to avoid over-constraining rural addresses). Bbox filter added to reject Nominatim results outside Tooele Valley.
-- **Surprises / gotchas:** GH CLI not authenticated locally — couldn't trigger geocode.yml via `gh workflow run`. User should trigger it from GitHub UI or it runs automatically after next weekly-digest.yml run.
-- **Deferred:** Signal-weighted pin styling (Phase 5). Real PARCELS layer (Phase 4). ParcelDeepDive still uses mock Parcel shape (Phase 4/5).
-- **Geocode workflow ran 2026-04-24 — 30/136 items plotted, $0.011 cost.** 106 unplotted: 55 no-text items (procedural), 5 canceled meetings, 46 subdivision names Nominatim can't resolve. 0 out-of-bbox garbage. Quality clean — no prompt tightening needed.
+6. ROLLOUT ORDER — which sub-tasks ship first to deliver visible value soonest. (My instinct: vacancy + corner + zoning first, then growth/STIP/corridor since they're already partially in WI, then AADT/signal/competition.)
+
+7. TESTING STRATEGY — for each sub-task, how do we verify it shipped correctly? Spot-check parcels (we know parcel 080480106 at 3500W/4000S in West Haven has specific expected scores — use it as a regression target).
+
+Do NOT implement any sub-tasks during this phase. The output is the architecture document plus an updated PROMPT_PLAYBOOK_ADDENDUM.md showing Phase 13a complete and CURRENT STATE pointing to Phase 13b.
+
+Commit and push docs/PHASE_13_ENRICHMENT_ARCH.md.
+````
+
+### Sub-phase 13b — Manus execution
+
+After 13a produces the architecture doc, paste each Manus task individually into Manus. The architecture doc should produce ~6–10 self-contained Manus prompts.
+
+When you ask me for "next prompt" after 13a, I'll read `docs/PHASE_13_ENRICHMENT_ARCH.md` and hand you the first Manus task to run.
+
+### On completion
+
+Last Manus task in 13b updates `docs/PROMPT_PLAYBOOK_ADDENDUM.md` (committing via the GitHub API token in Manus's environment) to mark Phase 13 complete and point CURRENT STATE to Phase 14.
 
 ---
 
-## PHASE 4 ADDENDUM — STIP overlay + polygon renderer
+## Phase 14 — Frontend ↔ API wiring + legacy cleanup
 
-**Add to the Phase 4 prompt, inside the deliverables section:**
+**Tool**: Claude Code · **Model**: `/model sonnet` · **Est. time**: 2–4 hours · **Est. LLM cost**: ~$1–2
 
-```
-ADDITIONAL DELIVERABLES:
+Mechanical refactor. IntelProvider stops reading mocks, starts calling the Hono endpoints stubbed in Phase 11 (now backed by real D1 data from Phase 13). Delete `ParcelDeepDive` and `DEALS` legacy mock. Migrate Feed/Agendas/Developers/Search/Watchlists routes to consume `IntelParcels`. Pure Sonnet work.
 
-1. Port vendor/cm_re/stip/stip_fetcher.py into scripts/fetch_stip.py:
-   - Source: UDOT EPM All Projects as Lines (FeatureServer/0)
-   - Filter to Tooele Valley bbox (approx. [-112.60, 40.35, -112.00, 40.95])
-   - Keep only Active / Programmed / Planned / Design / Construction statuses
-   - Write data/stip_projects.geojson, committed weekly
-   - No API key needed; UDOT EPM is public.
+### Kickoff prompt
 
-2. Port the polygon-fetch logic from vendor/cm_re/parcel/parcel_polygon_map.py:
-   - Batched UGRC polygon geometry fetch (50 parcel IDs per request)
-   - REQUEST_DELAY = 0.35s between requests
-   - Output: data/parcel_polygons.geojson (for parcels that have agenda
-     activity or GP-gap scores — not every parcel, Phase 4 is scoped to
-     parcels with something interesting to show)
+````
+cd C:/Users/camsr/code/wasatch-intel
 
-3. The React MapCanvas component renders three layers:
-   - Base: parcel polygons colored by gap score (the Phase 4 core feature)
-   - Overlay: STIP projects as line features, toggleable
-   - Markers: agenda-item pins from Phase 3 geocoding
+Phase 14 — Frontend↔API wiring + legacy cleanup. Append Phase 14 brief to docs/PROMPT_PLAYBOOK_ADDENDUM.md, update CURRENT STATE, then execute, then mark complete and point CURRENT STATE to Phase 15.
 
-CM_RE's parcel_polygon_map.py also renders a standalone Leaflet HTML with a
-filter panel — that's reference for UX ideas (transparency slider, score
-threshold, acreage filter) but the TLI production renderer is React-side in
-MapCanvas, not a standalone HTML file.
-```
+Three deliverables:
 
-### PHASE 4 COMPLETION NOTES
-- **Date:** 2026-04-24
-- **By:** Claude Code (Opus 4.7) — Phase 4 session
-- **Built:** tooele-land-intel `fetch_stip.py` (227 UDOT projects in Tooele bbox) + `build_gap_layer.py` (10,665 parcels, 60% scored in Erda, 33 high-gap A-20→HIR confirmed) + monthly `gap-layer.yml` cron. wasatch-intel: `/api/gap-layer` + `/api/stip` endpoints, `useGapLayer/useStip` hooks, MapCanvas rewritten with three real GeoJSON sources (gap-score-interpolated parcel fill, yellow STIP lines, agenda pins).
-- **Key commits:** wasatch-intel@ea394a3, tooele-land-intel@687be58
-- **Decisions (not from the addendum):** Vendored CM_RE STIP URL (`services1.arcgis.com/vdNDkVykv9vEWFX4/...EPM_Projects_Lines`) was stale — that host belongs to a different org. Switched to live UDOT public ArcGIS host `services.arcgis.com/pA2nEVnB6tquxgOW/Projects_as_Lines/FeatureServer/0` and rewrote field schema (pin/public_desc/pin_stat_nm/etc.). Coord-rounded gap_layer.geojson to 6dp + minified → 6.7 MB.
-- **Deviations from the addendum:** Did NOT use the brief's per-parcel `parcel_polygon_map.py` BATCH_SIZE=50 polygon fetch — instead pulled polygons in the same parcels query as zoning-by-centroid (single ArcGIS call per city, returnGeometry=true), which is simpler and stays under the layer's 6000 row cap with `--max 6000`. Per-parcel batched fetch is unnecessary at this scale.
-- **Surprises / gotchas:** First gap-layer run scored 0 parcels — Erda's own zoning layer (#1) and the County GP layer cover geographically disjoint areas (incorporated Erda vs unincorporated county). Fixed by unioning all three zoning sublayers into one STRtree, handling layer 7's `Zoning` vs layers 1/4's `Zone` field-name difference. Also: layer 7 (Grantsville) had ~3% GP coverage — partial-GP-caveat note added to the layer rail, null gap_score rendered transparent.
-- **Deferred:** ParcelDeepDive drawer rewrite to consume live ArcGIS instead of mock Parcel shape (Phase 5). Currently `routes/index.tsx` shows a temporary parcel-properties popover (apn/zoning/gp/gap_score/owner). Mock `Parcel` type and `ParcelDeepDive` component still in tree but unimported.
-- **Post-deploy gap-score fixes 2026-04-24:** Investigation revealed gap_score range is 0–7 (integer, bimodal), not 0–1. Three fixes applied: (1) rescaled MapCanvas gradient stops to 0–7 and added a gray 20%-opacity null layer for no-GP parcels; (2) added `current_zone_label` and `gp_designation_label` human-readable fields to every feature in gap_layer.geojson; (3) added `developable` boolean (false for ROW APNs and UDOT/State of Utah owners). GeoJSON regenerated: 11,138 features, 43 non-developable parcels tagged. False-positive risk in owner regex mitigated by anchoring `^USA$` instead of `\bUSA\b`.
+1. WIRE INTELPROVIDER TO HONO. In src/lib/intel-context.tsx, replace the in-memory INTEL_PARCELS load with a fetch to /api/parcels?bbox=... (use TanStack Query with appropriate cache keys). Same for /api/profiles, /api/pipeline. Add loading and error states. Add optimistic updates for stage changes, save/remove pipeline, custom profile saves.
+
+2. DELETE LEGACY. Remove src/components/ParcelDeepDive.tsx and any DEALS/DealStage exports from src/lib/mock-data.ts that are no longer referenced. Migrate any remaining consumers (likely Feed/Agendas/Developers/Search/Watchlists) to consume IntelParcels via useIntel(). The /watchlists route's saved-watchlist matching logic needs to be re-pointed at intel.parcels rather than the legacy PARCELS array.
+
+3. SMOKE TEST. Run bun run build clean. Run bun run dev. Click through every route. Open the network tab and verify each route is hitting /api/* endpoints (not loading from in-memory mocks). Save a parcel to pipeline; refresh; confirm it persists (D1-backed).
+
+Acceptance: zero regressions on legacy routes, all surfaces backed by real API calls, no dead code remaining from Phase 11's mock-only state.
+
+On completion, update docs/PROMPT_PLAYBOOK_ADDENDUM.md (Phase 14 PHASE_LOG entry, CURRENT STATE → Phase 15), commit, push.
+````
 
 ---
 
-## PHASE 5 ADDENDUM — Road adjacency + AADT enrichment
+## Phase 15 — Comps scraper + spread calc going live
 
-**Add to the Phase 5 prompt, inside the "Python work" section:**
+**Tool**: **Manus** (lead) · **Models**: Manus internal · **Est. time**: 3–5 days · **Est. LLM cost**: ~$0 in Anthropic API; Manus pricing applies
 
-```
-ADDITIONAL DELIVERABLE — road adjacency & AADT:
+Comps scraping is Manus's specialty: long-running, ToS-evasion, weekly cadence, single-purpose. Don't burn CC credits on this.
 
-Port vendor/cm_re/parcel/road_adjacency.py into scripts/enrich_roads.py:
+### Manus prompt (paste into Manus)
 
-- Source: UGRC Utah Roads FeatureServer/0
-- Fields: CARTOCODE, DOT_FCLASS, DOT_AADT, SPEED_LMT, FULLNAME
-- For each parcel in the deep-dive payload, compute:
-    nearest_arterial_distance_mi  — distance to nearest CARTOCODE 1-5 road
-    nearest_arterial_name         — that road's name
-    nearest_arterial_aadt         — that road's DOT_AADT (real UDOT number)
-    is_corner                     — True if 2+ distinct road names within 100m
-    corner_roads                  — list of the road names if corner
-- Cache roads per bbox under data/cache/roads/tooele.json so repeated
-  parcel lookups don't re-hit UGRC.
+````
+Wasatch Intel — Phase 15: build a multi-source land comps scraper for Wasatch Front + Tooele Valley.
 
-Add these fields to the /api/parcel/:apn response payload so the Parcel
-Deep Dive drawer can show:
-  "On Main St · 12,400 AADT · Arterial frontage"
-  "Corner: SR-138 & 2000 W"
+Repo: github.com/camsrigby-hash/wasatch-intel
 
-This directly supports Phase 5's placeholder residual-land-value model —
-traffic counts and arterial proximity are the two biggest drivers of CRE
-land value, and having them cached per-parcel sets up a real model later
-without another UGRC scraping pass.
+Goal: weekly scraper that pulls land sale comps from multiple sources, normalizes them into a comps table in the wasatch-intel D1 database, and exposes them via an existing Hono endpoint pattern. The Spread headline calculation in src/components/ParcelDetailPanel.tsx already expects this data shape — see the SpreadBlock interface in src/lib/parcel-intel.ts.
 
-Note: CM_RE's scorer builds an AADT-to-score curve (150k = 100, 50k = 70,
-10k = 30). Do NOT port that curve into TLI — TLI shows the raw AADT number
-and lets the human interpret it. Scoring for a specific use is out of scope.
-```
+Sources, in priority order:
+1. LoopNet (ToS-aware: residential IP from your runner, no proxies, weekly cadence only — keep volume low)
+2. CREXI (same approach)
+3. Land.com / LandWatch (smaller players, less aggressive bot protection)
+4. Tooele County recorded sales (free open data; permanent fallback)
+5. Other Utah county recorded sales as available
 
-### Pre-flight notes (added 2026-04-24 from Phase 3 completion)
+For each comp, extract: address, sale date, sale price, $/sqft, acreage, zoning_class (current at time of sale), source, link.
 
-Geocoding gap to close: 46 of 136 agenda items currently fail geocoding because they only have subdivision names ("Oquirrh Point Phase 1", "Copper Cove") that Nominatim can't resolve. The underlying agenda PDFs almost certainly contain parcel IDs or legal descriptions in the body text — the current parser only extracts from the title field. As part of Phase 5's enrichment pass, have Haiku read the full PDF body (not just title) and pull any parcel IDs / legal descriptions / cross-streets it finds into new CSV columns (parcel_id_extracted, legal_description, cross_streets). Then re-run geocode_items.py — expected jump from 30/136 to 80+/136 plotted.
+Storage: new D1 table `comps`. Columns: id, address, lat, lng, sale_date, sale_price, price_per_sqft, acres, zoning_class, source, link, scraped_at. Index on (lat, lng) for spatial queries, on (zoning_class, sale_date) for the spread calc.
 
-Out of scope for Phase 5: anything requiring polygon centroids from a gap layer (that's Phase 4's job).
+Wire-up: extend the existing Hono /api/parcels/{id} endpoint to enrich each parcel with `comps: { current_zoning: CompRecord[], gp_zoning: CompRecord[] }` populated by spatial query (within 5 miles for current, 10 miles for GP, last 18 months for both).
 
-### Gap-layer data shape (as of Phase 4 post-deploy fixes)
+Schedule: GitHub Actions weekly cron, Sundays 06:00 UTC. Free-tier minutes only.
 
-The Deep Dive drawer will consume /api/gap-layer features. Each feature's properties include:
-- apn (string) — parcel ID
-- acres (number)
-- owner (string)
-- zoning (raw code, e.g. "A-20")
-- current_zone_label (human-readable, e.g. "Agricultural (20-acre min)")
-- generalPlan (raw code, e.g. "HIR")
-- gp_designation_label (human-readable, e.g. "High-Intensity Residential")
-- zoning_intensity, gp_intensity (0–8 integers)
-- gap_score (0–7 integer; null where no GP coverage)
-- developable (boolean; false for ROW and public land)
-- jurisdiction (string)
+Robustness: fallback per source — if LoopNet fails, log and continue. Always succeed with at least county recorded data.
 
-Drawer should default-filter on developable=true. Parcels with null gap_score should render as "No General Plan coverage" rather than as "gap=0" (semantically different — missing data vs. aligned zoning).
+Acceptance: parcel detail page Spread headline shows real numbers when at least one comp source returns data.
 
-Current counts: 11,138 total, 11,095 developable, 86 with gap_score ≥ 6 + developable. These are your universe sizes for pagination/list design.
-
-### PHASE 5 COMPLETION NOTES
-- **Date:** 2026-04-24
-- **By:** Claude Code (Sonnet 4.6) — Phase 5 session
-- **Built:** tooele-land-intel: `enrich_roads.py` (UGRC Utah Roads CARTOCODE 1-5, haversine proximity, corner detection, APN-keyed JSON output); `aggregate_city_signals.py` NaN date fix; `gap-layer.yml` updated to run enrich_roads + commit roads_enrichment.json. wasatch-intel: `ParcelDetail/ParcelNeighbor/AnalysisResult` types; `loadParcelDetail/loadParcelAdjacency` in csv-loader; 3 API endpoints in entry.ts + full opportunity analysis engine (5 strategies scored /8→/5); `useParcelDetail/Adjacency/Analyze` hooks; `ParcelDeepDive.tsx` full rewrite (5 tabs, live data, skeletons); `index.tsx` drawer wired.
-- **Key commits:** wasatch-intel@<pending>, tooele-land-intel@<pending>
-- **Decisions (not from the addendum):** Opportunity analysis ported directly to TypeScript in the Worker (not a Python GitHub Actions trigger). Marked `simplified: true` to caveat that 1-mile ArcGIS buffer context is excluded. Agenda-to-parcel linking uses dual strategy: APN text match OR ≤500m centroid proximity. `enrich_roads.py` output not yet generated — drawer gracefully shows "—" for road fields.
-- **Deviations from the addendum:** Did NOT add geocoding-gap haiku enrichment (parcel_id_extracted etc.) — that is a separate concern from the road adjacency deliverable. Roads enrichment data will populate after first workflow run.
-- **Surprises / gotchas:** Worker serves gap_layer.geojson from memory (cached at first request). No per-parcel ArcGIS calls needed — entire detail comes from the in-memory layer + roads JSON + agendas CSV.
-- **Deferred:** Geocoding improvement (46 unplotted items with subdivision names) — still deferred. Comps tab in ParcelDeepDive is a placeholder (Phase 8/9). Notes tab localStorage will sync to D1 in Phase 8.
+On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDENDUM.md adding a Phase 15 PHASE_LOG entry and updating CURRENT STATE to point to Phase 16. Push to main.
+````
 
 ---
 
-## PHASE 6 ADDENDUM — Shared signal taxonomy for correlation
+## Phase 16 — Pipeline DD tier real data (water shares, flood zone, recorded documents)
 
-**Add to the Phase 6 prompt, inside the "Python work" section before the
-correlate_signals.py bullet:**
+**Tool**: **Manus** · **Est. time**: 1–2 weeks · **Est. LLM cost**: ~$0
 
-```
-ADDITIONAL CONTEXT — shared signal taxonomy:
+Per-county adapter work. Each Utah county does recorded documents differently. Long-tail integration — Manus is purpose-built for this. Do not burn CC credits.
 
-correlate_signals.py's Haiku correlation prompt should use the same nine
-signal types from vendor/cm_re/scraper/parser.py that we adopted in the
-Phase 1 addendum (REZONE, NEW_SUBDIVISION, COMMERCIAL_PROJECT,
-MINIFLEX_OPPORTUNITY, INFRASTRUCTURE, ANNEXATION, GENERAL_PLAN_AMENDMENT,
-LARGE_PROJECT, DEVELOPER_ACTIVITY).
+### Manus prompt
 
-For each Reddit post or news item, Haiku should:
-  1. Attempt to classify the signal into one of the nine types (or
-     "UNCATEGORIZED" if none fit).
-  2. Extract any jurisdiction, specific project / parcel / applicant.
-  3. Score correlation to each candidate agenda item on these axes:
-     - Jurisdiction match (weight 0.4)
-     - Signal type match (weight 0.3)  ← new dimension, only possible
-                                         because we share a taxonomy
-     - Keyword overlap (weight 0.2)
-     - Temporal proximity (weight 0.1)
+````
+Wasatch Intel — Phase 16: wire real Due Diligence data into ParcelDetailPanel's DD Checklist tab.
 
-Sharing the taxonomy makes correlations meaningfully stronger. A Reddit post
-tagged COMMERCIAL_PROJECT correlating to an agenda item also tagged
-COMMERCIAL_PROJECT in the same jurisdiction within 30 days is a high-
-confidence match. Without shared taxonomy, correlation is keyword-only.
-```
+Repo: github.com/camsrigby-hash/wasatch-intel
 
-### Pre-flight notes (added 2026-04-25 from Phase 5 verification)
+Three integrations:
 
-The `analyzeOpportunity` function and its helpers are currently inlined in `src/server/entry.ts`. As Phase 6 adds analysis variants (per `CM_RE_INTEGRATION.md`), extract to `src/lib/analyze.ts` BEFORE adding new logic. `entry.ts` should only contain routing — analysis logic is its own module. Estimated extraction: 15 minutes, zero behavior change.
+1. WATER SHARES. Utah Division of Water Rights public database. For each parcel, query whether water shares are attached. Endpoint: https://maps.waterrights.utah.gov/EsriMap/MapForm.aspx (or whichever stable API exists). Output: dd_checklist_items row with `done: false` and `notes` populated with "Water shares: {yes/no/unknown}" plus a link to the records.
 
-Also: the early-return guard at the top of `entry.ts` (the one that handles non-GET methods) was found in Phase 5 to incorrectly block POST requests to handler routes — fixed in `796acd9`. When refactoring, preserve that fix and add a comment explaining why the guard must check the path, not just the method.
+2. FLOOD ZONE. FEMA flood map service. Use parcel centroid lat/lng to query. Output: dd_checklist_items row with notes "FEMA Zone: {X/AE/AO/etc}" plus a link to the FEMA flood map at those coordinates.
 
-### PHASE 6 COMPLETION NOTES
-- **Date:** 2026-04-25
-- **By:** Claude Code (Sonnet 4.6) — Phase 6 session
-- **Built:** tooele-land-intel: `scrape_news_rss.py` (feedparser, 6 RSS feeds, keyword-filtered); `scrape_reddit.py` (PRAW, 4 subreddits, graceful no-creds exit); `correlate_signals.py` (Haiku classify → 4-axis scoring, 200-call cap); `signals.yml` daily cron; `feedparser`+`praw` in requirements.txt. wasatch-intel: `analyzeOpportunity` extracted from `entry.ts` → `src/server/lib/analyze.ts` (pre-flight); `loadSignalWire()` merges agendas + news + Reddit + correlations; entry.ts source metadata updated.
-- **Key commits:** tooele-land-intel@7c90aaf, wasatch-intel@<pending>
-- **Decisions (not from the addendum):** Reddit scraper writes empty CSV (not an error) when env vars absent so the workflow succeeds on news-only. Correlation jurisdiction lookup uses an alias map (e.g. "tooele" → "Tooele") to handle colloquial city references. External signal score is derived from keyword hit count (hits × 12, capped at 100) since signals_news/reddit don't have a growthScore field.
-- **Deviations from the addendum:** Phase 6 brief title in PROMPT_PLAYBOOK.md says "Developer profile + agenda detail panes" but that was a mislabeling in the playbook — the addendum correctly calls it "Rumor signal pipeline." Executed the addendum's version.
-- **Surprises / gotchas:** Phase 6 pre-flight note said to extract analyzeOpportunity BEFORE adding new logic — done. The early-return guard in entry.ts (checks path + method, not just method) was already fixed in 796acd9 and preserved correctly.
-- **Deferred:** Reddit signals pending user adding GitHub Secrets. News RSS signals will begin flowing with the next daily signals.yml run.
+3. RECORDED DOCUMENTS. Per-county strategy starts with Tooele County (free digital access). Query the county recorder by parcel ID, list available recorded docs, expose as a list-of-links in the DD tab. After Tooele works, extend to Box Elder (varies), Davis (free with limits), Weber (similar). Do NOT attempt Salt Lake County yet — they charge per-document and per-time-window; that's a separate budget conversation.
 
-2026-04-25: Reddit ingestion now dual-mode. RSS-based ingestion is live via
-scrape_news_rss.py (4 subreddits, no auth required). PRAW-based ingestion
-in scrape_reddit.py remains intact and soft-fails until Responsible Builder
-Policy approval lands; once approved, three GitHub Secrets activate it
-and the dedup step in correlate_signals.py handles overlap. Form was not
-submitted — RSS deemed sufficient for the use case (no comment-thread
-signal needed; post-level filtering is enough).
+Each integration writes to dd_checklist_items in D1 with item_id like `auto_water`, `auto_flood`, `auto_recorded_{county}`. The checklist UI in ParcelDetailPanel.tsx already renders these — no frontend changes needed beyond styling auto-populated items distinctly from user-added ones.
+
+Schedule: GHA cron, daily for parcels in pipeline (water/flood are point queries, fast). Recorded docs only when stage advances to DD (event-triggered).
+
+On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDENDUM.md with Phase 16 PHASE_LOG entry and CURRENT STATE → Phase 17. Push to main.
+````
 
 ---
 
-## PHASE 7 — Watchlists + D1 persistence (no CM_RE addendum — playbook-only phase)
+## Phase 17 — LOI .docx generation + Outreach wiring
 
-### PHASE 7 COMPLETION NOTES
-- **Date:** 2026-04-25
-- **By:** Claude Code (Sonnet 4.6) — Phase 7 session (code) + activation session (D1 setup)
-- **Built:** D1 schema (`schema.sql`); `d1-client.ts` (CRUD helpers); `email.ts` (Resend alert HTML); `watchlist-checker.ts` (hourly cron: signal matching per watchlist type, recordHit, email dispatch); `WatchlistWizard.tsx` (3-step wizard: type selector → criteria form with maplibre-gl-draw polygon support → name + alert settings); `watchlists.tsx` full CRUD UI (card list with hit count badge, inline settings panel, threshold slider, alert toggles, delete confirm). `entry.ts` updated with CRUD routes + `scheduled` export. `api-client.ts` + `types.ts` updated.
-- **Key commits:** wasatch-intel@685aa8b (D1 activation), wasatch-intel@18aeb1e (package-lock), wasatch-intel@b1e74a2 (d1-setup.yml)
-- **Decisions (not from the brief):** `@mapbox/mapbox-gl-draw` chosen over `@maplibre/maplibre-gl-draw` — more mature, runtime-compatible with MapLibre GL; `@ts-ignore` bridges typings. Email `from` defaults to `onboarding@resend.dev` (Resend sandbox). Single hardcoded alert email (cam.s.rigby@gmail.com) — MVP single-user. D1 provisioned via GitHub Actions `d1-setup.yml` workflow — required adding D1 Edit permission to the Cloudflare API token (original token was Workers-only).
-- **Deviations from the addendum:** None. Phase 7 had no CM_RE addendum.
-- **Surprises / gotchas:** `@cloudflare/workers-types` was missing — added to devDependencies. `package-lock.json` was out of sync after adding Phase 7 deps (no local Node in PATH), causing `npm ci` failures in the setup workflow; fixed by running `npm install` with the full Node path. Cloudflare API token needed D1 Edit scope added before `wrangler d1 create` could succeed.
-- **Deferred:** Watchlist type-change after creation. Per-user alert email preference. In-app notification badge in AppShell header.
+**Tool**: Claude Code · **Model**: `/model sonnet` · **Est. time**: 4–6 hours · **Est. LLM cost**: ~$1
 
----
+Doc generation + form wiring. Sonnet handles this cleanly.
 
-## PHASE 8 — Deal pipeline persistence (no CM_RE addendum — playbook-only phase)
+This is also when **Whitepages goes live** (the $220/mo flip). It's a single env var change in production once you're ready to absorb the cost.
 
-### PHASE 8 COMPLETION NOTES
-- **Date:** 2026-04-25
-- **By:** Claude Code (Sonnet 4.6) — Phase 8 session
-- **Built:** schema.sql extended (deals, deal_notes, deal_contacts tables, 4 new indexes); d1-client.ts deal CRUD helpers (getDeals, createDeal, updateDeal, deleteDeal soft-delete, getDealNotes, createDealNote, getDealContacts, createDealContact); entry.ts full CRUD routes (/api/deals GET/POST, /api/deals/:id GET/PATCH/DELETE, /api/deals/:id/notes GET/POST, /api/deals/:id/contacts GET/POST); api-client.ts mutation hooks; pipeline.tsx full DnD Kanban rewrite with @dnd-kit/core (optimistic stage updates, NewDealDialog, DeleteDealDialog, DealPanels with notes auto-save + contacts mini-form); ParcelDeepDive.tsx "+ Track deal" button; d1-migrate.yml workflow.
-- **Key commits:** wasatch-intel@86d4888
-- **Decisions (not from the brief):** Soft delete (stage → Closed/Dead) instead of hard delete, preserves history. @dnd-kit PointerSensor with 6px activation threshold prevents accidental drags on card clicks. NewDealDialog exported from pipeline.tsx rather than a new file (kept file count down). deploy-cloudflare.yml changed npm ci → npm install to avoid lock file mismatch with no local Node.
-- **Deviations from the brief:** None material. d1-migrate.yml is new (not in brief) — needed because no local Node to run wrangler d1 execute manually.
-- **Surprises / gotchas:** D1 schema migration requires a separate workflow trigger after the code deploy — the deploy itself only pushes JS, not SQL. User must manually run d1-migrate.yml from GitHub Actions after first deploy.
-- **Deferred:** Hard delete (currently soft). Per-deal email/phone action wiring (icons render but don't open mailto/tel yet). Outreach templates button (header UI only, no content).
+### Kickoff prompt
 
----
+````
+cd C:/Users/camsr/code/wasatch-intel
 
-## PHASE 9 — Per-city expansion via PMN (NEW full prompt)
+Phase 17 — LOI .docx generation + Outreach wiring. Append Phase 17 brief to docs/PROMPT_PLAYBOOK_ADDENDUM.md, update CURRENT STATE, execute, mark complete, advance to Phase 18.
 
-**Replace or augment the existing Phase 9 plan.** CM_RE demonstrates that
-`utah.gov/pmn` is a centralized hub covering 30+ Utah cities with
-standardized HTML — making per-city expansion a one-line change rather
-than a new scraper per city.
+Three deliverables:
 
-```
-[STANDARD OPENING]
+1. LOI .DOCX OUTPUT. The LOI Builder tab in ParcelDetailPanel.tsx currently renders a live text preview of the merged Wagstaff template. Wire a real .docx download. Use docx-templates or a similar TS library. The template structure already maps to the LOIDraft interface in src/lib/parcel-intel.ts. Server-side generation is fine (new endpoint POST /api/parcels/{id}/loi.docx) — keep the .docx template file in the repo at templates/loi_wagstaff.docx (a sanitized version of the user's reference Wagstaff Investments template with all named placeholders).
 
-PHASE 9 BRIEF — Per-city expansion
-==================================
+2. OUTREACH PANEL — WHITEPAGES ADAPTER WIRED. The Owner & Outreach tab has stubbed phone/email fields. Build the Whitepages adapter as a Worker endpoint POST /api/parcels/{id}/owner-contact. Authentication via WHITEPAGES_API_KEY environment variable. The adapter caches results in D1 (owner_contacts table: parcel_id, phone, email, source, retrieved_at). Cache TTL 90 days — owner contact info doesn't change daily. The adapter is FEATURE-FLAGGED: only runs when WHITEPAGES_ENABLED=true. Default OFF. User flips on via Cloudflare environment variable when ready to incur the $220/mo subscription.
 
-Prerequisite: Phases 1–6 complete. The core dashboard, agenda pipeline,
-geocoding, gap layer, parcel deep dive, and rumor signal pipeline are all
-live on the MVP scope (Erda + Grantsville).
+3. OUTREACH UI — MAILTO/TEL BUTTONS WIRED. The currently-stubbed mailto/tel buttons in Owner & Outreach tab now open. Phone numbers are tel: links, emails are mailto: links with a pre-populated subject and body using the existing template-selector logic. The "Outreach Templates" button in the header opens a Sheet with template management (CRUD, with merge fields like {parcel.address} and {owner.name}).
 
-Goal: Expand jurisdictional coverage to 10–15 Tooele Valley + Wasatch Front
-cities, chosen from: Tooele City, Stansbury Park, Lake Point, Saratoga
-Springs, Eagle Mountain, Lehi, Bluffdale, plus any other target cities per
-PROJECT_STATE.md.
+Acceptance: open a parcel in pipeline at LOI stage, fill the form, click Download .docx, get a real Word document. Open a parcel at any stage with Whitepages enabled, see real phone/email. With Whitepages disabled (default), gracefully show "—" with a tooltip explaining the feature is gated.
 
-Approach — PMN first, per-city fallback:
-
-1. PMN DISCOVERY
-   Visit https://www.utah.gov/pmn/sitemap/index.html and record the
-   public-body IDs for each target city. For each, find:
-     - Planning Commission body_id
-     - City Council body_id (if separate)
-   Write results to data/pmn_bodies.yaml with schema:
-     <body_id>: { city, county, body_type, active: true }
-
-2. PORT THE PMN SCRAPER
-   From vendor/cm_re/scraper/scraper.py, port:
-     - fetch_page() — requests + BeautifulSoup + 1.5s rate limit
-     - get_notices_for_body(body_id, body_meta) — parses the
-       /pmn/sitemap/publicbody/{body_id}.html table for notices
-     - PDF download with dedup by URL hash
-   Into scripts/scrape_pmn.py, writing:
-     - data/pmn_notices.csv (one row per notice)
-     - data/pmn_pdfs/<city>/<date>_<title>.pdf
-
-3. WIRE INTO THE EXISTING PARSER
-   The Phase 1 parser already understands the richer signal schema. Feed
-   PMN-downloaded PDFs into the same parser. Resulting signals merge into
-   agenda_items_split.csv with jurisdiction tagged to the PMN city.
-
-4. CITIES NOT ON PMN
-   For any city missing from PMN (this was Tooele County's case — Tyler
-   Meeting Manager SPA, explicitly skipped in current scope), fall back to
-   the existing per-city scraper pattern used for Erda + Grantsville.
-   Document each fallback city in data/pmn_coverage.md as "non-PMN, custom
-   scraper required" so the scope is explicit.
-
-5. AGGREGATOR ALREADY HANDLES MULTI-CITY
-   The weighted aggregator from Phase 2 addendum rolls up per-city without
-   modification. Adding cities just adds entries to the dashboard's city
-   list.
-
-6. GitHub Actions workflow:
-   - Rename weekly-digest.yml to weekly-agendas.yml (if not already)
-   - Add scrape_pmn step before the existing parse step
-   - Adjust concurrency limits if the run exceeds 6 hours (GitHub Actions
-     free tier limit on public repos: 2,000 min/mo; each weekly run should
-     stay well under 60 min even with 15 cities)
-
-Decisions to make without asking:
-- PMN rate limit: 1.5s is what CM_RE used, keep it.
-- PDF dedup: by URL hash + filename + date, same as CM_RE.
-- Failed-body handling: log and continue, don't crash the whole run.
-- Haiku cost cap: scale linearly with city count. 50 PDFs/wk was MVP cap
-  for 2 cities; ~250-350 PDFs/wk for 10-15 cities. Cost estimate: ~$1-2/wk
-  at Haiku 4.5 pricing. Still well under the $30/mo total ceiling.
-
-Verification:
-- data/pmn_bodies.yaml has entries for each target city.
-- scrape_pmn.py runs end-to-end for all cities without 429s or crashes.
-- agenda_items_split.csv shows items from at least 5 new cities after one
-  run.
-- Dashboard's city filter shows the new cities.
-- PROJECT_STATE.md PHASE_LOG updated.
-
-STOP and summarize when done.
-```
-
-### PHASE 9 COMPLETION NOTES
-- **Date:** 2026-04-25
-- **By:** Claude Code (Sonnet 4.6) — Phase 9 session
-- **Built:** tooele-land-intel: 11 new city entries in `data/jurisdictions.yaml` with PMN body IDs (26 new PMN bodies total: Tooele City, Lehi, Saratoga Springs, Eagle Mountain, South Jordan, Herriman, Bluffdale, Draper, American Fork, Vineyard, Spanish Fork). Added `--jurisdiction-label` CLI flag to `scrape_utah_pmn.py`; updated `scrape_pmn_all.py` to pass canonical names; added jurisdiction aliases to `persist_to_csv.py`; created `data/pmn_coverage.md`. wasatch-intel: "American Fork" added to Jurisdiction type, JURISDICTIONS array, and CITY_CENTERS in `types.ts`.
-- **Key commits:** tooele-land-intel@<see commit>, wasatch-intel@<see commit>
-- **Decisions (not from the addendum):** PMN body IDs discovered via web search + individual page fetches (PMN sitemap index 404'd). Jurisdiction labels passed explicitly from jurisdictions.yaml rather than relying on PMN entity names to avoid "City of X" vs "X" mismatches. scrape_pmn_all.py was already wired into agendas-watch.yml — no workflow changes needed.
-- **Deviations from the addendum:** Did NOT rename weekly-digest.yml to weekly-agendas.yml (renaming would break existing GitHub Actions references; not worth the churn). `data/pmn_bodies.yaml` was not created as a separate file — the PMN body IDs live in `data/jurisdictions.yaml` per the existing schema (avoids split config). scrape_pmn.py was already built as `scrape_utah_pmn.py` + `scrape_pmn_all.py` in prior sessions.
-- **Surprises / gotchas:** PMN sitemap index URL (https://www.utah.gov/pmn/sitemap/index.html) returns 404 — body IDs were discovered via Google search + individual page fetches. Stansbury Park and Lake Point are unincorporated Tooele County — no PMN bodies, Tyler Meeting Manager, skipped per scope guardrails.
-- **Deferred:** Actual agenda items from expansion cities will only appear after next Monday's agendas-watch.yml run. Geocoding of new items follows on next geocode.yml run. Salt Lake City body IDs not added (high-volume, outside Tooele Valley focus — defer to user decision).
-
-Phase 9 graduated 2026-04-25: 13 jurisdictions live in API, 524 split items, $1.07 split cost. Sample items from Lehi, Eagle Mountain, American Fork all show real titles + PMN URLs + confidence ≥ 0.9 from Haiku split.
-
-Open item (low priority, deferred to Phase 10 or beyond): /api/digest cityScores returns []. Diagnosis: `aggregate_city_signals.py` is NOT wired into weekly-digest.yml (confirmed via grep); `city_signal_scores.json` was last generated before Phase 9 and covers only Erda + Grantsville (2 cities); the Worker reads from that file at `${TLI_BASE}/city_signal_scores.json`; since the script hasn't been re-run against the expanded 13-jurisdiction split CSV, the API either serves stale 2-city scores or returns [] on a cache error. Likely because aggregate_city_signals.py has not been re-run on the expanded 13-jurisdiction dataset since Phase 9. Either trigger that script in weekly-digest.yml or expose it as a manual workflow.
+On completion: docs/PROMPT_PLAYBOOK_ADDENDUM.md updated, Phase 17 logged, CURRENT STATE → Phase 18, commit+push.
+````
 
 ---
 
-## PHASE 10 — NAIP land-cover vacancy verification (NEW, deferred)
+## Phase 18 — Site plan vision extraction
 
-**Only execute this phase after:** Phases 1–6 live + Phase 9 expansion done +
-at least 3 months of production stability data. Do not start this earlier;
-the dependency footprint is heavy and the use-case is "last 10% polish".
+**Tool**: Claude Code · **Model**: `/model opus` · **Est. time**: 1 week part-time · **Est. LLM cost**: ~$3–6 (Opus vision is the work)
 
-```
-[STANDARD OPENING]
+This is the one phase where Opus is non-negotiable. Vision quality and prompt precision matter — Sonnet vision misses details Opus catches, and the cost difference per call is small relative to how many parcels we're processing.
 
-PHASE 10 BRIEF — NAIP land-cover vacancy verification
-=====================================================
+### Kickoff prompt
 
-Goal: For parcels in the Deep Dive drawer, show a "site condition" field
-that tells the user whether the ground truth matches UGRC's PROP_CLASS.
-UGRC data lags reality by 1–3 years. A parcel flagged "vacant" in UGRC may
-actually have a finished building; a parcel flagged "improved" may have
-been demolished. This phase adds satellite verification.
+````
+cd C:/Users/camsr/code/wasatch-intel
 
-Approach: port vendor/cm_re/land_cover/land_cover_analyzer.py and
-spectral_classifier.py.
+Phase 18 — Site plan vision extraction. Append Phase 18 brief to docs/PROMPT_PLAYBOOK_ADDENDUM.md, update CURRENT STATE, execute, mark complete, advance to Phase 19.
 
-1. DEPENDENCY DECISION
-   land_cover_analyzer.py requires rasterio + numpy + Pillow. Rasterio
-   compiles native GDAL libs. Two options:
-   (a) Add rasterio to requirements.txt, accept the heavier dependency.
-   (b) Move land-cover analysis to a separate GitHub Actions job with its
-       own Dockerfile, so the main TLI scripts stay light.
-   Recommended: (b). The weekly agenda scrape shouldn't depend on GDAL.
+Two deliverables, build first one fully before starting the second:
 
-2. DATA SOURCE
-   NAIP imagery via Microsoft Planetary Computer STAC catalog (free, no
-   auth). Fallback: spectral_classifier.py's pure-RGB path using any
-   aerial image source (Esri World Imagery).
+1. STRUCTURED EXTRACTION. For agenda items with PDF exhibits attached (subdivision concept plans, site plans, etc.), use Claude vision API to extract structured data from each PDF page. Per page, return JSON with: { page_type: 'site_plan' | 'plat' | 'narrative' | 'other', lot_count: number | null, total_acreage: number | null, road_dimensions: array of { name, width_ft } | null, density_du_per_ac: number | null, building_footprint_sqft: number | null, key_intersections: array of { roads: string[], coordinates_estimated: bool } | null }. Prompt-engineering matters here — write a careful Opus prompt that handles low-quality scans, mixed page types, and ambiguous extractions. Schedule as a one-time backfill of all agenda PDFs in tooele-land-intel/data/exhibits/, then a per-new-PDF trigger going forward. Store results in new D1 table `agenda_pdf_extractions` keyed by agenda_item_id + page_number.
 
-3. CLASSIFICATION
-   Per parcel polygon, compute three spectral indices and classify each
-   pixel as vegetation / bare_soil / impervious_surface / water. Roll up
-   to parcel-level: dominant_cover_class, cover_percentages, flag if
-   PROP_CLASS says vacant but >30% impervious (or vice versa).
+2. PIXEL OVERLAY ON PARCEL POLYGON. After extraction is reliable, attempt the harder task: take the site plan image, identify road intersections shown on it, match those to actual road intersections in UGRC roads layer near the parcel polygon, derive a homography to align the site plan image to the parcel polygon. Display the site plan as a semi-transparent overlay on the parcel polygon in the ParcelDetailPanel "Site Intelligence" tab. This is the "see the proposed development on the actual parcel" feature. If the homography quality is poor (intersections don't match), fall back to displaying the site plan image alongside the parcel polygon rather than overlaid.
 
-4. OUTPUT
-   Enrich /api/parcel/:apn response with:
-     siteCondition: "matches_ugrc" | "possibly_built_since" |
-                    "possibly_demolished_since" | "unknown"
-     coverBreakdown: { vegetation: 0.42, bareSoil: 0.31,
-                       impervious: 0.25, water: 0.02 }
-     naipImageDate: "2024-07-15"
+Acceptance: open a parcel detail panel for any parcel adjacent to recent agenda activity with PDF exhibits; see structured extraction in the Adjacent Activity tab; for parcels with high-confidence overlay, see the visual overlay in Site Intelligence.
 
-5. FRONTEND
-   Parcel Deep Dive drawer "Overview" tab gets a new row:
-     Site condition: [badge]  · NAIP 2024-07-15
-   Badge colored green (matches UGRC), gold (possibly changed), gray
-   (unknown).
+This phase is the "nice-to-have that actually closes deals" feature — it visualizes proposed developments next to your acquisition target. Get it right.
 
-6. RATE LIMIT + COST
-   Microsoft Planetary Computer is free. No $ cost. The compute cost is
-   CPU time; cap at 200 parcels per run, cache results for 12 months per
-   parcel (NAIP is typically updated every 2-3 years per state).
-
-Verification:
-- Pick 3 parcels with known conditions (one actually vacant, one with a
-  recently built warehouse, one with a recently demolished building) and
-  confirm the classifier agrees.
-- Cost stays at $0/mo (Planetary Computer is free tier).
-- PROJECT_STATE.md PHASE_LOG updated.
-
-Scope boundary: do NOT port CM_RE's visual_scanner.py intersection indexing
-or the NAIP chip pipeline (naip_fetcher.py). TLI is parcel-centric, not
-intersection-centric.
-
-STOP and summarize when done.
-```
-
-### Pre-flight notes (added 2026-04-25 from Phase 9 graduation)
-
-cityScores aggregation: Phase 10's historical backfill will produce 24 months × 13 jurisdictions of agenda data. Before backfill commits to live CSVs, ensure `aggregate_city_signals.py` runs against the full dataset and `city_signal_scores.json` reflects all 13 cities. Otherwise `/api/digest` will continue to show stale or empty scores even after backfill lands.
-
-### PHASE 10 COMPLETION NOTES
-- **Date:** 2026-04-25
-- **By:** Claude Code (Sonnet 4.6) — Phase 10 session
-- **Built:** `tooele-land-intel/scripts/backfill_historical.py` (one-time 24-month PMN scrape for all 13 jurisdictions → persist → Haiku split (cost-capped at $50) → aggregate → geocode; archives itself after run); `.github/workflows/backfill.yml` (workflow_dispatch only); `aggregate_city_signals.py` wired into `weekly-digest.yml` so city scores update every Monday.
-- **Key commits:** tooele-land-intel@<see commit>
-- **Decisions (not from the addendum):** NAIP land-cover addendum explicitly skipped — the addendum's own prerequisite ("at least 3 months of production stability data") was not met (Phase 9 completed same day). NAIP documented for Phase 11+ pickup ~2026-07-25.
-- **Deviations from the addendum:** Phase 10 playbook brief says "run the backfill script" as a one-shot execution; since there's no local Node and no way to run Python locally in this session, the deliverable is the script + workflow (to be triggered by the user from GitHub Actions), not a completed scrape run. Pre-flight aggregate_city_signals fix done inline.
-- **Surprises / gotchas:** The existing `scrape_utah_pmn.py` already defaults to `--months-back 24` and `scrape_pmn_all.py` already scrapes all bodies — so the regular weekly run was already doing most of what the "backfill" describes. The backfill script's main value is (1) a one-time complete run across all 13 bodies, (2) cost-guard before Haiku, (3) self-archiving so it can't be accidentally re-run.
-- **Deferred:** Actual backfill execution (user triggers `backfill.yml` from GitHub Actions). NAIP land-cover (~2026-07-25 earliest).
-
-### PMN history limitation discovered 2026-04-27
-
-Phase 10 dry-run revealed that PMN public body pages only render the ~10 most recent notices each. The `--months-back 24` flag filters nothing because there isn't 24 months of data exposed to scrape — just the current window. The 6,136-row corpus accumulated organically through Phase 1-9 weekly scrapes, not from a bulk pull.
-
-Implications:
-- A true 24-month archive would require PMN's search endpoint by date range, which is a different scraper not in current scope.
-- The existing organic accumulation is actually better than a one-time backfill — it has real provenance and reflects the actual cadence of municipal activity.
-- If deeper history becomes valuable later (e.g. for backtesting a market-prediction model), build a separate "deep-history" scraper that hits PMN's search endpoints directly. Estimated effort: 1-2 days. Estimated value: low until the tool has been used in production for several months and a specific use case demands it.
-
-Phase 10 graduated despite the spec mismatch — the corpus size goal (1,500-3,000 rows minimum) is exceeded by 2x, and the cityScores fix from Phase 9 is closed.
+On completion: docs/PROMPT_PLAYBOOK_ADDENDUM.md updated, Phase 18 logged, CURRENT STATE → Phase 19, commit+push.
+````
 
 ---
 
-## END
+## Phase 19 — NAIP land cover verification (Tier 2)
+
+**Tool**: **Manus** · **Est. time**: 3–5 days · **Est. LLM cost**: ~$0
+
+Spectral imagery analysis (NDVI/NDBI/BSI) with rasterio. Pure Python compute, no codebase reasoning. Manus runs this at near-zero cost. The logic exists already from prior Manus chat work — this is execution + integration.
+
+### Manus prompt
+
+````
+Wasatch Intel — Phase 19: NAIP land cover verification as nightly enrichment.
+
+Repo: github.com/camsrigby-hash/wasatch-intel
+Reference code (you wrote it previously): land_cover_analyzer.py from the parcel_polygon_pipeline. Pull from the user's previous Manus session output if it's still accessible; otherwise rebuild from the spec below.
+
+Goal: nightly GHA job that takes the parcel_records D1 table, fetches NAIP imagery for each parcel via Microsoft Planetary Computer (free, no auth), classifies pixels using spectral indices into vegetation / bare_soil / impervious_surface / water, computes a satellite-verified vacancy score per parcel, and writes back to parcel_records.
+
+Schema additions: parcel_records.naip_vegetation_pct, naip_bare_soil_pct, naip_impervious_pct, naip_water_pct, naip_verified_vacancy ('confirmed_vacant' | 'confirmed_developed' | 'disagrees_with_ugrc' | 'inconclusive'), naip_analyzed_at.
+
+Critical output: the disagreement flag. When UGRC says vacant but NAIP shows >20% impervious surface (a building), flag for manual review. When UGRC says developed but NAIP shows <5% impervious (likely demolished), flag.
+
+Surface in UI: ParcelDetailPanel "Site Intelligence" tab gets a "Satellite verification" badge. Green when UGRC and NAIP agree, yellow when disagreement, gray when not yet analyzed.
+
+Schedule: GHA cron, every 3 days, processes parcels with naip_analyzed_at older than 90 days OR null. Cap at 500 parcels per run to stay in free-tier minutes.
+
+On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDENDUM.md with Phase 19 PHASE_LOG entry and CURRENT STATE → Phase 20. Push to main.
+````
+
+---
+
+## Phase 20 — Future profiles (residential + industrial developer)
+
+**Tool**: Any (Claude Code Sonnet, Manus, or hand-edit) · **Model**: `/model sonnet` if using CC · **Est. time**: 2 hours · **Est. LLM cost**: ~$0
+
+Adds two profiles to DEFAULT_PROFILES in src/lib/parcel-intel.ts. Pure config. Could be hand-edited.
+
+### Kickoff prompt (CC version)
+
+````
+cd C:/Users/camsr/code/wasatch-intel
+
+Phase 20 — add residential_developer and industrial_developer profiles. Append brief, execute, mark complete, advance to Phase 21.
+
+In src/lib/parcel-intel.ts DEFAULT_PROFILES array, add two new ScoringProfile entries:
+
+residential_developer:
+- Default weights: corner 2, aadt 3, signal 2, competition 0, zoning 6, growth 8, stip 5, corridor 4
+- Logic flags: competition_active false, income_inversion false, corner_required false, prefer_industrial_zoning false
+- Description: "Residential subdivision development. Emphasizes growth signal, jurisdiction approval velocity, and parcel size."
+
+industrial_developer:
+- Default weights: corner 3, aadt 4, signal 2, competition 0, zoning 8, growth 5, stip 6, corridor 4
+- Logic flags: competition_active false, income_inversion false, corner_required false, prefer_industrial_zoning true
+- Description: "Industrial / warehouse development. Emphasizes industrial GP designation, freeway access, and large parcel size."
+
+Update the profile dropdown in /map and /pipeline to show all 5 profiles. Verify each new profile produces sensible grade distributions on the existing parcel data.
+
+On completion: docs/PROMPT_PLAYBOOK_ADDENDUM.md updated, Phase 20 logged, CURRENT STATE → Phase 21 (or to "COMPLETE" if Phase 21 is being skipped), commit+push.
+````
+
+---
+
+## Phase 21 — PMN audio MP3 transcription (optional)
+
+**Tool**: **Manus** · **Est. time**: 1 week · **Est. LLM cost**: $0 in Anthropic API; Whisper has its own cost (~$5–15 for backfill)
+
+Audio processing. Skip if you don't want it — the tool is fully functional without it.
+
+### Manus prompt
+
+````
+Wasatch Intel — Phase 21: PMN meeting audio transcription pipeline.
+
+Repo: github.com/camsrigby-hash/tooele-land-intel (scraper repo)
+
+Background: Utah's Public Meeting Notice site (PMN) hosts MP3 audio recordings of past council/planning commission meetings alongside the agenda PDFs. Transcribing these surfaces what was actually SAID in meetings — developer mentions of national tenants, off-script discussion of rezone temperature, etc. This is rumor-signal gold from the official record.
+
+Goal: GHA job that scrapes PMN MP3 URLs, runs them through Whisper (or Claude API audio if it's mature for this), produces transcripts, and runs Haiku correlation against existing agenda items + Signal Wire entries to surface mention of:
+- Specific developer names (auto-pull from the developers table)
+- Specific brand names (Costco, Target, Maverik, Walmart, Amazon, etc. — hardcoded list)
+- Specific parcel references (numeric parcel IDs)
+- "national tenant", "undisclosed tenant", or similar phrasings
+
+When matches found, write to a new audio_signals table with: pmn_meeting_id, timestamp_in_audio, jurisdiction, transcript_excerpt, mentioned_entity, confidence_score.
+
+Surface in UI: a new tab on /agendas called "Audio mentions" listing matches chronologically. Also: when viewing an agenda item, show audio mentions from that meeting if any.
+
+Cost ceiling: $20/month for Whisper (transcribe up to ~30hrs/mo). Throttle the cron to one meeting per day after backfill complete.
+
+Acceptance: backfill last 6 months of PMN audio across the 13 jurisdictions. Spot-check that known mentions (e.g. if a council meeting talked about Costco coming to Erda — verify it's surfaced in audio_signals).
+
+On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDENDUM.md with Phase 21 PHASE_LOG entry and CURRENT STATE → "COMPLETE — Wasatch Intel v2 fully shipped". Push to main.
+````
+
+---
+
+## Tool routing summary table
+
+| Phase | Tool | Model | Why |
+|-------|------|-------|-----|
+| 11 | Claude Code | sonnet | Mechanical merge, no architecture |
+| 12 | Claude Code | opusplan | Haiku-prompt design needs Opus thinking once |
+| 13a | Claude Code | opus | Architecture, multi-source merge strategy |
+| 13b | Manus | n/a | 6–10 fetcher tasks, scraping is its strength |
+| 14 | Claude Code | sonnet | Mechanical refactor + cleanup |
+| 15 | Manus | n/a | Long-running comp scrapers, ToS-aware |
+| 16 | Manus | n/a | Per-county adapters, integration tail |
+| 17 | Claude Code | sonnet | Doc generation + form wiring |
+| 18 | Claude Code | **opus** | Vision quality + prompt precision matter |
+| 19 | Manus | n/a | Python rasterio compute |
+| 20 | Any | sonnet (or hand-edit) | Pure config |
+| 21 | Manus | n/a | Audio processing |
+
+---
+
+## Cost consolidation question
+
+There's no service that takes "X SaaS subscriptions" and reissues them as a single charge labeled "Wasatch Intel" — that doesn't exist for consumer SaaS. But there are real options:
+
+**Closest to one charge per month**: form an LLC ("Wasatch Intelligence Tool LLC" or similar), open a business credit card under it, route every vendor (Cloudflare, Anthropic, Google Cloud, Resend, Whitepages, GitHub) to that card. You'll see one credit card bill per month with line items per vendor — total = your monthly project cost. Functionally that's what "one monthly pull" means; the bank statement IS the consolidated view.
+
+**Better dashboard, same underlying mechanic**: business spend platforms like **Ramp**, **Brex**, or **Mercury** issue you a virtual or physical card and give you a dashboard that automatically categorizes every recurring SaaS charge, tags it by vendor, and produces a clean monthly report. You can label everything "Wasatch Intel" as a project tag. None of these consolidate the actual charges into one — they aggregate the *reporting*. For a side project this is overkill but for tax season it's nice.
+
+**For tax simplicity**: an LLC + dedicated business card + Mercury (free) or QuickBooks gives you a complete clean expense trail. Total monthly cost will read out as one number on the income statement. That's likely what you actually want.
+
+**What I'd recommend specifically for you, given the budget profile**: A single existing personal credit card dedicated to Wasatch Intel charges only is probably enough. Without Whitepages you're at $5–35/mo total — too low to justify LLC formation costs. Once Whitepages is on (Phase 17), you're at ~$255/mo, which is when LLC + business card + Mercury starts to actually pay for itself. Defer the consolidation infrastructure until Phase 17 cutover.
+
+---
+
+## What I (Claude in this chat) need to do this loop
+
+When you come back and say "I'm ready for the next prompt":
+
+1. I read the CURRENT STATE block at the top of this file (which the prior phase's tool updated).
+2. I find the matching phase section.
+3. I give you the paste-ready prompt + tool + model.
+4. I tell you what to expect (time, cost) and what success looks like.
+5. After you run it, I confirm CURRENT STATE moved forward; if it didn't, we troubleshoot.
+
+That's the loop. The file is the state machine; this chat is the operator console; you're the conductor.
