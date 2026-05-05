@@ -1,5 +1,12 @@
 import tanstack from "@tanstack/react-start/server-entry";
 import {
+  DEFAULT_PROFILES,
+  ScoringProfileSchema,
+  ParcelSchema,
+  INTEL_PARCELS,
+  scoreFor,
+} from "../lib/parcel-intel";
+import {
   loadAgendas,
   loadDevelopers,
   loadSignalWire,
@@ -101,7 +108,12 @@ export default {
       url.pathname.startsWith("/api/deals") &&
       (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE");
 
-    if (request.method !== "GET" && !isParcelAnalyze && !isWatchlistMutation && !isDealMutation) {
+    const isPipelineOrProfileMutation =
+      (url.pathname.startsWith("/api/pipeline") || url.pathname === "/api/profiles" ||
+       (url.pathname.startsWith("/api/parcels/") && url.pathname.endsWith("/refresh"))) &&
+      (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE");
+
+    if (request.method !== "GET" && !isParcelAnalyze && !isWatchlistMutation && !isDealMutation && !isPipelineOrProfileMutation) {
       return tanstack.fetch(request);
     }
 
@@ -423,6 +435,136 @@ export default {
           return okNoCache(deal, { source: "d1:deals", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
         } catch { return err500(); }
       }
+    }
+
+    // ── Phase 11: pipeline-rebuild API stubs (mocked, Zod-validated) ─────────────
+    // Frontend does NOT yet call these; IntelProvider reads in-memory mocks.
+    // Phase 14 wires the frontend to these endpoints.
+
+    // GET /api/profiles — list all scoring profiles
+    if (url.pathname === "/api/profiles" && request.method === "GET") {
+      const profiles = DEFAULT_PROFILES.map((p) => ScoringProfileSchema.parse(p));
+      return okNoCache(profiles, { source: "mock:scoring_profiles", freshness: "live", count: profiles.length, fetchedAt: new Date().toISOString() });
+    }
+
+    // POST /api/profiles — create custom profile
+    if (url.pathname === "/api/profiles" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const parsed = ScoringProfileSchema.safeParse(body);
+        if (!parsed.success) return err400("Invalid profile: " + JSON.stringify(parsed.error.flatten()));
+        return okNoCache({ ...parsed.data, id: `custom-${Date.now()}` }, {
+          source: "mock:scoring_profiles", freshness: "live", count: 1, fetchedAt: new Date().toISOString(),
+        });
+      } catch { return err400("Invalid JSON"); }
+    }
+
+    // GET /api/parcels/search?q=
+    if (url.pathname === "/api/parcels/search" && request.method === "GET") {
+      const q = url.searchParams.get("q")?.toLowerCase() ?? "";
+      const results = INTEL_PARCELS
+        .filter((p) => p.id.toLowerCase().includes(q) || p.address?.toLowerCase().includes(q) || p.jurisdiction.toLowerCase().includes(q))
+        .slice(0, 20)
+        .map((p) => ParcelSchema.parse({
+          id: p.id, address: p.address, jurisdiction: p.jurisdiction, county: p.county,
+          acreage: p.acres, centroid: p.centroid, zoning_current: p.zoning,
+          zoning_gp: p.generalPlan, vacancy_status: p.vacancy_status,
+          is_corner: p.is_corner, bldg_sqft: p.bldg_sqft, built_yr: p.built_yr,
+          spread: p.spread, in_pipeline: p.in_pipeline, pipeline_stage: p.pipeline_stage,
+          days_in_stage: p.days_in_stage,
+        }));
+      return okNoCache(results, { source: "mock:parcel_records:search", freshness: "live", count: results.length, fetchedAt: new Date().toISOString() });
+    }
+
+    // GET /api/parcels?bbox=&profile=&filters=
+    if (url.pathname === "/api/parcels" && request.method === "GET" && url.searchParams.has("bbox")) {
+      const profileId = url.searchParams.get("profile") ?? "generic-commercial";
+      const profile = DEFAULT_PROFILES.find((p) => p.id === profileId) ?? DEFAULT_PROFILES[2];
+      const parcels = INTEL_PARCELS.slice(0, 50).map((p) => ParcelSchema.parse({
+        id: p.id, address: p.address, jurisdiction: p.jurisdiction, county: p.county,
+        acreage: p.acres, centroid: p.centroid, zoning_current: p.zoning,
+        zoning_gp: p.generalPlan, vacancy_status: p.vacancy_status,
+        is_corner: p.is_corner, bldg_sqft: p.bldg_sqft, built_yr: p.built_yr,
+        spread: p.spread, in_pipeline: p.in_pipeline, pipeline_stage: p.pipeline_stage,
+        days_in_stage: p.days_in_stage,
+      }));
+      return okNoCache(parcels, { source: "mock:parcel_records", freshness: "live", count: parcels.length, fetchedAt: new Date().toISOString() });
+    }
+
+    // GET /api/parcels/:id?profile=
+    if (url.pathname.startsWith("/api/parcels/") && request.method === "GET") {
+      const pathParts = url.pathname.split("/").filter(Boolean);
+      const parcelId = pathParts[2];
+      // Only handle if this isn't the /search path and no further sub-resource
+      if (parcelId && parcelId !== "search" && !pathParts[3]) {
+        const parcel = INTEL_PARCELS.find((p) => p.id === parcelId || p.apn === parcelId);
+        if (!parcel) return err404(`Parcel not found: ${parcelId}`);
+        const profileId = url.searchParams.get("profile") ?? "generic-commercial";
+        const profile = DEFAULT_PROFILES.find((p) => p.id === profileId) ?? DEFAULT_PROFILES[2];
+        const score = scoreFor(parcel, profile);
+        return okNoCache(
+          { ...ParcelSchema.parse({
+            id: parcel.id, address: parcel.address, jurisdiction: parcel.jurisdiction, county: parcel.county,
+            acreage: parcel.acres, centroid: parcel.centroid, zoning_current: parcel.zoning,
+            zoning_gp: parcel.generalPlan, vacancy_status: parcel.vacancy_status,
+            is_corner: parcel.is_corner, bldg_sqft: parcel.bldg_sqft, built_yr: parcel.built_yr,
+            spread: parcel.spread, in_pipeline: parcel.in_pipeline, pipeline_stage: parcel.pipeline_stage,
+            days_in_stage: parcel.days_in_stage,
+          }), score },
+          { source: "mock:parcel_records", freshness: "live", count: 1, fetchedAt: new Date().toISOString() },
+        );
+      }
+    }
+
+    // GET /api/pipeline — list pipeline parcels
+    if (url.pathname === "/api/pipeline" && request.method === "GET") {
+      const pipeline = INTEL_PARCELS.filter((p) => p.in_pipeline).map((p) => ({
+        parcel_id: p.id, stage: p.pipeline_stage, outcome: p.outcome,
+        saved_at: p.saved_at, days_in_stage: p.days_in_stage, notes: p.notes,
+      }));
+      return okNoCache(pipeline, { source: "mock:pipeline_entries", freshness: "live", count: pipeline.length, fetchedAt: new Date().toISOString() });
+    }
+
+    // POST /api/pipeline — save parcel to pipeline
+    if (url.pathname === "/api/pipeline" && request.method === "POST") {
+      try {
+        const body = await request.json() as { parcel_id: string; stage?: string };
+        if (!body.parcel_id) return err400("parcel_id required");
+        const entry = { parcel_id: body.parcel_id, stage: body.stage ?? "prospect", saved_at: new Date().toISOString() };
+        return new Response(JSON.stringify({ data: entry, meta: { source: "mock:pipeline_entries", freshness: "live" }, errors: [] }), {
+          status: 201, headers: { "Content-Type": "application/json" },
+        });
+      } catch { return err400("Invalid JSON"); }
+    }
+
+    // PATCH /api/pipeline/:parcel_id — update stage/notes
+    if (url.pathname.startsWith("/api/pipeline/") && request.method === "PATCH") {
+      const parcelId = url.pathname.split("/").filter(Boolean)[2];
+      if (!parcelId) return err400("Missing parcel_id");
+      try {
+        const body = await request.json() as { stage?: string; notes?: string; outcome?: string };
+        const parcel = INTEL_PARCELS.find((p) => p.id === parcelId);
+        if (!parcel) return err404(`Pipeline entry not found: ${parcelId}`);
+        return okNoCache({ parcel_id: parcelId, ...body }, { source: "mock:pipeline_entries", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
+      } catch { return err400("Invalid JSON"); }
+    }
+
+    // DELETE /api/pipeline/:parcel_id — remove from pipeline
+    if (url.pathname.startsWith("/api/pipeline/") && request.method === "DELETE") {
+      const parcelId = url.pathname.split("/").filter(Boolean)[2];
+      if (!parcelId) return err400("Missing parcel_id");
+      const parcel = INTEL_PARCELS.find((p) => p.id === parcelId);
+      if (!parcel) return err404(`Pipeline entry not found: ${parcelId}`);
+      return new Response(null, { status: 204 });
+    }
+
+    // POST /api/parcels/:id/refresh — trigger enrichment (stub)
+    if (url.pathname.startsWith("/api/parcels/") && url.pathname.endsWith("/refresh") && request.method === "POST") {
+      const parcelId = url.pathname.split("/").filter(Boolean)[2];
+      if (!parcelId) return err400("Missing parcel id");
+      return okNoCache({ parcel_id: parcelId, status: "queued", message: "Enrichment stub — Phase 13 wires real data" }, {
+        source: "mock:enrichment_queue", freshness: "live", count: 1, fetchedAt: new Date().toISOString(),
+      });
     }
 
     return tanstack.fetch(request);
