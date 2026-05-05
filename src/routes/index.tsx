@@ -1,17 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Layers, MapPin } from "lucide-react";
+import { ChevronLeft, ChevronRight, Layers, MapPin, Search } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { MapCanvas } from "@/components/MapCanvas";
-import { ParcelDeepDive } from "@/components/ParcelDeepDive";
+import { ParcelDetailPanel } from "@/components/ParcelDetailPanel";
+import { ScoringControls } from "@/components/ScoringControls";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { JURISDICTIONS, signalLabel, type AgendaItem } from "@/lib/types";
-import { AGENDA_TYPES } from "@/lib/mock-data";
-import { useAgendas, useGapLayer, useStip } from "@/lib/api-client";
+import { JURISDICTIONS, AGENDA_TYPES, type Parcel as BaseParcel, type AgendaItem, signalLabel } from "@/lib/mock-data";
+import { useIntel } from "@/lib/intel-context";
+import { scoreAll, GRADE_COLORS, VACANCY_META, type Grade } from "@/lib/parcel-intel";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -19,7 +22,7 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Map — Wasatch Intel" },
-      { name: "description", content: "Satellite map of Wasatch Front + Tooele Valley parcels, agenda activity, zoning gaps, and developer heatmaps." },
+      { name: "description", content: "Satellite map of Wasatch Front + Tooele Valley parcels with score grades, agenda activity, and zoning gaps." },
       { property: "og:title", content: "Map — Wasatch Intel" },
       { property: "og:description", content: "Wasatch Front development intelligence map." },
     ],
@@ -28,62 +31,108 @@ export const Route = createFileRoute("/")({
 });
 
 const LAYER_DEFS = [
-  { key: "parcels", label: "Parcels", color: "bg-[var(--color-primary)]" },
+  { key: "parcels", label: "Parcels (score grade)", color: "bg-[var(--grade-a)]" },
   { key: "gap", label: "Zoning vs General Plan gap", color: "bg-[var(--color-gap)]" },
   { key: "agendas", label: "Agenda pins", color: "bg-[var(--color-signal-high)]" },
   { key: "heatmap", label: "Developer activity heatmap", color: "bg-[var(--color-heat)]" },
-  { key: "sitePlans", label: "STIP / UDOT projects", color: "bg-[var(--color-opportunity)]" },
+  { key: "sitePlans", label: "Site plan overlays", color: "bg-[var(--color-opportunity)]" },
 ] as const;
 
-type ParcelProps = Record<string, unknown>;
-
-function pickStr(p: ParcelProps, ...keys: string[]): string | null {
-  for (const k of keys) {
-    const v = p[k];
-    if (v != null && v !== "") return String(v);
-  }
-  return null;
-}
-
 function MapPage() {
+  const intel = useIntel();
   const [layers, setLayers] = useState({ parcels: true, gap: true, agendas: true, heatmap: false, sitePlans: false });
   const [railOpen, setRailOpen] = useState(true);
-  const [selectedApn, setSelectedApn] = useState<string | null>(null);
+  const [scoringOpen, setScoringOpen] = useState(true);
+  const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
   const [agendaPopover, setAgendaPopover] = useState<AgendaItem | null>(null);
+  const [showMyPipeline, setShowMyPipeline] = useState(false);
+  const [gradeFilter, setGradeFilter] = useState<Grade[]>(["A", "B", "C", "D"]);
+  const [fillOpacity, setFillOpacity] = useState(0.65);
 
-  const { data: agendasEnvelope } = useAgendas();
-  const { data: gapEnvelope } = useGapLayer();
-  const { data: stipEnvelope } = useStip();
+  // Compute per-parcel grade colors under the active profile.
+  const { parcelColors, dimMask } = useMemo(() => {
+    const map = scoreAll(intel.profile, intel.isCustom);
+    const colors: Record<string, string> = {};
+    const visible = new Set<string>();
+    intel.parcels.forEach((p) => {
+      const s = map.get(p.id);
+      if (!s) return;
+      if (gradeFilter.includes(s.grade)) {
+        colors[p.id] = GRADE_COLORS[s.grade];
+        visible.add(p.id);
+      }
+    });
+    let dim: Set<string> | null = visible;
+    if (showMyPipeline) {
+      dim = new Set([...visible].filter((id) => intel.parcels.find((p) => p.id === id)?.in_pipeline));
+    }
+    return { parcelColors: colors, dimMask: dim };
+  }, [intel.parcels, intel.profile, intel.isCustom, gradeFilter, showMyPipeline]);
 
-  const allAgendas = agendasEnvelope?.data ?? [];
-  const gapLayer = gapEnvelope?.data as GeoJSON.FeatureCollection | undefined;
-  const stipLayer = stipEnvelope?.data as GeoJSON.FeatureCollection | undefined;
-
-  const plottedAgendas = useMemo(
-    () => allAgendas.filter((a) => a.lat != null && a.lng != null),
-    [allAgendas],
+  const selected = useMemo(
+    () => intel.parcels.find((p) => p.id === selectedParcelId) ?? null,
+    [intel.parcels, selectedParcelId],
   );
 
   return (
     <AppShell padded={false}>
       <MapCanvas
         layers={layers}
-        agendaItems={plottedAgendas}
-        gapLayer={gapLayer}
-        stipLayer={stipLayer}
-        onParcelClick={(props) => {
-          const apn = pickStr(props, "apn", "PARCEL_ID", "parcel_id");
-          if (apn) setSelectedApn(apn);
-        }}
+        onParcelClick={(p: BaseParcel) => setSelectedParcelId(p.id)}
         onAgendaClick={setAgendaPopover}
+        selectedParcelId={selectedParcelId}
+        parcelColors={layers.parcels ? parcelColors : undefined}
+        fillOpacity={fillOpacity}
+        dimMask={dimMask}
       />
 
-      {/* Filter bar */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-background/95 backdrop-blur border border-border rounded-md shadow-sm px-2 py-1.5">
-        <FilterSelect label="Jurisdiction" options={["All", ...JURISDICTIONS]} />
-        <FilterSelect label="Type" options={["All", ...AGENDA_TYPES]} />
-        <FilterSelect label="Date" options={["Last 30d", "Last 90d", "Last 6mo", "Last 12mo", "Last 24mo"]} defaultValue="Last 12mo" />
-        <FilterSelect label="Signal" options={["Any", "≥40 Med", "≥60 High", "≥80 Critical"]} />
+      {/* Top toolbar — search + profile + chip row */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2">
+        <div className="flex items-center gap-2 bg-background/95 backdrop-blur border border-border rounded-md shadow-sm px-2 py-1.5">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              data-global-search="true"
+              placeholder="Parcel ID or address…"
+              className="h-7 pl-7 text-xs w-56 border-transparent bg-muted/50 focus-visible:bg-background"
+            />
+          </div>
+          <Select value={intel.profile.id.split("::")[0]} onValueChange={intel.setProfileById}>
+            <SelectTrigger className="h-7 text-xs w-48"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gas-cstore" className="text-xs">Gas Station / C-Store</SelectItem>
+              <SelectItem value="miniflex" className="text-xs">Miniflex / Light Industrial</SelectItem>
+              <SelectItem value="generic-commercial" className="text-xs">Generic Commercial</SelectItem>
+              {intel.customProfiles.map((p) => (
+                <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FilterSelect label="Jurisdiction" options={["All", ...JURISDICTIONS]} />
+          <FilterSelect label="Type" options={["All", ...AGENDA_TYPES]} />
+          <FilterSelect label="Date" options={["Last 30d", "Last 90d", "Last 6mo", "Last 12mo", "Last 24mo"]} defaultValue="Last 12mo" />
+        </div>
+        {/* Chip row */}
+        <div className="flex items-center gap-2 bg-background/95 backdrop-blur border border-border rounded-md shadow-sm px-2 py-1">
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium pl-1">Grade</span>
+          <ToggleGroup
+            type="multiple"
+            value={gradeFilter}
+            onValueChange={(v) => v.length && setGradeFilter(v as Grade[])}
+            className="gap-0.5"
+          >
+            {(["A", "B", "C", "D"] as Grade[]).map((g) => (
+              <ToggleGroupItem
+                key={g} value={g}
+                className="h-6 w-7 text-[10px] font-mono data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                {g}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <span className="ml-2 text-[10px] uppercase tracking-wide text-muted-foreground font-medium">My Pipeline</span>
+          <Switch checked={showMyPipeline} onCheckedChange={setShowMyPipeline} />
+        </div>
       </div>
 
       {/* Left rail */}
@@ -115,51 +164,31 @@ function MapPage() {
                       onCheckedChange={(v) => setLayers((s) => ({ ...s, [l.key]: v }))}
                     />
                   </div>
-                  {l.key === "gap" && layers.gap && (
-                    <div className="pl-4.5 space-y-1">
-                      <div className="h-1.5 rounded-sm bg-gradient-to-r from-fuchsia-500/0 via-fuchsia-500/45 to-fuchsia-800/85" />
-                      <div className="flex justify-between text-[9px] text-muted-foreground">
-                        <span>Low gap</span><span>High gap (8+)</span>
-                      </div>
-                      <p className="text-[9px] text-muted-foreground/80 leading-tight">
-                        Tooele Co 2022 GP coverage is partial — Grantsville incorp. area
-                        often shows null (rendered transparent).
-                      </p>
-                    </div>
-                  )}
-                  {layers[l.key] && l.key !== "gap" && (
+                  {layers[l.key] && (
                     <Slider defaultValue={[80]} max={100} step={5} className="px-0.5" />
                   )}
                 </div>
               ))}
 
-              {/* Pin counter — honest about unplotted items */}
-              {allAgendas.length > 0 && (
-                <div className="pt-3 border-t border-border">
-                  <p className="text-[10px] text-muted-foreground">
-                    <MapPin className="inline h-3 w-3 mr-0.5" />
-                    {plottedAgendas.length} of {allAgendas.length} items plotted
-                  </p>
-                  {plottedAgendas.length === 0 && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      Geocoding pending — run geocode.yml workflow
-                    </p>
-                  )}
+              <div className="pt-3 border-t border-border">
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Score grade</div>
+                <div className="space-y-1">
+                  {(["A", "B", "C", "D"] as Grade[]).map((g) => (
+                    <div key={g} className="flex items-center gap-2 text-[11px]">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: GRADE_COLORS[g] }} />
+                      <span className="text-muted-foreground">Grade {g}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
 
               <div className="pt-3 border-t border-border">
-                <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Signal legend</div>
+                <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">Vacancy</div>
                 <div className="space-y-1">
-                  {[
-                    { label: "Critical", color: "bg-[var(--color-signal-critical)]" },
-                    { label: "High",     color: "bg-[var(--color-signal-high)]" },
-                    { label: "Med",      color: "bg-[var(--color-signal-med)]" },
-                    { label: "Low",      color: "bg-[var(--color-signal-low)]" },
-                  ].map((x) => (
-                    <div key={x.label} className="flex items-center gap-2 text-[11px]">
-                      <span className={cn("h-2 w-2 rounded-full", x.color)} />
-                      <span className="text-muted-foreground">{x.label}</span>
+                  {Object.entries(VACANCY_META).slice(0, 5).map(([k, v]) => (
+                    <div key={k} className="flex items-center gap-2 text-[11px]">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: v.color }} />
+                      <span className="text-muted-foreground truncate">{v.label}</span>
                     </div>
                   ))}
                 </div>
@@ -169,37 +198,43 @@ function MapPage() {
         </div>
       </aside>
 
-      {/* Agenda item popover */}
+      {/* Right scoring controls */}
+      <ScoringControls
+        open={scoringOpen}
+        onToggle={() => setScoringOpen((s) => !s)}
+        fillOpacity={fillOpacity}
+        setFillOpacity={setFillOpacity}
+      />
+
+      {/* Agenda popover */}
       {agendaPopover && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-80 bg-background border border-border rounded-md shadow-lg p-3">
           <div className="flex items-center justify-between mb-1">
-            <Badge variant="outline" className="text-[10px]">
-              {agendaPopover.signalType ?? agendaPopover.itemType ?? "Item"}
-            </Badge>
+            <Badge variant="outline" className="text-[10px]">{agendaPopover.type}</Badge>
             <button className="text-muted-foreground hover:text-foreground text-xs" onClick={() => setAgendaPopover(null)}>×</button>
           </div>
-          <div className="text-xs font-medium">
-            {agendaPopover.developer ?? agendaPopover.title}
-          </div>
+          <div className="text-xs font-medium">{agendaPopover.applicant}</div>
           <div className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-            <MapPin className="h-3 w-3" />
-            {agendaPopover.jurisdiction} · {format(new Date(agendaPopover.date), "MMM d, yyyy")}
+            <MapPin className="h-3 w-3" /> {agendaPopover.jurisdiction} · {format(new Date(agendaPopover.date), "MMM d, yyyy")}
           </div>
-          {agendaPopover.growthScore != null && (
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-[10px] text-muted-foreground">Signal</span>
-              <Badge className="text-[10px] bg-[var(--color-signal-high)] text-white border-0">
-                {agendaPopover.growthScore} {signalLabel(agendaPopover.growthScore)}
-              </Badge>
-            </div>
-          )}
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground">Signal</span>
+            <Badge className="text-[10px] bg-[var(--color-signal-high)] text-white border-0">
+              {agendaPopover.signal} {signalLabel(agendaPopover.signal)}
+            </Badge>
+          </div>
         </div>
       )}
 
-      <ParcelDeepDive
-        apn={selectedApn}
-        open={!!selectedApn}
-        onClose={() => setSelectedApn(null)}
+      <ParcelDetailPanel
+        parcel={selected}
+        profile={intel.profile}
+        open={!!selected}
+        onClose={() => setSelectedParcelId(null)}
+        onStageChange={intel.updateStage}
+        onOutcomeChange={intel.updateOutcome}
+        onSavePipeline={intel.savePipeline}
+        onRemovePipeline={(id) => { intel.removePipeline(id); setSelectedParcelId(null); }}
       />
     </AppShell>
   );
