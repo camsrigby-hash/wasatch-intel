@@ -52,10 +52,11 @@ export function useDigest() {
 
 // ── /api/developers ───────────────────────────────────────────────────────────
 
-export function useDevelopers() {
+export function useDevelopers(opts: { includeSignage?: boolean } = {}) {
+  const path = opts.includeSignage ? "/api/developers?include_signage=1" : "/api/developers";
   return useQuery<ApiEnvelope<DeveloperSummary[]>, Error>({
-    queryKey:  ["developers"],
-    queryFn:   () => get<DeveloperSummary[]>("/api/developers"),
+    queryKey:  ["developers", opts.includeSignage ? "with-signage" : "default"],
+    queryFn:   () => get<DeveloperSummary[]>(path),
     staleTime: STALE_5M,
     retry: 2,
   });
@@ -69,6 +70,29 @@ export function useSignalWire() {
     queryFn:   () => get<SignalWireItem[]>("/api/signal-wire"),
     staleTime: STALE_5M,
     retry: 2,
+  });
+}
+
+// ── /api/cron-status (Phase 12) ─────────────────────────────────────────────
+
+export interface CronStatusEntry {
+  workflow:       string;
+  description:    string;
+  cron:           string;
+  ranAt:          string | null;
+  status:         "success" | "failure" | "partial" | null;
+  health:         "ok" | "warn" | "fail" | "unknown";
+  durationMs:     number | null;
+  itemsProcessed: number | null;
+  notes:          string | null;
+}
+
+export function useCronStatus() {
+  return useQuery<ApiEnvelope<CronStatusEntry[]>, Error>({
+    queryKey:  ["cron-status"],
+    queryFn:   () => get<CronStatusEntry[]>("/api/cron-status"),
+    staleTime: STALE_5M,
+    retry: 1,
   });
 }
 

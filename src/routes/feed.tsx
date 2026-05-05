@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { SignalBar } from "@/components/SignalBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { JURISDICTIONS } from "@/lib/types";
@@ -12,6 +13,9 @@ import { useDigest, useSignalWire, useDevelopers } from "@/lib/api-client";
 import type { SignalWireItem } from "@/lib/types";
 import { format, formatDistanceToNow } from "date-fns";
 import { ListTree, Newspaper, MessageSquareWarning, FileSignature, MapPin } from "lucide-react";
+
+type WireSort = "newest" | "strongest" | "oldest";
+const WIRE_SORT_KEY = "wasatch.feed.wire_sort";
 
 export const Route = createFileRoute("/feed")({
   head: () => ({
@@ -28,6 +32,21 @@ export const Route = createFileRoute("/feed")({
 function FeedPage() {
   const [minSignal, setMinSignal] = useState(0);
   const [filterJurisdiction, setFilterJurisdiction] = useState("All");
+  const [wireSort, setWireSort] = useState<WireSort>("newest");
+
+  // Hydrate persisted sort choice
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(WIRE_SORT_KEY);
+    if (stored === "newest" || stored === "strongest" || stored === "oldest") {
+      setWireSort(stored);
+    }
+  }, []);
+
+  const updateWireSort = (v: WireSort) => {
+    setWireSort(v);
+    if (typeof window !== "undefined") window.localStorage.setItem(WIRE_SORT_KEY, v);
+  };
 
   const { data: digestEnv, isLoading: digestLoading } = useDigest();
   const { data: wireEnv,   isLoading: wireLoading }   = useSignalWire();
@@ -37,11 +56,19 @@ function FeedPage() {
   const wireItems  = wireEnv?.data ?? [];
   const developers = devEnv?.data ?? [];
 
-  const filteredWire: SignalWireItem[] = wireItems.filter((w) => {
-    if (w.signal < minSignal) return false;
-    if (filterJurisdiction !== "All" && w.jurisdiction !== filterJurisdiction) return false;
-    return true;
-  });
+  const filteredWire: SignalWireItem[] = wireItems
+    .filter((w) => {
+      if (w.signal < minSignal) return false;
+      if (filterJurisdiction !== "All" && w.jurisdiction !== filterJurisdiction) return false;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => {
+      if (wireSort === "strongest") return b.signal - a.signal;
+      const ad = new Date(a.date).getTime();
+      const bd = new Date(b.date).getTime();
+      return wireSort === "oldest" ? ad - bd : bd - ad;
+    });
 
   const topApplicants = developers.slice(0, 6);
 
@@ -81,11 +108,21 @@ function FeedPage() {
 
           {/* Signal Wire */}
           <div>
-            <div className="flex items-baseline justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-3">
               <h2 className="text-sm font-semibold">Signal Wire</h2>
-              <span className="text-[11px] text-muted-foreground font-mono">
-                {wireLoading ? "…" : `${filteredWire.length} items · last 30 days`}
-              </span>
+              <div className="flex items-center gap-2">
+                <Select value={wireSort} onValueChange={(v) => updateWireSort(v as WireSort)}>
+                  <SelectTrigger className="h-7 text-xs w-[160px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest" className="text-xs">Newest</SelectItem>
+                    <SelectItem value="strongest" className="text-xs">Strongest correlation</SelectItem>
+                    <SelectItem value="oldest" className="text-xs">Oldest</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-[11px] text-muted-foreground font-mono whitespace-nowrap">
+                  {wireLoading ? "…" : `${filteredWire.length} · 30d`}
+                </span>
+              </div>
             </div>
 
             {wireLoading ? (

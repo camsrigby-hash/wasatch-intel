@@ -1,5 +1,5 @@
 import type { Env } from "../lib/d1-client";
-import { getWatchlists, recordHit, logAlert } from "../lib/d1-client";
+import { getWatchlists, recordHit, logAlert, recordCronRun } from "../lib/d1-client";
 import { sendWatchlistAlert } from "../lib/email";
 import { loadSignalWire } from "../lib/csv-loader";
 import type { Watchlist, WatchlistCriteria, SignalWireItem } from "../../lib/types";
@@ -47,9 +47,19 @@ function signalMatchesWatchlist(signal: SignalWireItem, watchlist: Watchlist): b
 
 export async function runWatchlistCheck(env: Env): Promise<{ checked: number; newHits: number; emailsSent: number }> {
   if (!env.DB) return { checked: 0, newHits: 0, emailsSent: 0 };
+  const startedAt = Date.now();
 
   const watchlists = await getWatchlists(env.DB);
-  if (!watchlists.length) return { checked: watchlists.length, newHits: 0, emailsSent: 0 };
+  if (!watchlists.length) {
+    await recordCronRun(env.DB, {
+      workflowName: "watchlist-checker",
+      status: "success",
+      durationMs: Date.now() - startedAt,
+      itemsProcessed: 0,
+      notes: "no watchlists configured",
+    }).catch(() => {});
+    return { checked: 0, newHits: 0, emailsSent: 0 };
+  }
 
   const signalResult = await loadSignalWire();
   const signals = signalResult.data;
@@ -94,6 +104,14 @@ export async function runWatchlistCheck(env: Env): Promise<{ checked: number; ne
       }
     }
   }
+
+  await recordCronRun(env.DB, {
+    workflowName: "watchlist-checker",
+    status: "success",
+    durationMs: Date.now() - startedAt,
+    itemsProcessed: totalNewHits,
+    notes: `${watchlists.length} watchlists, ${totalNewHits} hits, ${emailsSent} emails`,
+  }).catch(() => {});
 
   return { checked: watchlists.length, newHits: totalNewHits, emailsSent };
 }

@@ -160,6 +160,17 @@ export function signalScore(item: AgendaItem): number {
   return item.growthScore ?? 0;
 }
 
+// Detect signage-only filings (sign permits, billboards, monument/pole signs).
+// Used to default-exclude these from the Developers prolific-list, since they
+// dominate raw counts but aren't development activity. Frontend-side keyword
+// detection so it works on existing CSV rows without re-running the split prompt.
+const SIGNAGE_PATTERNS = /\b(pole sign|monument sign|wall sign|freestanding sign|billboard|sign permit|signage permit|electronic message center|sign code|new sign\b|business sign|illuminated sign)\b/i;
+export function isSignageItem(item: { title?: string | null; itemType?: string | null; description?: string | null; notes?: string | null }): boolean {
+  if (item.itemType === "signage") return true;
+  const haystack = [item.title, item.description, item.notes].filter(Boolean).join(" ");
+  return SIGNAGE_PATTERNS.test(haystack);
+}
+
 export function signalLabel(score: number): "Low" | "Med" | "High" | "Critical" {
   if (score >= 80) return "Critical";
   if (score >= 60) return "High";

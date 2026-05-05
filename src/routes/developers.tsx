@@ -3,12 +3,14 @@ import { useState, useEffect } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDevelopers, useAgendas } from "@/lib/api-client";
 import type { DeveloperSummary } from "@/lib/types";
-import { SIGNAL_TYPE_LABELS } from "@/lib/types";
+import { SIGNAL_TYPE_LABELS, isSignageItem } from "@/lib/types";
 import { format, formatDistanceToNow } from "date-fns";
-import { Building2, MapPin, TrendingUp } from "lucide-react";
+import { Building2, MapPin, Signpost, TrendingUp } from "lucide-react";
 
 export const Route = createFileRoute("/developers")({
   head: () => ({
@@ -23,7 +25,9 @@ export const Route = createFileRoute("/developers")({
 });
 
 function DevelopersPage() {
-  const { data: devEnv, isLoading: devLoading } = useDevelopers();
+  const [includeSignage, setIncludeSignage] = useState(false);
+
+  const { data: devEnv, isLoading: devLoading } = useDevelopers({ includeSignage });
   const { data: agendaEnv } = useAgendas();
 
   const developers = devEnv?.data ?? [];
@@ -35,11 +39,11 @@ function DevelopersPage() {
     if (!selected && developers.length > 0) setSelected(developers[0]);
   }, [developers, selected]);
 
-  const recentForSelected = selected
-    ? agendas
-        .filter((a) => a.developer === selected.name)
-        .slice(0, 8)
+  const allForSelected = selected
+    ? agendas.filter((a) => a.developer === selected.name)
     : [];
+  const developmentForSelected = allForSelected.filter((a) => !isSignageItem(a)).slice(0, 8);
+  const signageForSelected     = allForSelected.filter((a) =>  isSignageItem(a)).slice(0, 8);
 
   return (
     <AppShell>
@@ -51,6 +55,16 @@ function DevelopersPage() {
             <span className="text-[11px] text-muted-foreground">
               {devLoading ? "—" : `${developers.length} tracked`}
             </span>
+          </div>
+          <div className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2">
+            <Label htmlFor="include-signage" className="text-xs text-muted-foreground cursor-pointer">
+              Include signage filings
+            </Label>
+            <Switch
+              id="include-signage"
+              checked={includeSignage}
+              onCheckedChange={setIncludeSignage}
+            />
           </div>
 
           {devLoading ? (
@@ -161,15 +175,15 @@ function DevelopersPage() {
 
               <div className="rounded-lg border border-border bg-card overflow-hidden">
                 <div className="px-4 py-3 border-b border-border">
-                  <h3 className="text-xs font-semibold">Recent agenda activity</h3>
+                  <h3 className="text-xs font-semibold">Recent development activity</h3>
                 </div>
                 <div className="divide-y divide-border">
-                  {recentForSelected.length === 0 ? (
+                  {developmentForSelected.length === 0 ? (
                     <div className="p-4 text-xs text-muted-foreground">
-                      No recent agenda items matched for this developer.
+                      No recent development filings matched for this developer.
                     </div>
                   ) : (
-                    recentForSelected.map((a) => (
+                    developmentForSelected.map((a) => (
                       <div key={a.id} className="px-4 py-2.5 text-xs flex items-center gap-3">
                         <span className="font-mono text-[10px] text-muted-foreground w-20">
                           {format(new Date(a.date), "MMM d, yyyy")}
@@ -188,6 +202,31 @@ function DevelopersPage() {
                   )}
                 </div>
               </div>
+
+              {signageForSelected.length > 0 && (
+                <div className="rounded-lg border border-border bg-card overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border flex items-center gap-1.5">
+                    <Signpost className="h-3.5 w-3.5 text-muted-foreground" />
+                    <h3 className="text-xs font-semibold">Signage permits</h3>
+                    <span className="text-[10px] text-muted-foreground ml-auto">
+                      {signageForSelected.length} shown
+                    </span>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {signageForSelected.map((a) => (
+                      <div key={a.id} className="px-4 py-2.5 text-xs flex items-center gap-3">
+                        <span className="font-mono text-[10px] text-muted-foreground w-20">
+                          {format(new Date(a.date), "MMM d, yyyy")}
+                        </span>
+                        <span className="flex-1 truncate">{a.title}</span>
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                          <MapPin className="h-2.5 w-2.5" />{a.jurisdiction}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

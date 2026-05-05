@@ -1,4 +1,5 @@
 import { AppHeader } from "./AppHeader";
+import { CronStatusFooter } from "./CronStatusFooter";
 
 export function AppShell({ children, padded = true }: { children: React.ReactNode; padded?: boolean }) {
   return (
@@ -7,6 +8,7 @@ export function AppShell({ children, padded = true }: { children: React.ReactNod
       <main className={padded ? "flex-1 overflow-auto" : "flex-1 min-h-0 relative"}>
         {children}
       </main>
+      <CronStatusFooter />
     </div>
   );
 }

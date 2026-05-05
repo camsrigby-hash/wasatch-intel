@@ -363,3 +363,73 @@ export async function createDealContact(
     .run();
   return { id, dealId, name: data.name, role: data.role ?? "", phone: data.phone ?? null, email: data.email ?? null, createdAt: now };
 }
+
+// ── Phase 12: cron run heartbeats ────────────────────────────────────────────
+
+export interface CronRunRow {
+  workflowName: string;
+  ranAt: string;
+  status: "success" | "failure" | "partial";
+  durationMs: number | null;
+  itemsProcessed: number | null;
+  notes: string | null;
+}
+
+export async function recordCronRun(
+  db: D1Database,
+  data: {
+    workflowName: string;
+    status?: "success" | "failure" | "partial";
+    durationMs?: number;
+    itemsProcessed?: number;
+    notes?: string;
+  },
+): Promise<void> {
+  const id = crypto.randomUUID();
+  await db
+    .prepare(
+      `INSERT INTO cron_runs (id, workflow_name, status, duration_ms, items_processed, notes)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      data.workflowName,
+      data.status ?? "success",
+      data.durationMs ?? null,
+      data.itemsProcessed ?? null,
+      data.notes ?? null,
+    )
+    .run();
+}
+
+// Latest run per workflow (one row each).
+export async function getLatestCronRuns(db: D1Database): Promise<CronRunRow[]> {
+  const rows = await db
+    .prepare(
+      `SELECT workflow_name, ran_at, status, duration_ms, items_processed, notes
+       FROM cron_runs
+       WHERE id IN (
+         SELECT id FROM cron_runs cr1
+         WHERE cr1.ran_at = (
+           SELECT MAX(cr2.ran_at) FROM cron_runs cr2 WHERE cr2.workflow_name = cr1.workflow_name
+         )
+       )
+       ORDER BY workflow_name`,
+    )
+    .all<{
+      workflow_name: string;
+      ran_at: string;
+      status: string;
+      duration_ms: number | null;
+      items_processed: number | null;
+      notes: string | null;
+    }>();
+  return (rows.results ?? []).map((r) => ({
+    workflowName: r.workflow_name,
+    ranAt: r.ran_at,
+    status: (r.status as CronRunRow["status"]) ?? "success",
+    durationMs: r.duration_ms,
+    itemsProcessed: r.items_processed,
+    notes: r.notes,
+  }));
+}

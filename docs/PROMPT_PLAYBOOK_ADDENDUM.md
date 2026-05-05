@@ -8,9 +8,9 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-05
 
-- Phases 0–11 shipped. MVP live at https://wasatch-intel.cam-s-rigby.workers.dev.
-- **Active phase: Phase 12 — Deferred-feedback bundle (geocoding, Signal Wire sort, Agenda multi-filter, signage filter, cron status, PMN backfill).**
-- Phase 11 branch: `pipeline-rebuild` (pushed, pending user local verification + merge to main).
+- Phases 0–11 shipped + Phase 12 code on branch (pending verification). MVP live at https://wasatch-intel.cam-s-rigby.workers.dev.
+- **Active phase: Phase 13 — Real enrichment GHA jobs (the big one). Phase 12 code on `phase-12-deferred-feedback` branch in both repos pending user local verification + merge.**
+- Phase 12 acceptance criteria #2 and #7 require the user to manually trigger the new GHA workflows (`extract_parcels_from_pdfs.yml` and `scrape_pmn_archive.py` workflow_dispatch) after merging the branch — they are code-complete but not yet run.
 - Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover.
 
 ---
