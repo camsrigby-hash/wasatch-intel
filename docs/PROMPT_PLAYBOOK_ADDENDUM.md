@@ -429,6 +429,146 @@ Last Manus task in 13b updates `docs/PROMPT_PLAYBOOK_ADDENDUM.md` (committing vi
 
 ---
 
+## Phase 13a — Operational Brief: Enrichment Pipeline Architecture
+
+### Goal
+Produce docs/PHASE_13_ENRICHMENT_ARCH.md — a detailed architecture document specifying how to populate parcel_records (D1 table from migration 0002) for all 13 jurisdictions with real scoring-component data, ready to be broken into independent Manus execution tasks for Phase 13b.
+
+This is a thinking phase, not a building phase. No code is written. The deliverable is one comprehensive markdown document that any tool (Manus, CC, Cursor) can pick up sub-sections of and execute independently.
+
+### Branch policy
+- Cut `phase-13a-arch` from main
+- Single commit on the branch (the arch doc + addendum updates + PROJECT_STATE log entry)
+- Push, do not merge yet — user verifies the architecture before authorizing Phase 13b sub-tasks
+
+### Mandatory sections in PHASE_13_ENRICHMENT_ARCH.md
+
+**1. DATA SOURCES & ENDPOINTS**
+
+For each external source, document:
+- Service name, base URL, authentication mechanism (API key env var name, anonymous, OAuth, etc.)
+- Specific endpoints needed and their query parameters
+- Rate limits (documented + observed)
+- Cost per request (if any)
+- Robustness considerations (downtime patterns, deprecation risk)
+
+Required sources:
+- UGRC parcel feature services for all 13 jurisdictions (Erda, Grantsville, Tooele City, Lehi, Saratoga Springs, Eagle Mountain, South Jordan, Herriman, Bluffdale, Draper, American Fork, Vineyard, Spanish Fork). Include the exact ArcGIS service path for each — research as needed via UGRC's open data portal.
+- UDOT AADT API (traffic counts on state and federal roads)
+- Google Places API (already wired in Manus chat work, document budget cap)
+- WFRC TAZ data (travel demand model for commute corridor scoring)
+- Employment node coordinates (Hill AFB, IHC McKay-Dee, IHC Layton, Amazon Fulfillment NSL, FedEx Davis, Freeport Center, Ogden CBD, Weber State, plus any additional employment centers in Salt Lake/Utah/Tooele counties for the 13-jurisdiction expansion)
+- Census ACS 5-year block-group income data
+- I-15 and US-89 freeway on-ramp coordinates (for commute corridor funnel bonus scoring)
+
+**2. SCHEMA MAPPING**
+
+For each scoring dimension, specify:
+- Source field path → parcel_records column
+- Data type and units
+- Default value when source unavailable
+- Freshness requirements (real-time / daily / weekly / quarterly)
+- Cache invalidation trigger
+
+Cover all 9 fields:
+- vacancy_status (cascade: bldg_sqft + built_yr + prop_class)
+- corner detection (UGRC roads layer adjacency analysis)
+- AADT (UDOT, max of adjacent road segments)
+- traffic signal (UDOT signal layer or OSM crossings)
+- competition (Google Places, brand-tiered, exponential penalty)
+- zoning (UGRC zoning + jurisdiction GP designation)
+- growth signal (already in WI from PMN — document the read pattern, don't duplicate the source)
+- STIP (already in WI — same)
+- commute corridor (WFRC + employment nodes + on-ramp funnel logic)
+
+**3. CACHE STRATEGY**
+
+UGRC parcels for 13 jurisdictions = ~250k+ rows. Cannot refetch all of them per run. Design:
+- Per-source TTL recommendations
+- Which fields change frequently (assessed value: annually)
+- Which never change after parcel creation (parcel_id, polygon, county)
+- Which change infrequently (zoning: rarely; ownership: occasionally)
+- The semantics of parcel_records.enriched_at (per-source timestamps vs single overall timestamp)
+- Delta-fetch strategy: how to identify changed parcels without re-pulling all 250k
+
+**4. RATE LIMITING & BUDGET**
+
+Google Places at 250k parcels has nontrivial cost even with caching. Document:
+- Per-run budget cap in dollars
+- Per-source budget cap per month
+- Cache hit/miss telemetry to track in cron_runs
+- Circuit-breaker logic if cost or error rate spikes
+- Backoff strategy on 429s
+- Recommended cron cadence per source
+
+**5. SUB-TASK BREAKDOWN FOR MANUS (Phase 13b)**
+
+Produce a list of 6-10 discrete Manus execution tasks. Each must specify:
+- Task name and brief description
+- Inputs (data sources, D1 tables read)
+- Outputs (D1 tables written, files written)
+- Success criteria (specific acceptance tests)
+- Dependencies on other sub-tasks (which must run first)
+- Estimated effort (Manus credits, hours)
+- Whether it can run in parallel with other sub-tasks
+
+Each sub-task must be runnable independently — Manus's strength is single-purpose long-running jobs, not orchestration. Aggregate orchestration (cron schedules, GHA workflows) is a separate sub-task or stays with CC for Phase 13c if needed.
+
+**6. ROLLOUT ORDER**
+
+Recommended sequencing of the sub-tasks to deliver visible value soonest. Consider:
+- Vacancy + corner + zoning likely deliver immediate map-coloring value
+- Growth signal + STIP are already in WI, just need to be read into parcel_records (cheap)
+- AADT, traffic signal, competition are infrastructure-heavy
+- Commute corridor depends on WFRC ingestion + employment node setup
+- NAIP land cover is a separate Phase 19, not part of 13b
+
+**7. TESTING STRATEGY**
+
+For each sub-task, define how to verify it shipped correctly:
+- Spot-check parcels with known characteristics
+- Use parcel 080480106 at 3500W/4000S in West Haven as a regression target — its expected scores are documented in the prior Manus chat work and in CC chat history (corner=100, AADT~50, etc.)
+- Sampling strategy: pick 20 random parcels per jurisdiction, manually verify a subset of fields against ground truth (county GIS, Street View)
+- Performance benchmarks: per-source enrichment time per 10k parcels
+
+**8. RISKS & OPEN QUESTIONS**
+
+Document anything that needs the user's input before Phase 13b begins:
+- Jurisdictions where UGRC service paths are unknown or unreliable
+- Cost projections that exceed the $25/mo ceiling — propose mitigations
+- Data quality concerns (e.g., certain UGRC fields are inconsistent across counties)
+- Whether to defer NAIP land cover entirely vs partial integration
+
+### Acceptance criteria
+1. docs/PHASE_13_ENRICHMENT_ARCH.md exists, covers all 8 sections above
+2. Sub-task breakdown contains 6-10 entries, each with inputs/outputs/dependencies/effort
+3. The architecture is internally consistent — no sub-task references a data source not in section 1, no schema mapping references a field not in the migration
+4. Estimated total Phase 13 cost across all sources documented
+5. PROJECT_STATE.md PHASE_LOG entry added for Phase 13a
+6. PROMPT_PLAYBOOK_ADDENDUM.md CURRENT STATE → Phase 13b
+7. branch phase-13a-arch pushed
+
+### Out of scope for Phase 13a
+- Writing any code (no scrapers, no D1 inserts, no Hono endpoints)
+- Implementing any sub-task
+- Applying any D1 migration
+- Site plan vision extraction (Phase 18)
+- NAIP land cover verification (Phase 19)
+- Frontend integration with new data (Phase 14)
+
+### LLM cost estimate
+- Phase 13a (this): ~$3-6 in Opus reasoning over ~30-60 min
+- Phase 13b execution will be on Manus (separate billing)
+
+### If stuck
+- Unclear UGRC service paths: document in section 8 as blockers; do not guess. Better to ship arch with explicit blockers than ship bad data.
+- Cost exceeds $25/mo ceiling: propose tiered approaches (e.g., enrich top 20% by spread monthly + bottom 80% quarterly)
+- Sub-task scope drifts large: split it into two sub-tasks rather than ship a Manus task that can't finish in one run
+
+Pause and ask if a blocker persists past two attempts.
+
+---
+
 ## Phase 14 — Frontend ↔ API wiring + legacy cleanup
 
 **Tool**: Claude Code · **Model**: `/model sonnet` · **Est. time**: 2–4 hours · **Est. LLM cost**: ~$1–2
