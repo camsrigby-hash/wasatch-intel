@@ -34,6 +34,7 @@ import {
   createDealNote,
   getDealContacts,
   createDealContact,
+  getLatestCronRuns,
 } from "./lib/d1-client";
 import { runWatchlistCheck } from "./cron/watchlist-checker";
 import type { CreateWatchlistPayload, CreateDealPayload } from "../lib/types";
@@ -154,7 +155,8 @@ export default {
     // ── /api/developers ───────────────────────────────────────────────────────
     if (url.pathname === "/api/developers") {
       try {
-        const result = await loadDevelopers();
+        const includeSignage = url.searchParams.get("include_signage") === "1";
+        const result = await loadDevelopers({ includeSignage });
         return ok(
           result.data,
           {
@@ -188,6 +190,88 @@ export default {
     // ── /api/parcels — empty list (per-parcel via /api/parcel/:apn) ───────────
     if (url.pathname === "/api/parcels") {
       return emptyOk("phase5:per-parcel-endpoint");
+    }
+
+    // ── /api/cron-status ─────────────────────────────────────────────────────
+    // Aggregates: D1 cron_runs (Worker crons) + GHA heartbeat JSON files in tooele-land-intel
+    if (url.pathname === "/api/cron-status") {
+      try {
+        const fetchedAt = new Date().toISOString();
+        const expected: Record<string, { cron: string; intervalMs: number; description: string }> = {
+          "watchlist-checker": { cron: "0 * * * *",  intervalMs: 60 * 60 * 1000,         description: "hourly" },
+          "weekly-digest":     { cron: "0 14 * * 1", intervalMs: 7 * 24 * 60 * 60 * 1000, description: "Mondays 14:00 UTC" },
+          "signals":           { cron: "0 14 * * *", intervalMs: 24 * 60 * 60 * 1000,    description: "daily 14:00 UTC" },
+          "gap-layer":         { cron: "0 9 1 * *",  intervalMs: 30 * 24 * 60 * 60 * 1000, description: "monthly" },
+          "geocode":           { cron: "post-digest", intervalMs: 7 * 24 * 60 * 60 * 1000, description: "after weekly-digest" },
+          "extract-parcels":   { cron: "post-geocode", intervalMs: 7 * 24 * 60 * 60 * 1000, description: "after geocode" },
+        };
+
+        // Worker-cron rows from D1
+        const d1Runs = env.DB ? await getLatestCronRuns(env.DB).catch(() => []) : [];
+
+        // GHA heartbeat files from tooele-land-intel
+        const heartbeatBase = "https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data/cron_status";
+        const ghaWorkflows = ["weekly-digest", "signals", "gap-layer", "geocode", "extract-parcels"];
+        type Heartbeat = {
+          workflow_name?: string;
+          ran_at: string;
+          status: "success" | "failure" | "partial";
+          duration_ms?: number | null;
+          items_processed?: number | null;
+          notes?: string | null;
+        };
+        const ghaPayloads = new Map<string, Heartbeat>();
+        await Promise.all(
+          ghaWorkflows.map(async (name) => {
+            try {
+              const r = await fetch(`${heartbeatBase}/${name}.json`);
+              if (!r.ok) return;
+              ghaPayloads.set(name, (await r.json()) as Heartbeat);
+            } catch {
+              // No heartbeat yet — leave unknown
+            }
+          }),
+        );
+
+        type Health = "ok" | "warn" | "fail" | "unknown";
+        const data = Object.entries(expected).map(([name, cfg]) => {
+          const d1 = d1Runs.find((r) => r.workflowName === name);
+          const gha = ghaPayloads.get(name);
+
+          const ranAt     = d1?.ranAt          ?? gha?.ran_at          ?? null;
+          const rawStatus = d1?.status         ?? gha?.status          ?? null;
+          const items     = d1?.itemsProcessed ?? gha?.items_processed ?? null;
+          const notes     = d1?.notes          ?? gha?.notes           ?? null;
+          const duration  = d1?.durationMs     ?? gha?.duration_ms     ?? null;
+
+          let health: Health = "unknown";
+          if (rawStatus === "failure") health = "fail";
+          else if (ranAt) {
+            const age = Date.now() - new Date(ranAt).getTime();
+            if (age > cfg.intervalMs * 2) health = "warn";
+            else health = rawStatus === "partial" ? "warn" : "ok";
+          }
+
+          return {
+            workflow:       name,
+            description:    cfg.description,
+            cron:           cfg.cron,
+            ranAt,
+            status:         rawStatus,
+            health,
+            durationMs:     duration,
+            itemsProcessed: items,
+            notes,
+          };
+        });
+
+        return ok(data, {
+          source: "d1:cron_runs + gha-heartbeats",
+          freshness: "live",
+          count: data.length,
+          fetchedAt,
+        });
+      } catch { return err500(); }
     }
 
     // ── /api/gap-layer ────────────────────────────────────────────────────────

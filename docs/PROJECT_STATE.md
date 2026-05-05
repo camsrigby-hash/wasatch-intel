@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-04-25
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 10 session
-**Active phase:** Phase 11 — Future features (see tli-full-spec.md §6)
+**Last updated:** 2026-05-05
+**Last agent:** Claude Code (Opus 4.7) — Phase 12 implementation session
+**Active phase:** Phase 13 — Real enrichment GHA jobs (Phase 12 code on `phase-12-deferred-feedback` branch pending verification)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -538,6 +538,72 @@ Phase 10 NAIP addendum explicitly deferred — the addendum's own prerequisite
 NAIP is documented for Phase 11+ pickup ~2026-07-25. Key action remaining:
 trigger `backfill.yml` from GitHub Actions tab (workflow_dispatch) to execute
 the backfill against live PMN data.
+
+### 2026-05-05 — Phase 12 (CODE COMPLETE — user verification pending) — Claude Code (Opus 4.7)
+Deferred-feedback bundle on `phase-12-deferred-feedback` branch in both repos. Six items:
+
+**1. Geocoding fix (Haiku parcel-ID extraction).** New `tooele-land-intel/scripts/extract_parcels_from_pdfs.py`
+reads the FULL agenda-item PDF body (not just title/location) and uses Haiku 4.5 to extract structured
+parcel_ids / legal_descriptions / street_addresses / cross_streets with high/medium/low confidence per
+item. Resolves coords via Tooele UGRC parcel lookup → Nominatim address → Nominatim cross-street →
+Nominatim subdivision-name fallback chain. Updates `data/items_geocoded.csv` in-place; appends audit log
+to `data/parcel_resolutions.csv`; writes `data/cron_status/extract-parcels.json` heartbeat. New GHA
+workflow `extract_parcels_from_pdfs.yml` triggers on `workflow_run` after `Geocode agenda items`. Backfill
+mode: process all unresolved items (~$2–10 one-time Haiku cost, marginal weekly).
+
+**2. Signal Wire strength sort.** Dropdown on `/feed` (Newest / Strongest correlation / Oldest) with
+localStorage persistence (`wasatch.feed.wire_sort` key). Radix Select primitive consistent with
+`/pipeline` patterns.
+
+**3. Signage filter.** New `isSignageItem()` helper in `src/lib/types.ts` — runtime keyword detection
+(pole sign / monument sign / wall sign / freestanding sign / billboard / sign permit). `loadDevelopers()`
+in `csv-loader.ts` accepts `{ includeSignage }` opt and default-excludes signage filings from developer
+aggregation. `/api/developers?include_signage=1` query param controls. `useDevelopers({ includeSignage })`
+hook signature updated. `/developers` page has a Switch toggle + a separate "Signage permits" card that
+appears only when the selected developer has signage filings. Forward-looking: `split_agenda_items.py`
+Haiku prompt now extracts `is_signage: bool` and Python tags `item_type=signage` so future weekly-digest
+runs label at-source.
+
+**4. Agenda multi-column filter.** Full rewrite of `src/routes/agendas.tsx` with TanStack Router
+`validateSearch` URL state. Four filters: Jurisdiction (multi-select Popover+Checkbox), Item type
+(multi-select), Signal strength (range slider 0–100, two thumbs), Date range (Popover+Calendar `mode="range"`,
+2 months). All filters AND-combine. URL params: `?q=&jurisdictions=&types=&signal_min=&signal_max=&date_from=&date_to=`.
+Reset button clears all. Active-filter badge counts on triggers.
+
+**5. Cron status footer.** Renders on every route via `AppShell` (footer slot below `<main>`). Hybrid
+data source: D1 `cron_runs` table for Worker crons (watchlist-checker now records via new
+`recordCronRun()` helper); GHA-heartbeat JSON files in tooele-land-intel for the 5 Python workflows
+(weekly-digest / signals / gap-layer / geocode / extract-parcels — each gets a `Record cron heartbeat`
+step that calls `scripts/write_cron_heartbeat.sh`). New `/api/cron-status` endpoint computes health
+(ok/warn/fail/unknown) per workflow based on `ranAt` age vs expected interval. `useCronStatus()` hook +
+`<CronStatusFooter>` component with Popover showing per-workflow detail; tiny color dots in collapsed view.
+
+**6. PMN 24-month backfill scraper.** New `tooele-land-intel/scripts/scrape_pmn_archive.py`. Reuses
+existing `scrape_utah_pmn.py` `scrape_body()` with `months_back=24`, dedupes against existing
+`agenda_items.csv` PMN notice IDs, writes new historical notices as JSON files in `data/agendas/`
+(picked up by existing `persist_to_csv.py` merge). `--dry-run` flag reports counts per body without
+fetching. `--jurisdiction <key>` for single-body testing. `--max-notices` for debug. Logs unmatched
+items (no `event_date_iso`) to `data/pmn_archive_unmatched.csv` for inspection. Writes its own
+`pmn-archive` heartbeat. Run-once manually after merge (not scheduled).
+
+**Schema + workflow.** New `migrations/0003_parcel_resolution.sql` adds `agenda_parcel_resolutions`
+(audit log shape mirroring the Python script CSV) + `cron_runs` (heartbeat). New
+`.github/workflows/d1-migrate-phase12.yml` applies via `wrangler d1 migrations apply` —
+workflow_dispatch only, mirrors d1-migrate-phase11.yml pattern.
+
+**Build verification.** `npx tsc --noEmit` green for all Phase 12 files. The 3 pre-existing TS errors
+on main from Phase 11 (`ParcelDeepDive.tsx` `NewDealDialog` import + 2 `routes/index.tsx` AgendaItem
+type mismatches) were untouched and remain — flagged here for a Phase 13/14 cleanup.
+
+**User actions required to fully ship Phase 12:**
+1. Merge `phase-12-deferred-feedback` → main in both repos (--no-ff per Phase 11 pattern)
+2. Run `d1-migrate-phase12.yml` (workflow_dispatch) to apply migration 0003 to live D1
+3. Run `extract_parcels_from_pdfs.yml` (workflow_dispatch) — first run does the 491-item backfill (~$5–10 Haiku cost)
+4. Run `scrape_pmn_archive.py` once (locally OR via a one-off workflow) for the 24-month historical PMN backfill
+5. Spot-check that the cron status footer turns green after the workflows run
+
+Total LLM cost for Phase 12 implementation work: ~$0 (code via Claude Code). Backfill costs (paid by
+running workflows in user's account, not by this implementation): ~$5–10 one-time. Phase 13 is next.
 
 ### 2026-05-05 — Phase 11 (DONE) — Claude Code (Sonnet 4.6) + Lovable handoff merge
 Pipeline-rebuild branch. All work on `pipeline-rebuild`; pending user local verification

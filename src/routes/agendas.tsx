@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { SignalBar } from "@/components/SignalBar";
@@ -7,23 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { JURISDICTIONS } from "@/lib/types";
 import type { AgendaItem, SignalType } from "@/lib/types";
 import { useAgendas } from "@/lib/api-client";
 import { format } from "date-fns";
-import { Search, MapPin, AlertCircle } from "lucide-react";
-
-export const Route = createFileRoute("/agendas")({
-  head: () => ({
-    meta: [
-      { title: "Agendas — Wasatch Intel" },
-      { name: "description", content: "Searchable table of every scraped planning commission and city council agenda item across Wasatch Front cities." },
-      { property: "og:title", content: "Agendas — Wasatch Intel" },
-      { property: "og:description", content: "Browse 24 months of city planning and council activity." },
-    ],
-  }),
-  component: AgendasPage,
-});
+import { Search, MapPin, AlertCircle, CalendarIcon, Filter, X } from "lucide-react";
 
 const SIGNAL_TYPE_OPTIONS: SignalType[] = [
   "REZONE", "NEW_SUBDIVISION", "COMMERCIAL_PROJECT", "MINIFLEX_OPPORTUNITY",
@@ -43,26 +35,121 @@ const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
   DEVELOPER_ACTIVITY:     "Developer Activity",
 };
 
-function AgendasPage() {
-  const { data: response, isLoading, isError } = useAgendas();
+interface AgendasSearch {
+  q?: string;
+  jurisdictions?: string[];   // multi-select
+  types?: string[];           // multi-select SignalType
+  signal_min?: number;        // 0-100
+  signal_max?: number;        // 0-100
+  date_from?: string;         // ISO date
+  date_to?: string;           // ISO date
+}
 
+function asStringArray(v: unknown): string[] | undefined {
+  if (typeof v === "string" && v) return v.split(",").filter(Boolean);
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
+  return undefined;
+}
+
+function asNumber(v: unknown): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v && !Number.isNaN(Number(v))) return Number(v);
+  return undefined;
+}
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" && v ? v : undefined;
+}
+
+export const Route = createFileRoute("/agendas")({
+  head: () => ({
+    meta: [
+      { title: "Agendas — Wasatch Intel" },
+      { name: "description", content: "Searchable table of every scraped planning commission and city council agenda item across Wasatch Front cities." },
+      { property: "og:title", content: "Agendas — Wasatch Intel" },
+      { property: "og:description", content: "Browse 24 months of city planning and council activity." },
+    ],
+  }),
+  validateSearch: (s: Record<string, unknown>): AgendasSearch => ({
+    q:             asString(s.q),
+    jurisdictions: asStringArray(s.jurisdictions),
+    types:         asStringArray(s.types),
+    signal_min:    asNumber(s.signal_min),
+    signal_max:    asNumber(s.signal_max),
+    date_from:     asString(s.date_from),
+    date_to:       asString(s.date_to),
+  }),
+  component: AgendasPage,
+});
+
+function AgendasPage() {
+  const search = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+
+  const setSearch = (next: Partial<AgendasSearch>) => {
+    navigate({
+      search: (old: AgendasSearch) => {
+        const merged = { ...old, ...next };
+        // Drop undefined keys so URL stays clean
+        for (const k of Object.keys(merged) as (keyof AgendasSearch)[]) {
+          const v = merged[k];
+          if (v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) {
+            delete merged[k];
+          }
+        }
+        return merged;
+      },
+      replace: true,
+    });
+  };
+
+  const { data: response, isLoading, isError } = useAgendas();
   const agendas = response?.data ?? [];
   const meta    = response?.meta;
 
-  const [q,      setQ]      = useState("");
-  const [jur,    setJur]    = useState("");
-  const [sigType,setSigType]= useState("");
-  const [open,   setOpen]   = useState<AgendaItem | null>(null);
+  const q              = search.q ?? "";
+  const jurisdictions  = search.jurisdictions ?? [];
+  const types          = (search.types ?? []) as SignalType[];
+  const signalMin      = search.signal_min ?? 0;
+  const signalMax      = search.signal_max ?? 100;
+  const dateFrom       = search.date_from ? new Date(search.date_from) : undefined;
+  const dateTo         = search.date_to   ? new Date(search.date_to)   : undefined;
+
+  const [open, setOpen] = useState<AgendaItem | null>(null);
 
   const filtered = useMemo(() => {
-    return agendas.filter((a) =>
-      (!q || a.title.toLowerCase().includes(q.toLowerCase()) ||
-             (a.developer ?? "").toLowerCase().includes(q.toLowerCase()) ||
-             a.id.toLowerCase().includes(q.toLowerCase())) &&
-      (!jur     || a.jurisdiction === jur) &&
-      (!sigType || a.signalType === sigType)
-    );
-  }, [agendas, q, jur, sigType]);
+    const fromTime = dateFrom?.getTime();
+    const toTime   = dateTo?.getTime();
+    return agendas.filter((a) => {
+      if (q) {
+        const ql = q.toLowerCase();
+        const hit =
+          a.title.toLowerCase().includes(ql) ||
+          (a.developer ?? "").toLowerCase().includes(ql) ||
+          a.id.toLowerCase().includes(ql);
+        if (!hit) return false;
+      }
+      if (jurisdictions.length > 0 && !jurisdictions.includes(a.jurisdiction)) return false;
+      if (types.length > 0 && (!a.signalType || !types.includes(a.signalType))) return false;
+      const score = a.growthScore ?? 0;
+      if (score < signalMin || score > signalMax) return false;
+      if (fromTime || toTime) {
+        if (!a.date) return false;
+        const t = new Date(a.date).getTime();
+        if (Number.isNaN(t)) return false;
+        if (fromTime && t < fromTime) return false;
+        if (toTime   && t > toTime)   return false;
+      }
+      return true;
+    });
+  }, [agendas, q, jurisdictions, types, signalMin, signalMax, dateFrom, dateTo]);
+
+  const activeFilterCount =
+    (q ? 1 : 0) +
+    (jurisdictions.length > 0 ? 1 : 0) +
+    (types.length > 0 ? 1 : 0) +
+    (signalMin > 0 || signalMax < 100 ? 1 : 0) +
+    (dateFrom || dateTo ? 1 : 0);
 
   if (isLoading) return <LoadingSkeleton />;
 
@@ -94,13 +181,55 @@ function AgendasPage() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => setSearch({ q: e.target.value || undefined })}
               placeholder="Search title, developer, ID…"
               className="h-8 pl-8 text-xs border-transparent bg-muted/50"
             />
           </div>
-          <Pill value={jur}     onChange={setJur}     placeholder="Jurisdiction" options={JURISDICTIONS} />
-          <Pill value={sigType} onChange={setSigType} placeholder="Signal type"  options={SIGNAL_TYPE_OPTIONS} labels={SIGNAL_TYPE_LABELS} />
+
+          <MultiSelectFilter
+            label="Jurisdiction"
+            options={JURISDICTIONS as readonly string[]}
+            selected={jurisdictions}
+            onChange={(next) => setSearch({ jurisdictions: next.length > 0 ? next : undefined })}
+          />
+
+          <MultiSelectFilter
+            label="Item type"
+            options={SIGNAL_TYPE_OPTIONS}
+            labels={SIGNAL_TYPE_LABELS}
+            selected={types}
+            onChange={(next) => setSearch({ types: next.length > 0 ? next : undefined })}
+          />
+
+          <SignalRangeFilter
+            min={signalMin}
+            max={signalMax}
+            onChange={(lo, hi) => setSearch({
+              signal_min: lo > 0   ? lo : undefined,
+              signal_max: hi < 100 ? hi : undefined,
+            })}
+          />
+
+          <DateRangeFilter
+            from={dateFrom}
+            to={dateTo}
+            onChange={(f, t) => setSearch({
+              date_from: f ? f.toISOString().slice(0, 10) : undefined,
+              date_to:   t ? t.toISOString().slice(0, 10) : undefined,
+            })}
+          />
+
+          {activeFilterCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => navigate({ search: {}, replace: true })}
+            >
+              <X className="h-3 w-3" /> Reset
+            </Button>
+          )}
         </div>
 
         <div className="rounded-lg border border-border bg-card overflow-hidden">
@@ -252,25 +381,156 @@ function StatusPill({ status }: { status: string | null }) {
   return <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${tone}`}>{label}</span>;
 }
 
-function Pill({
-  value, onChange, placeholder, options, labels,
+function MultiSelectFilter<T extends string>({
+  label, options, labels, selected, onChange,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  options: readonly string[];
+  label: string;
+  options: readonly T[];
   labels?: Record<string, string>;
+  selected: T[];
+  onChange: (next: T[]) => void;
 }) {
+  const count = selected.length;
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-8 rounded-md bg-muted/50 border border-transparent px-2 text-xs hover:bg-muted focus:outline-none focus:ring-1 focus:ring-ring"
-    >
-      <option value="">{placeholder}: All</option>
-      {options.map((o) => (
-        <option key={o} value={o}>{labels ? labels[o as SignalType] ?? o : o}</option>
-      ))}
-    </select>
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+          <Filter className="h-3 w-3" />
+          {label}
+          {count > 0 && (
+            <Badge variant="secondary" className="ml-0.5 text-[10px] h-4 px-1">{count}</Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-2 w-56 max-h-72 overflow-auto" align="start">
+        <div className="space-y-1">
+          {options.map((opt) => {
+            const checked = selected.includes(opt);
+            const id = `${label}-${opt}`;
+            return (
+              <label key={opt} htmlFor={id} className="flex items-center gap-2 px-1.5 py-1 rounded hover:bg-muted cursor-pointer">
+                <Checkbox
+                  id={id}
+                  checked={checked}
+                  onCheckedChange={(v) => {
+                    if (v) onChange([...selected, opt]);
+                    else   onChange(selected.filter((s) => s !== opt));
+                  }}
+                />
+                <span className="text-xs">{labels ? labels[opt] ?? opt : opt}</span>
+              </label>
+            );
+          })}
+        </div>
+        {count > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full mt-1 h-7 text-xs"
+            onClick={() => onChange([])}
+          >
+            Clear
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function SignalRangeFilter({
+  min, max, onChange,
+}: {
+  min: number;
+  max: number;
+  onChange: (lo: number, hi: number) => void;
+}) {
+  const active = min > 0 || max < 100;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+          <Filter className="h-3 w-3" />
+          Signal
+          {active && (
+            <Badge variant="secondary" className="ml-0.5 text-[10px] h-4 px-1 font-mono">
+              {min}–{max}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-3 w-64" align="start">
+        <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+          Signal strength: {min} – {max}
+        </div>
+        <Slider
+          min={0}
+          max={100}
+          step={5}
+          value={[min, max]}
+          onValueChange={([lo, hi]) => onChange(lo, hi)}
+        />
+        <div className="flex justify-between text-[10px] font-mono text-muted-foreground mt-1.5">
+          <span>0</span><span>50</span><span>100</span>
+        </div>
+        {active && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full mt-2 h-7 text-xs"
+            onClick={() => onChange(0, 100)}
+          >
+            Reset
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function DateRangeFilter({
+  from, to, onChange,
+}: {
+  from: Date | undefined;
+  to:   Date | undefined;
+  onChange: (from: Date | undefined, to: Date | undefined) => void;
+}) {
+  const active = !!from || !!to;
+  const summary = active
+    ? `${from ? format(from, "MMM d") : "…"} – ${to ? format(to, "MMM d") : "…"}`
+    : null;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+          <CalendarIcon className="h-3 w-3" />
+          Date
+          {summary && (
+            <Badge variant="secondary" className="ml-0.5 text-[10px] h-4 px-1 font-mono">
+              {summary}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-auto" align="start">
+        <Calendar
+          mode="range"
+          selected={{ from, to }}
+          onSelect={(range) => onChange(range?.from, range?.to)}
+          numberOfMonths={2}
+        />
+        {active && (
+          <div className="p-2 border-t border-border">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full h-7 text-xs"
+              onClick={() => onChange(undefined, undefined)}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

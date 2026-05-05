@@ -2,6 +2,7 @@
 // Fetch, cache, and parse CSV/JSON data files from the public tooele-land-intel repo.
 
 import type { AgendaItem, AgendaStatus, SignalType, DeveloperSummary, SignalWireItem, DigestContent, CityScore, ParcelDetail, ParcelNeighbor } from "../../lib/types";
+import { isSignageItem } from "../../lib/types";
 
 const TLI_BASE = "https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data";
 
@@ -155,7 +156,7 @@ export async function loadAgendas(): Promise<LoadResult<AgendaItem[]>> {
 
 // ── /api/developers ───────────────────────────────────────────────────────────
 
-export async function loadDevelopers(): Promise<LoadResult<DeveloperSummary[]>> {
+export async function loadDevelopers(opts: { includeSignage?: boolean } = {}): Promise<LoadResult<DeveloperSummary[]>> {
   const fetchedAt = new Date().toISOString();
   try {
     const { data: agendas } = await loadAgendas();
@@ -172,6 +173,9 @@ export async function loadDevelopers(): Promise<LoadResult<DeveloperSummary[]>> 
     const devMap = new Map<string, Acc>();
 
     for (const item of agendas) {
+      // Default-exclude signage filings (pole signs, billboards, etc.) — they
+      // dominate raw counts but aren't real development activity.
+      if (!opts.includeSignage && isSignageItem(item)) continue;
       const name = item.developer?.trim();
       if (!name) continue;
       const id = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
