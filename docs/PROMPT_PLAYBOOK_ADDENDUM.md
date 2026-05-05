@@ -265,6 +265,120 @@ When done, update docs/PROMPT_PLAYBOOK_ADDENDUM.md: append a Phase 12 PHASE_LOG 
 
 ---
 
+## Phase 12 — Operational Brief
+
+### Goal
+Deliver six deferred-feedback items in priority order. The geocoding fix is the highest-value item (lifts plot rate from ~5.2% to 80%+) and the only task in this phase that warrants Opus thinking — the Haiku prompt for parcel-ID extraction needs precision design. The other five items are mechanical Sonnet work.
+
+### Branch policy
+- Cut `phase-12-deferred-feedback` from current main (which now contains the merged Phase 11 work).
+- All Phase 12 commits go on that branch.
+- Do NOT merge to main during this phase. Push and let user verify locally.
+- After verification, merge using the same pattern as Phase 11 (--no-ff, then GHA workflow for any new D1 migration).
+
+### Steps
+
+**1. GEOCODING FIX (Opus design + Sonnet implementation)**
+
+ENTER PLAN MODE (Shift+Tab) before designing the Haiku prompt. This is the one Opus-worthy task in Phase 12.
+
+Current plot rate: 27/518 (~5.2%) of agenda items resolve to map coordinates. The failure mode is that Nominatim can't resolve subdivision names like "Oquirrh Point Phase 1" or "Knolls Concept Plan." But the agenda item PDFs typically contain parcel IDs (e.g., "Parcel 080480106") and legal descriptions (e.g., "Lot 4, Block 2, Erda Estates Subdivision"). These are reliable map keys when extracted.
+
+Design a Haiku prompt that:
+- Reads the FULL PDF body of an agenda item (not just the title)
+- Extracts as many of these as it can find, returning a structured JSON: parcel_ids: string[], legal_descriptions: string[], street_addresses: string[], cross_streets: string[]
+- Returns confidence per extraction (high/medium/low)
+- Handles common patterns: "Parcel No.", "Tax ID", "APN", section/township/range references, lot/block numbers
+- Costs roughly $0.01-0.02 per agenda item at Haiku rates (~518 items = $5-10 backfill cost, well within Phase 12 budget)
+
+After design, EXIT PLAN MODE (auto-switches to Sonnet) and implement:
+- New GHA workflow: extract_parcels_from_pdfs.yml
+- Runs after weekly-digest.yml completes, processes any agenda items with no resolved coordinates
+- Calls Haiku via Anthropic API (uses existing ANTHROPIC_API_KEY secret in tooele-land-intel)
+- Writes results to D1 — new migration 0003_parcel_resolution.sql adding agenda_parcel_resolutions table (agenda_item_id, parcel_ids JSON, legal_descriptions JSON, addresses JSON, confidence, extracted_at)
+- After resolution, runs UGRC parcel ID lookup → centroid coordinates, updates agenda_items.lat/lng
+- Backfill mode: process all 491 unresolved items in one run on first deploy
+- Apply migration via the d1-migrate-phase11.yml pattern (rename or duplicate the workflow as d1-migrate-phase12.yml)
+
+Target: lift agenda items with map coordinates from 27 to 400+. Spot-check on Erda agenda items the user knows are high-value.
+
+**2. SIGNAL WIRE STRENGTH SORT (Sonnet)**
+
+Data exists — Haiku correlation score is already in D1 on watchlist_hits and equivalent feed entries. Wire a sort dropdown on the /feed (Signal Wire) route. Options: Newest (default), Strongest correlation, Oldest. Use Radix Select primitive consistent with existing patterns. Persist user's last sort choice in localStorage.
+
+**3. SIGNAGE-ONLY FILTER ON DEVELOPERS TAB (Sonnet)**
+
+Currently "Golden West Advertising × 4 pole sign filings" appears as the most-prolific developer — noise. Two-part fix:
+- Modify the existing Haiku split prompt (in the weekly-digest workflow) to identify and tag signage-only filings: when item type is "sign permit" or contains keywords like "pole sign", "monument sign", "wall sign", "freestanding sign" without other development context, set item_type=signage in addition to the current type.
+- On the /developers route, default-filter signage from the prolific-developers count. Add a "Include signage filings" toggle for completeness. Update the developer detail page to show signage filings in a separate section labeled "Signage permits" rather than mixed with development filings.
+
+**4. AGENDA MULTI-COLUMN FILTER (Sonnet)**
+
+The /agendas route table currently has weak filtering. Add column-header filters for: jurisdiction (multi-select), item type (multi-select), signal strength (range slider 0-1), date range (calendar picker). Use Radix primitives chained — Select for jurisdiction and item type, Slider for signal strength, Popover with calendar for date range. Filters combine via AND. URL state — filter selections persist to URL query params so users can share filtered views.
+
+**5. CRON STATUS FOOTER (Sonnet)**
+
+Footer or settings panel showing last-run / next-run for each cron:
+- weekly-digest (Mondays 14:00 UTC)
+- signals (daily 14:00 UTC)
+- watchlist-checker (hourly via Cloudflare Cron Trigger)
+- gap-layer (monthly)
+- geocode (after weekly-digest)
+- extract-parcels (new in Phase 12)
+
+Implementation:
+- Each GHA workflow's final step writes a row to a new D1 table cron_runs (workflow_name, ran_at, status, duration_ms, items_processed)
+- Cloudflare Cron Trigger workers do the same via D1 binding
+- New endpoint: GET /api/cron-status returns last 10 runs grouped by workflow + computed next-run (cron expression parsed to next occurrence)
+- Frontend: a footer component on every route showing a tiny status row — green dot per cron if last run succeeded, yellow if older than 2× expected interval, red if failed. Click footer to expand into a settings panel showing the full cron status.
+- Migration 0003_parcel_resolution.sql also adds the cron_runs table.
+
+**6. PMN 24-MONTH BACKFILL SCRAPER (Sonnet)**
+
+Lives in tooele-land-intel repo, not wasatch-intel. PMN body pages only expose ~10 most recent notices.
+- New script: scrape_pmn_archive.py
+- Hits PMN search endpoints by date range (24-month window from current date back), paginates through results, deduplicates against existing raw agenda CSVs
+- Output: appends 24 months of historical agenda items to data/raw/agendas_*.csv files
+- Run once manually after build, not as a cron — this is one-time history ingestion
+- Includes dry-run mode (--dry-run flag) showing how many items would be added per jurisdiction without actually writing
+- Logs unmatched items separately for inspection
+- Estimated 1-2 days of work; do not over-engineer — if PMN's search endpoints are flaky, log and continue rather than retrying aggressively
+
+After scraper runs successfully, the existing Haiku split + correlation pipeline picks up the new historical data automatically on next weekly-digest run, lifting the dataset's depth substantially without any frontend changes.
+
+### Acceptance criteria
+1. phase-12-deferred-feedback branch pushed to origin
+2. Geocoding fix: agenda items with coordinates >= 400 (up from 27)
+3. Signal Wire route has working strength sort with localStorage persistence
+4. Developers route default-filters signage; toggle exists
+5. Agendas route has 4 column filters with URL state persistence
+6. Cron status footer renders on all routes; settings panel expands; reflects real run data
+7. tooele-land-intel/scrape_pmn_archive.py exists with --dry-run mode and has been run once successfully (24-month backfill complete)
+8. Migration 0003_parcel_resolution.sql committed and applied via GHA workflow
+9. PROJECT_STATE.md PHASE_LOG entry added; CURRENT STATE → Phase 13
+10. All Phase 11 functionality unbroken (regression check on the 7 routes + visual verification of /map and /pipeline)
+
+### Out of scope
+- Wiring frontend to live API endpoints (Phase 14)
+- Real enrichment of scoring components (Phase 13)
+- Site plan vision extraction from agenda PDFs (Phase 18)
+- Fixing any Phase 11 visual quirks Lovable noted
+
+### LLM cost estimate
+- Geocoding backfill: $5-10 in Haiku calls (one-time)
+- Signage detection added to weekly-digest split prompt: marginal, +$0.10/week
+- Total Phase 12: ~$10 maximum
+
+### If stuck
+- Haiku extraction quality below 80%: refine prompt with 5-10 example few-shots from actual PDFs that previously failed Nominatim
+- UGRC parcel ID lookup fails for valid IDs: check whether the jurisdiction uses a different parcel ID format (some counties strip leading zeros, some include county prefix)
+- PMN scraper IP-banned: add user-agent rotation and 2-second delays; no proxies needed at this volume
+- D1 migration apply via GHA fails: check that CLOUDFLARE_API_TOKEN secret is still valid in repo settings
+
+Pause and ask if a blocker persists past two attempts.
+
+---
+
 ## Phase 13 — Real enrichment GHA jobs (the big one)
 
 **Tool**: **Hybrid — Claude Code (Opus) for architecture; Manus for the actual fetchers** · **Models**: CC `/model opus` for architecture session, then Manus for execution sub-tasks · **Est. time**: 1–2 weeks part-time · **Est. LLM cost**: ~$5–10 (mostly Opus arch session; Manus has its own pricing)
