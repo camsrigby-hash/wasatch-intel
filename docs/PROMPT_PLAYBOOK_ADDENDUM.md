@@ -6,11 +6,11 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-04-27
+## CURRENT STATE — 2026-05-05
 
-- Phases 0–10 shipped and graduated. MVP live at https://wasatch-intel.cam-s-rigby.workers.dev.
-- **Active phase: Phase 11 — Lovable Pipeline-Rebuild Merge + Polygon Paint + Backend Stubs.**
-- Working branch (when active): `pipeline-rebuild`. Do NOT auto-merge to main; user verifies locally first.
+- Phases 0–11 shipped. MVP live at https://wasatch-intel.cam-s-rigby.workers.dev.
+- **Active phase: Phase 12 — Deferred-feedback bundle (geocoding, Signal Wire sort, Agenda multi-filter, signage filter, cron status, PMN backfill).**
+- Phase 11 branch: `pipeline-rebuild` (pushed, pending user local verification + merge to main).
 - Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover.
 
 ---

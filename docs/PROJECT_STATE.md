@@ -539,6 +539,44 @@ NAIP is documented for Phase 11+ pickup ~2026-07-25. Key action remaining:
 trigger `backfill.yml` from GitHub Actions tab (workflow_dispatch) to execute
 the backfill against live PMN data.
 
+### 2026-05-05 — Phase 11 (DONE) — Claude Code (Sonnet 4.6) + Lovable handoff merge
+Pipeline-rebuild branch. All work on `pipeline-rebuild`; pending user local verification
+before merge to main.
+
+New files: `src/lib/parcel-intel.ts` (vacancy cascade, 3 default scoring profiles —
+gas-cstore/miniflex/generic-commercial — 8-dimension WeightVector scorer, Zod schemas
+as frontend+backend API contract); `src/lib/intel-context.tsx` (IntelProvider: profile
+state, weight overrides, pipeline mutations, keyboard shortcuts `/`/`g p`/`g m`,
+`useIntel()` hook); `src/components/ParcelDetailPanel.tsx` (720px Radix Sheet with 7
+tabs: Overview, Site Intel, Adjacent, Comps & Valuation, Owner & Outreach, DD Checklist,
+LOI Builder — Wagstaff template); `src/components/ScoringControls.tsx` (320px right-panel:
+profile dropdown, 8 weight sliders, fill-opacity, percentile badge);
+`src/components/ParcelThumb.tsx` (satellite thumbnail); `DESIGN_NOTES.md`
+(Lovable's documented deviations from the brief);
+`migrations/0002_pipeline_rebuild.sql` (D1 tables: parcel_records, pipeline_entries,
+dd_checklist_items, loi_drafts, scoring_profiles — DO NOT apply to prod without review);
+`tests/api-stubs.test.ts` (bun:test smoke tests for all 10 API endpoints, SKIP_API_TESTS=1).
+
+Modified: `src/lib/mock-data.ts` (re-exports Jurisdiction from types.ts; Parcel.jurisdiction
+string→Jurisdiction; appends SIGNAL_WIRE, WATCHLISTS, DEALS mocks);
+`src/styles.css` (stage tokens --stage-prospect/dd/loi/closed, grade tokens
+--grade-a/b/c/d in :root and .dark); `src/components/MapCanvas.tsx` (parcelColors/
+fillOpacity/dimMask props; buildParcelGeoJSON() with per-feature fillColor+fillOpacity;
+data-driven paint ["get","fillColor"]/["get","fillOpacity"]; 50ms debounce on setData());
+`src/routes/__root.tsx` (IntelProvider wraps Outlet); `src/routes/index.tsx` (scoreAll()
+→ parcelColors → MapCanvas; dimMask for pipeline filter); `src/routes/pipeline.tsx`
+(useIntel()+scoreFor() for sorting; stage chip filter; list/map toggle; ParcelDetailPanel);
+`src/server/entry.ts` (isPipelineOrProfileMutation guard + 10 production-only mock stubs:
+GET+POST /api/profiles, GET /api/parcels/search, GET /api/parcels?bbox=,
+GET /api/parcels/:id, GET+POST /api/pipeline, PATCH/DELETE /api/pipeline/:id,
+POST /api/parcels/:id/refresh); `package.json` (adds test script with SKIP_API_TESTS=1).
+
+Key decisions: API stubs are production-only (Cloudflare Workers); Vite dev server routes
+all /api/* through TanStack SSR — stubs untestable locally until Phase 14 frontend wiring.
+COUNTY_MAP patched for Erda (tooele) and American Fork (utah). Total LLM cost: ~$0 (code
+via Lovable handoff + Claude Code closeout session). Build: zero TS errors. 7 HTML routes
+all HTTP 200 in dev. Commits: ae615cb → 73f0eae → 913243a → 43ea8b8 → ee7cad5.
+
 ### 2026-04-25 — Phase 9 (DONE) — Claude Code (Sonnet 4.6)
 Per-city expansion via PMN. In **tooele-land-intel**: discovered PMN public body IDs
 for 11 expansion cities (26 new PMN bodies) via web search + individual page fetches

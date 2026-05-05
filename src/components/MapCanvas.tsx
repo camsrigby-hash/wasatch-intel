@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import maplibregl, { Map as MLMap, LngLatBoundsLike } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { AgendaItem } from "@/lib/types";
+import { PARCELS, AGENDAS, signalLabel, type Parcel, type AgendaItem as MockAgendaItem } from "@/lib/mock-data";
+import type { AgendaItem as RealAgendaItem } from "@/lib/types";
 
 interface MapCanvasProps {
   layers: {
@@ -9,16 +10,22 @@ interface MapCanvasProps {
     gap: boolean;
     agendas: boolean;
     heatmap: boolean;
-    sitePlans: boolean;   // re-purposed in Phase 4 as the STIP overlay toggle
+    sitePlans: boolean;
   };
-  agendaItems?: AgendaItem[];               // real geocoded items from /api/agendas
-  gapLayer?: GeoJSON.FeatureCollection;     // /api/gap-layer
-  stipLayer?: GeoJSON.FeatureCollection;    // /api/stip
-  onAgendaClick?: (agenda: AgendaItem) => void;
-  onParcelClick?: (props: GeoJsonProperties) => void;
+  onParcelClick?: (parcel: Parcel) => void;
+  onAgendaClick?: (agenda: MockAgendaItem | RealAgendaItem) => void;
+  selectedParcelId?: string | null;
+  /** Per-parcel fill color keyed by parcel id, e.g. from score grade. */
+  parcelColors?: Record<string, string>;
+  /** Polygon fill opacity 0–1. Defaults to 0.55. */
+  fillOpacity?: number;
+  /** When true, parcels not in parcelColors are dimmed to 0.10 opacity. */
+  dimMask?: boolean;
+  // Real-data props from Phase 4 (optional, ignored when using mock-data path)
+  agendaItems?: RealAgendaItem[];
+  gapLayer?: GeoJSON.FeatureCollection;
+  stipLayer?: GeoJSON.FeatureCollection;
 }
-
-type GeoJsonProperties = NonNullable<GeoJSON.Feature["properties"]>;
 
 const SATELLITE_STYLE: maplibregl.StyleSpecification = {
   version: 8,
@@ -43,75 +50,111 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
   ],
 };
 
-const EMPTY_FC: GeoJSON.FeatureCollection = { type: "FeatureCollection", features: [] };
-
-function buildAgendaGeoJSON(items: AgendaItem[]): GeoJSON.FeatureCollection {
-  const features: GeoJSON.Feature<GeoJSON.Point>[] = [];
-  for (const a of items) {
-    if (a.lat == null || a.lng == null) continue;
-    features.push({
-      type: "Feature",
-      id: a.id,
-      properties: {
-        id: a.id,
-        developer: a.developer ?? a.title ?? "",
-        signalType: a.signalType ?? a.itemType ?? "",
-        jurisdiction: a.jurisdiction,
-        date: a.date,
-        title: a.title,
-      },
-      geometry: { type: "Point", coordinates: [a.lng, a.lat] },
-    });
-  }
-  return { type: "FeatureCollection", features };
+function colorForSignal(s: number): string {
+  const l = signalLabel(s);
+  if (l === "Critical") return "#dc2626";
+  if (l === "High") return "#ea580c";
+  if (l === "Med") return "#eab308";
+  return "#60a5fa";
 }
+
+function buildParcelGeoJSON(
+  parcelColors: Record<string, string>,
+  fillOpacity: number,
+  dimMask: boolean,
+): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: PARCELS.map((p) => {
+      const hex = parcelColors[p.id] ?? "#6366f1";
+      const opacity = dimMask
+        ? (parcelColors[p.id] ? fillOpacity : 0.10)
+        : fillOpacity;
+      return {
+        type: "Feature" as const,
+        id: p.id,
+        properties: {
+          id: p.id,
+          apn: p.apn,
+          hasGap: p.hasGap,
+          jurisdiction: p.jurisdiction,
+          zoning: p.zoning,
+          generalPlan: p.generalPlan,
+          acres: p.acres,
+          fillColor: hex,
+          fillOpacity: opacity,
+        },
+        geometry: { type: "Polygon" as const, coordinates: [p.polygon] },
+      };
+    }),
+  };
+}
+
+const DEFAULT_OPACITY = 0.55;
 
 export function MapCanvas({
   layers,
-  agendaItems,
-  gapLayer,
-  stipLayer,
-  onAgendaClick,
   onParcelClick,
+  onAgendaClick,
+  selectedParcelId,
+  parcelColors = {},
+  fillOpacity = DEFAULT_OPACITY,
+  dimMask = false,
+  agendaItems,
+  stipLayer,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MLMap | null>(null);
   const loadedRef = useRef(false);
-  const agendaItemsRef = useRef<AgendaItem[]>(agendaItems ?? []);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => { agendaItemsRef.current = agendaItems ?? []; }, [agendaItems]);
-
-  // ── Sync GeoJSON sources when props change ──────────────────────────────────
+  // ── Sync parcelColors / fillOpacity / dimMask into the GeoJSON source ────────
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const src = map.getSource("parcels") as maplibregl.GeoJSONSource | undefined;
+      if (src) src.setData(buildParcelGeoJSON(parcelColors, fillOpacity, dimMask));
+    }, 50);
+  }, [parcelColors, fillOpacity, dimMask]);
+
+  // ── Sync real agenda items (Phase 4 real-data path, optional) ────────────────
+  useEffect(() => {
+    if (!agendaItems) return;
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     const src = map.getSource("agendas") as maplibregl.GeoJSONSource | undefined;
-    src?.setData(buildAgendaGeoJSON(agendaItems ?? []));
+    if (!src) return;
+    const features = agendaItems
+      .filter((a) => a.lat != null && a.lng != null)
+      .map((a) => ({
+        type: "Feature" as const,
+        id: a.id,
+        properties: { id: a.id, signal: a.growthScore ?? 0, jurisdiction: a.jurisdiction, color: colorForSignal(a.growthScore ?? 0) },
+        geometry: { type: "Point" as const, coordinates: [a.lng!, a.lat!] },
+      }));
+    src.setData({ type: "FeatureCollection", features });
   }, [agendaItems]);
 
+  // ── Sync STIP layer ───────────────────────────────────────────────────────────
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !loadedRef.current) return;
-    const src = map.getSource("parcels") as maplibregl.GeoJSONSource | undefined;
-    src?.setData(gapLayer ?? EMPTY_FC);
-  }, [gapLayer]);
-
-  useEffect(() => {
+    if (!stipLayer) return;
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     const src = map.getSource("stip") as maplibregl.GeoJSONSource | undefined;
-    src?.setData(stipLayer ?? EMPTY_FC);
+    src?.setData(stipLayer);
   }, [stipLayer]);
 
-  // ── Map init ────────────────────────────────────────────────────────────────
+  // ── Map init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: SATELLITE_STYLE,
-      center: [-112.42, 40.6],     // Tooele Valley
-      zoom: 10.5,
+      center: [-111.95, 40.55],
+      zoom: 9.2,
       maxBounds: [[-113.5, 39.5], [-110.5, 41.5]] as LngLatBoundsLike,
       attributionControl: { compact: true },
     });
@@ -130,44 +173,21 @@ export function MapCanvas({
       loadedRef.current = true;
       resizeMap();
 
-      // ── Parcels (real polygons from /api/gap-layer) ─────────────────────────
-      map.addSource("parcels", { type: "geojson", data: gapLayer ?? EMPTY_FC });
+      // ── Parcels source — mock polygons with grade colors ──────────────────────
+      map.addSource("parcels", {
+        type: "geojson",
+        data: buildParcelGeoJSON(parcelColors, fillOpacity, dimMask),
+      });
 
-      // Base parcel fill — uniform tint when "Parcels" is on but "Gap" is off
+      // fill-color and fill-opacity are data-driven from GeoJSON properties
+      // so profile switches only need a setData call, not a repaint expression change.
       map.addLayer({
         id: "parcels-fill",
         type: "fill",
         source: "parcels",
         paint: {
-          "fill-color": "#6366f1",
-          "fill-opacity": 0.10,
-        },
-      });
-
-      // Gap-score overlay. Scores are 0–7 (integer, bimodal: most parcels are 0,
-      // high-gap parcels cluster at 7). Nulls (no GP coverage) render gray.
-      map.addLayer({
-        id: "parcels-gap-null",
-        type: "fill",
-        source: "parcels",
-        filter: ["any", ["!", ["has", "gap_score"]], ["==", ["get", "gap_score"], null]],
-        paint: { "fill-color": "rgba(150, 150, 150, 0.20)" },
-      });
-      map.addLayer({
-        id: "parcels-gap",
-        type: "fill",
-        source: "parcels",
-        filter: ["all", ["has", "gap_score"], ["!=", ["get", "gap_score"], null]],
-        paint: {
-          "fill-color": [
-            "interpolate", ["linear"], ["get", "gap_score"],
-            0, "rgba(192, 38, 211, 0)",
-            2, "rgba(192, 38, 211, 0.25)",
-            4, "rgba(192, 38, 211, 0.45)",
-            6, "rgba(168, 28, 184, 0.65)",
-            7, "rgba(136, 22, 150, 0.85)",
-          ],
-          "fill-opacity": 0.85,
+          "fill-color": ["get", "fillColor"],
+          "fill-opacity": ["get", "fillOpacity"],
         },
       });
 
@@ -175,37 +195,48 @@ export function MapCanvas({
         id: "parcels-outline",
         type: "line",
         source: "parcels",
-        paint: { "line-color": "#a5b4fc", "line-width": 0.4, "line-opacity": 0.5 },
+        paint: {
+          "line-color": ["case", ["get", "hasGap"], "#e879f9", "#a5b4fc"],
+          "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 2.5, 1],
+        },
       });
 
-      // ── STIP (UDOT future road projects, line features) ─────────────────────
-      map.addSource("stip", { type: "geojson", data: stipLayer ?? EMPTY_FC });
+      // ── STIP (optional) ───────────────────────────────────────────────────────
+      map.addSource("stip", {
+        type: "geojson",
+        data: stipLayer ?? ({ type: "FeatureCollection", features: [] } as GeoJSON.FeatureCollection),
+      });
       map.addLayer({
         id: "stip-lines-glow",
         type: "line",
         source: "stip",
-        paint: {
-          "line-color": "#facc15",
-          "line-width": 6,
-          "line-opacity": 0.25,
-          "line-blur": 2,
-        },
+        paint: { "line-color": "#facc15", "line-width": 6, "line-opacity": 0.25, "line-blur": 2 },
       });
       map.addLayer({
         id: "stip-lines",
         type: "line",
         source: "stip",
-        paint: {
-          "line-color": "#facc15",
-          "line-width": 2.2,
-          "line-opacity": 0.95,
-        },
+        paint: { "line-color": "#facc15", "line-width": 2.2, "line-opacity": 0.95 },
       });
 
-      // ── Agenda pins ──────────────────────────────────────────────────────────
+      // ── Agenda pins — mock data by default, real data updates via effect ──────
+      const mockAgendaFeatures = AGENDAS.map((a) => ({
+        type: "Feature" as const,
+        id: a.id,
+        properties: {
+          id: a.id,
+          signal: a.signal,
+          applicant: a.applicant,
+          type: a.type,
+          jurisdiction: a.jurisdiction,
+          color: colorForSignal(a.signal),
+        },
+        geometry: { type: "Point" as const, coordinates: a.centroid },
+      }));
+
       map.addSource("agendas", {
         type: "geojson",
-        data: buildAgendaGeoJSON(agendaItemsRef.current),
+        data: { type: "FeatureCollection", features: mockAgendaFeatures },
         cluster: true,
         clusterMaxZoom: 12,
         clusterRadius: 40,
@@ -231,11 +262,11 @@ export function MapCanvas({
         source: "agendas",
         filter: ["!", ["has", "point_count"]],
         paint: {
-          "circle-color": "#4338ca",
+          "circle-color": ["get", "color"],
           "circle-stroke-color": "#ffffff",
           "circle-stroke-width": 1.5,
-          "circle-radius": 6,
-          "circle-opacity": 0.9,
+          "circle-radius": ["interpolate", ["linear"], ["get", "signal"], 0, 4, 100, 9],
+          "circle-opacity": 0.95,
         },
       });
 
@@ -245,7 +276,7 @@ export function MapCanvas({
         source: "agendas",
         maxzoom: 13,
         paint: {
-          "heatmap-weight": 1,
+          "heatmap-weight": ["interpolate", ["linear"], ["get", "signal"], 0, 0, 100, 1],
           "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 1, 13, 3],
           "heatmap-color": [
             "interpolate", ["linear"], ["heatmap-density"],
@@ -260,18 +291,18 @@ export function MapCanvas({
         },
       });
 
-      // ── Click handlers ───────────────────────────────────────────────────────
-      const parcelClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+      // ── Click handlers ────────────────────────────────────────────────────────
+      map.on("click", "parcels-fill", (e) => {
         const f = e.features?.[0];
-        if (f && onParcelClick) onParcelClick(f.properties ?? {});
-      };
-      map.on("click", "parcels-gap", parcelClick);
-      map.on("click", "parcels-fill", parcelClick);
+        if (!f) return;
+        const p = PARCELS.find((x) => x.id === f.properties?.id);
+        if (p) onParcelClick?.(p);
+      });
 
       map.on("click", "agenda-points", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        const a = agendaItemsRef.current.find((x) => x.id === f.properties?.id);
+        const a = AGENDAS.find((x) => x.id === f.properties?.id);
         if (a) onAgendaClick?.(a);
       });
 
@@ -282,7 +313,7 @@ export function MapCanvas({
         map.easeTo({ center: coords, zoom: (map.getZoom() || 9) + 2 });
       });
 
-      ["parcels-gap", "parcels-fill", "agenda-points", "agenda-clusters", "stip-lines"].forEach((layerId) => {
+      ["parcels-fill", "agenda-points", "agenda-clusters"].forEach((layerId) => {
         map.on("mouseenter", layerId, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", layerId, () => { map.getCanvas().style.cursor = ""; });
       });
@@ -294,13 +325,15 @@ export function MapCanvas({
     return () => {
       window.removeEventListener("resize", resizeMap);
       resizeObserver.disconnect();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       map.remove();
       mapRef.current = null;
       loadedRef.current = false;
     };
-  }, [onAgendaClick, onParcelClick]); // gapLayer/stipLayer set via separate effects above
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onParcelClick, onAgendaClick]);
 
-  // ── Layer-toggle visibility ─────────────────────────────────────────────────
+  // ── Layer-toggle visibility ───────────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -309,16 +342,29 @@ export function MapCanvas({
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis ? "visible" : "none");
     };
 
-    setVis("parcels-fill", layers.parcels && !layers.gap);
-    setVis("parcels-outline", layers.parcels || layers.gap);
-    setVis("parcels-gap-null", layers.gap);
-    setVis("parcels-gap", layers.gap);
+    setVis("parcels-fill", layers.parcels);
+    setVis("parcels-outline", layers.parcels);
     setVis("agenda-points", layers.agendas);
     setVis("agenda-clusters", layers.agendas);
     setVis("agenda-heat", layers.heatmap);
     setVis("stip-lines", layers.sitePlans);
     setVis("stip-lines-glow", layers.sitePlans);
   }, [layers]);
+
+  // ── Selection highlight ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+
+    PARCELS.forEach((p) => {
+      map.setFeatureState({ source: "parcels", id: p.id }, { selected: p.id === selectedParcelId });
+    });
+
+    if (selectedParcelId) {
+      const p = PARCELS.find((x) => x.id === selectedParcelId);
+      if (p) map.easeTo({ center: p.centroid, zoom: Math.max(map.getZoom(), 14), duration: 600 });
+    }
+  }, [selectedParcelId]);
 
   return <div ref={containerRef} className="absolute inset-0 min-h-full w-full bg-muted" />;
 }

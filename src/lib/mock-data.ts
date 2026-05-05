@@ -1,9 +1,10 @@
 // Mocked Utah real estate development intelligence data.
-// Phase 2: JURISDICTIONS, CITY_CENTERS, DealStage, Deal, Watchlist, SignalWireItem
-// have been moved to types.ts and are now API-backed. This file retains only the
-// data that is still consumed by MapCanvas, ParcelDeepDive, and search.tsx (Phases 3–5).
+// Phase 11: added Jurisdiction re-export + mock DEALS/WATCHLISTS/SIGNAL_WIRE
+// for parcel-intel.ts and legacy routes that still need mock shapes.
 
-import { JURISDICTIONS, CITY_CENTERS } from "./types";
+import { JURISDICTIONS, CITY_CENTERS, type Jurisdiction } from "./types";
+export type { Jurisdiction };
+export { JURISDICTIONS, CITY_CENTERS };
 
 export const AGENDA_TYPES = [
   "Rezone", "General Plan Amendment", "Subdivision Plat", "Site Plan",
@@ -60,7 +61,7 @@ function rng(seed: number) {
 export interface Parcel {
   id: string;
   apn: string;
-  jurisdiction: string;
+  jurisdiction: Jurisdiction;
   acres: number;
   centroid: [number, number];
   polygon: [number, number][];
@@ -222,3 +223,99 @@ export function signalToken(s: number): string {
     : l === "High" ? "signal-high"
     : l === "Med"  ? "signal-med"  : "signal-low";
 }
+
+// ── Mock signal wire (for parcel-intel.ts and legacy consumers) ───────────────
+export interface MockSignalWireItem {
+  id: string;
+  date: string;
+  source: "Agenda" | "News" | "Rumor" | "Filing";
+  jurisdiction: string;
+  headline: string;
+  excerpt: string;
+  signal: number;
+  proximity: number;
+  agendaId?: string;
+}
+
+export const SIGNAL_WIRE: MockSignalWireItem[] = (() => {
+  const r = rng(99);
+  const items: MockSignalWireItem[] = [];
+  for (let i = 0; i < 60; i++) {
+    const a = AGENDAS[Math.floor(r() * 80)];
+    const sources: MockSignalWireItem["source"][] = ["Agenda", "News", "Rumor", "Filing"];
+    const source = sources[Math.floor(r() * sources.length)];
+    const headlines = [
+      `${a.applicant} files for ${a.type.toLowerCase()} in ${a.jurisdiction}`,
+      `${a.jurisdiction} planning commission tables ${a.units ?? "?"} unit project`,
+      `Developer assembling parcels along ${a.jurisdiction} corridor`,
+      `${a.applicant} optioned ${a.acres} acres near ${a.jurisdiction} interchange`,
+      `Rumor: big-box anchor evaluating ${a.jurisdiction} site`,
+    ];
+    items.push({
+      id: `wire-${i + 1}`,
+      date: a.date,
+      source,
+      jurisdiction: a.jurisdiction,
+      headline: headlines[Math.floor(r() * headlines.length)],
+      excerpt: a.summary,
+      signal: a.signal,
+      proximity: +(r() * 12).toFixed(1),
+      agendaId: a.id,
+    });
+  }
+  return items.sort((a, b) => +new Date(b.date) - +new Date(a.date));
+})();
+
+// ── Mock watchlists (simple shape, distinct from D1-backed Watchlist in types.ts) ─
+export interface MockWatchlist {
+  id: string;
+  name: string;
+  type: "Geography" | "Applicant" | "Parcel Set" | "Saved Search";
+  hits: number;
+  lastHit: string;
+  signalThreshold: number;
+  alerts: { inApp: boolean; email: boolean };
+}
+
+export const WATCHLISTS: MockWatchlist[] = [
+  { id: "w-1", name: "Eagle Mountain growth corridor", type: "Geography",    hits: 24, lastHit: AGENDAS[0].date,  signalThreshold: 60, alerts: { inApp: true,  email: true  } },
+  { id: "w-2", name: "Ivory Homes filings",            type: "Applicant",   hits: 18, lastHit: AGENDAS[3].date,  signalThreshold: 50, alerts: { inApp: true,  email: false } },
+  { id: "w-3", name: "Tooele Valley land assembly",    type: "Geography",    hits: 12, lastHit: AGENDAS[8].date,  signalThreshold: 40, alerts: { inApp: true,  email: true  } },
+  { id: "w-4", name: "Mixed-use rezones >100 units",   type: "Saved Search", hits: 31, lastHit: AGENDAS[1].date,  signalThreshold: 70, alerts: { inApp: true,  email: true  } },
+  { id: "w-5", name: "I-15 South parcels (28)",         type: "Parcel Set",   hits: 9,  lastHit: AGENDAS[12].date, signalThreshold: 55, alerts: { inApp: false, email: true  } },
+];
+
+// ── Mock deals (for pipeline legacy compat, parcel-intel.ts LOI preview) ─────
+export type MockDealStage = "Prospect" | "Diligence" | "LOI" | "Under Contract" | "Closed/Dead";
+export const MOCK_DEAL_STAGES: MockDealStage[] = ["Prospect", "Diligence", "LOI", "Under Contract", "Closed/Dead"];
+
+export interface MockDeal {
+  id: string;
+  parcelId: string;
+  parcelApn: string;
+  jurisdiction: string;
+  stage: MockDealStage;
+  acres: number;
+  residualLandValue: number;
+  nextAction: string;
+  contact: string;
+  updatedAt: string;
+  notes: string;
+}
+
+export const DEALS: MockDeal[] = (() => {
+  const r = rng(13);
+  return PARCELS.slice(0, 18).map((p, i) => ({
+    id: `deal-${i + 1}`,
+    parcelId: p.id,
+    parcelApn: p.apn,
+    jurisdiction: p.jurisdiction,
+    stage: MOCK_DEAL_STAGES[Math.floor(r() * MOCK_DEAL_STAGES.length)],
+    acres: p.acres,
+    residualLandValue: p.residualLandValue,
+    nextAction: ["Send LOI draft","Order title","Call planner","Walk site","Negotiate price","Tabling — owner unresponsive"][Math.floor(r() * 6)],
+    contact: ["J. Mortensen","R. Allen","S. Park","M. Davis","K. Larsen","T. Chen"][Math.floor(r() * 6)],
+    updatedAt: AGENDAS[Math.floor(r() * 50)].date,
+    notes: `${p.ownerName} held ${p.ownershipYears} yrs. Utilities score ${p.utilitiesScore}. Residual ~$${(p.residualLandValue/1000).toFixed(0)}k.`,
+  }));
+})()
