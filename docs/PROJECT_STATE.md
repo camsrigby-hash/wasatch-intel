@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-05
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 13a arch reconciliation
-**Active phase:** Phase 13b — Manus execution of 9 enrichment sub-tasks per `docs/PHASE_13_ENRICHMENT_ARCH.md` (all blockers resolved; Manus sub-task prompts pending)
+**Last updated:** 2026-05-06
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 13b-2 closeout + retroactive 13b-1 schema fix
+**Active phase:** Phase 13b — sub-tasks 13b-3 through 13b-8 (parallel dispatch ready) + 13b-6a (parallel-ready since 13b-1). 13b-1 schema CONFIRMED applied 2026-05-06. 13b-2 PRs merged; awaiting user go-ahead to trigger scrape workflow.
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -606,6 +606,53 @@ Phase 13b can begin once user resolves §8.1 BLOCKERS B1/B2/B3. Recommended next
 user reads §8.1 in `docs/PHASE_13_ENRICHMENT_ARCH.md`, decides on each blocker, then
 asks for the first 13b sub-task prompt. Branch: `phase-13a-arch` pushed, NOT merged
 to main per Phase 13a brief.
+
+### 2026-05-06 — Phase 13b-2 partial closeout + retroactive 13b-1 fix — Claude Code (Sonnet 4.6)
+
+**13b-2 PR merges:**
+- tooele-land-intel PR #1 merged to main: `54224d78` (scraper + scrape_ugrc_lir.yml workflow)
+- wasatch-intel PR #1 merged to main: `11ffabf9` (runbook + load_parcels_to_d1.yml workflow)
+
+**Retroactive 13b-1 fix (schema never applied — applied today):**
+- Root cause: prior Manus session reported 13b-1 complete on 2026-05-05 without verifying against live D1.
+  Migration file was never committed to the repo; migration was never applied to production.
+- Applied today: `migrations/0004_phase13_enrichment.sql` via `wrangler d1 migrations apply --remote`
+  - `CREATE TABLE parcel_enrichment_log (parcel_id, source, enriched_at, status, details)`
+  - `ALTER TABLE parcel_records ADD COLUMN field_hash TEXT`
+  - `ALTER TABLE parcel_records ADD COLUMN commute_corridor_method TEXT NOT NULL DEFAULT 'proxy'`
+- Schema fix branch `phase-13b-2-schema-fix` merged to main with `--no-ff`: `f13779d`
+- Load workflow patched in same branch:
+  - `source_name` → `source` (canonical per arch doc §2.11)
+  - `status='success'` → `status='ok'` (canonical per arch doc §2.11)
+  - `sq(jur)` → `sq(jur or '')` (jurisdiction NOT NULL; empty string for 4 parcel-base-only counties)
+
+**Gate results (all 4 passing as of 2026-05-06):**
+- Gate A: `parcel_enrichment_log` table exists ✅
+- Gate B: `parcel_records` DDL includes `field_hash` and `commute_corridor_method` ✅
+- Gate C: `commute_corridor_method` column present ✅
+- Gate D: `parcel_enrichment_log` columns: parcel_id, source, enriched_at, status, details ✅
+
+**Note on Task 7 verification query:** The original runbook query uses `source_name` and `status='success'`.
+The correct query (per arch doc §2.11) is:
+`SELECT COUNT(*) FROM parcel_enrichment_log WHERE source='ugrc_lir' AND status='ok';`
+
+**Status:** Awaiting user go-ahead to trigger Task 5 scrape workflow.
+
+---
+
+### 2026-05-05 — Phase 13b-1 (RETROACTIVE — reported complete by Manus but NOT applied) — Manus
+
+Migration 0004 was authored by Manus and reported complete. However, the migration file was never committed
+to the repo and was never applied to the production D1 database. This was discovered during 13b-2 closeout
+gate checks on 2026-05-06. See the 2026-05-06 entry above for the retroactive fix.
+
+---
+
+### 2026-05-05 — Phase 13a arch reconciliation — Claude Code (Sonnet 4.6)
+Architecture doc finalized, blocker decisions recorded, 7-county scope confirmed.
+Commits `a9c8ebd` and `90dce2a` (were local-only until pushed in the 2026-05-06 schema-fix session).
+
+---
 
 ### 2026-05-05 — Phase 12 (CODE COMPLETE — user verification pending) — Claude Code (Opus 4.7)
 Deferred-feedback bundle on `phase-12-deferred-feedback` branch in both repos. Six items:

@@ -6,10 +6,14 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-05
+## CURRENT STATE — 2026-05-06
 
 - Phases 0–12 shipped. Phase 13a architecture + blocker resolution complete. `phase-13a-arch` merged to main.
-- **Active phase: Phase 13b — Real enrichment GHA jobs (Manus execution sub-tasks, 7-county scope).** All B1/B2/B3 blockers resolved. 9 sub-tasks (13b-1 through 13b-8 mandatory; 13b-9 deferred). Arch doc at `docs/PHASE_13_ENRICHMENT_ARCH.md`. Sub-task prompts ready on request.
+- **Active phase: Phase 13b — Real enrichment GHA jobs (Manus execution sub-tasks, 7-county scope).**
+- **13b-1 CONFIRMED COMPLETE (retroactive, applied 2026-05-06).** Migration 0004 was reported done by Manus on 2026-05-05 but was never applied to prod. Applied and verified today. Schema additions: `parcel_enrichment_log` table, `field_hash` column, `commute_corridor_method` column. All 4 gate checks passing.
+- **13b-2 PRs merged.** Scraper + scrape workflow live on tooele-land-intel main. Runbook + load workflow live on wasatch-intel main. Load workflow patched for canonical column names (`source`, `status='ok'`) and `jurisdiction NOT NULL`. Awaiting user go-ahead to trigger scrape (`scrape_ugrc_lir.yml -f county=all`).
+- **Sub-tasks 13b-3 through 13b-8 parallel-dispatch ready** after 13b-2 ingestion completes. 13b-6a (Census ACS) parallel-ready since 13b-1.
+- **Verification query correction:** Task 7 runbook uses `source_name` / `'success'` — both wrong. Correct: `SELECT COUNT(*) FROM parcel_enrichment_log WHERE source='ugrc_lir' AND status='ok';`
 - Phase 14 is now a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** (promoted from optional concern) — at 1.1M parcels MapLibre cannot render direct GeoJSON.
 - Phase 12 acceptance criteria #2 and #7 require the user to manually trigger the new GHA workflows (`extract_parcels_from_pdfs.yml` and `scrape_pmn_archive.py` workflow_dispatch) after merging the branch — they are code-complete but not yet run.
 - Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover. Phase 13 incremental burn projected at $7–14/mo (Google Places on-demand capped + D1 7-county storage).
