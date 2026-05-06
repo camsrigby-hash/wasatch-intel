@@ -59,16 +59,25 @@ jobs:
 
       - name: Download CSV from tooele-land-intel
         if: steps.filter.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/parcels
           BASE="https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data/raw"
           COUNTY="${{ matrix.county }}"
-          # Try .csv.gz first (large counties), fall back to .csv
+          # Try git-stored .csv.gz, then .csv, then release asset fallback
           if curl -fsSL "$BASE/parcels_${COUNTY}.csv.gz" -o "/tmp/parcels/parcels_${COUNTY}.csv.gz" 2>/dev/null; then
-            echo "Downloaded compressed CSV, decompressing..."
+            echo "Downloaded compressed CSV from git, decompressing..."
             gunzip "/tmp/parcels/parcels_${COUNTY}.csv.gz"
+          elif curl -fsSL "$BASE/parcels_${COUNTY}.csv" -o "/tmp/parcels/parcels_${COUNTY}.csv" 2>/dev/null; then
+            echo "Downloaded plain CSV from git"
           else
-            curl -fsSL "$BASE/parcels_${COUNTY}.csv" -o "/tmp/parcels/parcels_${COUNTY}.csv"
+            echo "Git download failed, trying GitHub release asset..."
+            gh release download "large-parcels" \
+              -p "parcels_${COUNTY}.csv.gz" \
+              -R camsrigby-hash/tooele-land-intel \
+              -D /tmp/parcels/
+            gunzip "/tmp/parcels/parcels_${COUNTY}.csv.gz"
           fi
           echo "Downloaded $(wc -l < /tmp/parcels/parcels_${COUNTY}.csv) lines (including header)"
 
