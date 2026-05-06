@@ -92,7 +92,7 @@ jobs:
 
           COUNTY = "${{ matrix.county }}"
           SIGNAL_COUNTIES = {"tooele", "salt_lake", "utah"}
-          CHUNK_SIZE = 1000
+          CHUNK_SIZE = 200  # D1 100KB limit; ~300 bytes/row without polygon = ~60KB/chunk
           NOW = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
           SQL_DIR = "/tmp/sql"
           os.makedirs(SQL_DIR, exist_ok=True)
@@ -181,7 +181,7 @@ jobs:
                           intv(byr),
                           sq(pc),
                           sq(vs),
-                          sq(row.get("polygon_geojson")),
+                          "NULL",  # polygon_geojson excluded: parcel polygons exceed D1 100KB limit; use UGRC ArcGIS API on demand
                           sq(fh),
                           "'proxy'",
                           f"'{NOW}'",
