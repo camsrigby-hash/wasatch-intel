@@ -486,9 +486,11 @@ Standard exponential: 1s, 2s, 4s, 8s, 16s, then circuit-break. UGRC and UDOT ver
 
 ## 5. SUB-TASK BREAKDOWN FOR MANUS (PHASE 13b)
 
-Eight discrete, independently-runnable sub-tasks. Each must be runnable as a single Manus job (no orchestration internal to a sub-task). Aggregate orchestration (cron schedules, GHA workflows) is out of scope for any single sub-task; that's a thin Phase 13c follow-on done in CC.
+Nine discrete, independently-runnable sub-tasks (13b-1 through 13b-8 mandatory; 13b-9 deferred/optional). Each must be runnable as a single Manus job (no orchestration internal to a sub-task). Aggregate orchestration (cron schedules, GHA workflows) is out of scope for any single sub-task; that's a thin Phase 13c follow-on done in CC.
 
-Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
+**Distributed telemetry:** there is no separate telemetry sub-task. Every ingestion script (13b-2 through 13b-8) is responsible for writing its own per-source telemetry rows to `parcel_enrichment_log` at completion. The `cron_runs` table (Phase 12) captures workflow-level heartbeats; `parcel_enrichment_log` captures per-source freshness, status, and hit/miss counts within each run. The circuit-breaker logic from §4.5 is implemented inside each sub-task that calls external APIs (primarily 13b-2 for UGRC rate limits, and any future Google Places pass in Phase 13c). This eliminates the need for a post-hoc wiring step — each sub-task ships with its own observability.
+
+Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes and the dependency diagram).
 
 ### 13b-1 — Schema migration 0004
 
@@ -507,7 +509,7 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 
 ### 13b-2 — UGRC LIR ingestion (7 counties)
 
-**Description:** Pull all parcels for all 7 counties (Tooele, Salt Lake, Utah, Davis, Weber, Wasatch, Box Elder) from UGRC LIR FeatureServer endpoints. For the 3 signal-scope counties (Tooele/Salt Lake/Utah), filter to the 13 jurisdictions via PARCEL_CITY + UGRC Municipal Boundaries spatial intersection and populate `jurisdiction`. For the 4 parcel-base-only counties (Davis/Weber/Wasatch/Box Elder), ingest all county parcels; set `jurisdiction = null`. Compute centroids. Bulk-insert / upsert into `parcel_records` with `id`, `jurisdiction`, `county`, `acreage`, `centroid_lng`, `centroid_lat`, `polygon_geojson`, `bldg_sqft`, `built_yr`, `prop_class`, `field_hash`. Compute `vacancy_status` via the existing `classifyVacancy()` rule (port to Python).
+**Description:** Pull all parcels for all 7 counties (Tooele, Salt Lake, Utah, Davis, Weber, Wasatch, Box Elder) from UGRC LIR FeatureServer endpoints. For the 3 signal-scope counties (Tooele/Salt Lake/Utah), filter to the 13 jurisdictions via PARCEL_CITY + UGRC Municipal Boundaries spatial intersection and populate `jurisdiction`. For the 4 parcel-base-only counties (Davis/Weber/Wasatch/Box Elder), ingest all county parcels; set `jurisdiction = null`. Compute centroids. Bulk-insert / upsert into `parcel_records` with `id`, `jurisdiction`, `county`, `acreage`, `centroid_lng`, `centroid_lat`, `polygon_geojson`, `bldg_sqft`, `built_yr`, `prop_class`, `field_hash`. **Raw LIR fields only** — vacancy classification (`vacancy_status`) is a separate pass handled by 13b-8, which applies the `classifyVacancy()` cascade and the PROP_CLASS code-to-string mapper. Separating the two allows the classification logic to iterate without re-running the expensive LIR fetch.
 
 **Parallelizable per-county:** each county's pull is fully independent. Run as 7 sub-jobs (separate Manus sub-runs or GHA matrix strategy).
 
@@ -516,7 +518,7 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Success:** all 13 jurisdictions have non-zero parcel counts; all 7 counties have non-zero raw parcel counts; live endpoint probe at start-of-run confirms each county URL returns 200; spot-check parcel `080480106` appears with bldg_sqft = 0; total parcel count between 900k and 1.3M.
 **Dependencies:** 13b-1.
 **Effort:** 12–18 hours total wall-clock (long fetches; most time is I/O across 7 counties running in parallel; ~2–3 hours per large county).
-**Parallel:** can run concurrently with 13b-4, 13b-6, 13b-7 (no shared writes).
+**Parallel:** 13b-6a (Census ACS county-level pull) starts immediately after 13b-1 and runs concurrently with 13b-2 — the two have no shared writes. After 13b-2 completes, 13b-3, 13b-4, 13b-5, 13b-6b, 13b-7, and 13b-8 can all run in parallel.
 
 ### 13b-3 — Roads enrichment (corner + AADT)
 
@@ -527,7 +529,7 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Success:** spot-check parcel 080480106 → `is_corner = true`, `aadt_primary` near 50 (per the regression target). 95%+ of parcels have non-null aadt_primary.
 **Dependencies:** 13b-2.
 **Effort:** 4–6 hours.
-**Parallel:** sequential after 13b-2 (reads the polygons), but parallel with 13b-4/6/7.
+**Parallel:** sequential after 13b-2 (reads the polygons), but parallel with 13b-4, 13b-5, 13b-6b, 13b-7, 13b-8.
 
 ### 13b-4 — Traffic signal enrichment
 
@@ -538,7 +540,7 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Success:** ~5–15% of parcels have `has_signal=true` (urban-heavy jurisdictions higher); spot-check that parcel 080480106 is FALSE (rural West Haven).
 **Dependencies:** 13b-2.
 **Effort:** 2–3 hours.
-**Parallel:** runs alongside 13b-3.
+**Parallel:** runs alongside 13b-3, 13b-5, 13b-6b, 13b-7, 13b-8.
 
 ### 13b-5 — Zoning + General Plan ingestion
 
@@ -551,16 +553,23 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Effort:** 3–5 days. This is the long-tail sub-task.
 **Parallel:** the discovery + intensity-table work for each jurisdiction is independent; can split into 10 sub-runs.
 
-### 13b-6 — Census ACS income enrichment
+### 13b-6 — Census ACS income enrichment (parallel-safe)
 
-**Description:** Pull `B19013_001E` for all block groups in all 7 counties via Census API (7 FIPS codes — see §1.10). Spatial-join parcel centroids → block groups → median income. Write `parcel_records.median_income`.
+**Description:** Two-phase sub-task that can begin before 13b-2 completes.
 
-**Inputs:** Census API key (must be set as `CENSUS_API_KEY` Workers secret + GHA secret); parcel centroids.
-**Outputs:** `parcel_records.median_income`. `parcel_enrichment_log` rows.
-**Success:** ≥ 99% of parcels have non-null `median_income` (block groups cover all developed land).
-**Dependencies:** 13b-2.
-**Effort:** 1–2 hours.
-**Parallel:** runs alongside 13b-3, 13b-4, 13b-5.
+**Phase 13b-6a (parallel to 13b-2):** Pull `B19013_001E` for all block groups in all 7 counties via Census API (7 FIPS codes — see §1.10). This is a county-level query (7 total requests), not per-parcel, so it needs no parcel data from 13b-2. Write all ~8,000 block-group records to disk cache (`data/cache/acs/block_groups_<fips>.json`). Log to `parcel_enrichment_log` with `status='cached'`. **Depends on 13b-1 only.**
+
+**Phase 13b-6b (after 13b-2):** Spatial-join parcel centroids → block-group polygons → `B19013_001E`. Write `parcel_records.median_income`. Depends on 13b-2 (parcel centroids) + 13b-6a (block-group cache). This is the only phase that touches `parcel_records`.
+
+**Note:** the block-group pull (13b-6a) is cheap enough (~seconds) that it can simply run as part of the same Manus job immediately after 13b-1 lands, with the spatial join deferred until 13b-2 completes. The split is documented here to clarify the dependency structure; a single Manus job can handle both phases sequentially, pausing between 13b-6a and 13b-6b until 13b-2 reports complete.
+
+**Inputs (13b-6a):** Census API key (`CENSUS_API_KEY` Workers secret + GHA secret); 7 FIPS codes (§1.10).
+**Inputs (13b-6b):** Block-group cache from 13b-6a; parcel centroids from 13b-2.
+**Outputs:** `parcel_records.median_income`. `parcel_enrichment_log` rows for `source='census_acs'`.
+**Success:** ≥ 99% of parcels have non-null `median_income` (block groups cover all developed land); 13b-6a completes in under 5 minutes.
+**Dependencies:** 13b-6a → 13b-1. 13b-6b → 13b-2 + 13b-6a.
+**Effort:** 1–2 hours total.
+**Parallel:** 13b-6a runs alongside 13b-2. 13b-6b runs alongside 13b-3, 13b-4, 13b-5, 13b-7, 13b-8.
 
 ### 13b-7 — Commute corridor scoring
 
@@ -571,22 +580,24 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Success:** Lehi/Saratoga Springs/American Fork parcels generally hit `Primary` (Silicon Slopes proximity); rural Tooele parcels hit `None`; spot-check passes with intuition.
 **Dependencies:** 13b-2.
 **Effort:** 4–6 hours including hand-curation of the static seeds.
-**Parallel:** runs alongside 13b-3, 13b-4, 13b-5, 13b-6.
+**Parallel:** runs alongside 13b-3, 13b-4, 13b-5, 13b-6b, 13b-8.
 
-### 13b-8 — Telemetry + circuit breaker hookup
+### 13b-8 — Vacancy classification
 
-**Description:** Wire each enrichment script's per-source spend / errors / cache hits into `cron_runs.details` (existing Phase 12 table). Implement the circuit breaker from §4.5. Add a budget-monitor cron that emails the user via Resend when the 30-day rolling spend exceeds 80% of any per-source cap.
+**Description:** Apply the `classifyVacancy()` cascade logic to every parcel row written by 13b-2. This sub-task reads the raw LIR fields (`BLDG_SQFT`, `BUILT_YR`, `PROP_CLASS`) and produces `vacancy_status`. It includes the PROP_CLASS code-to-string mapper that translates UGRC numeric/alpha codes (e.g., `"AG"`, `"R"`, `"C"`, `"I"`) into the string tokens (`"agricultural"`, `"residential"`, etc.) that the existing `parcel-intel.ts:classifyVacancy()` expects. The mapper must cover all 7 counties — Tooele County uses a different coding sheet than Salt Lake and Utah Counties. Reference Tooele County Recorder → Property Class Codes; reference Utah County and Salt Lake County property class definitions.
 
-**Inputs:** existing `recordCronRun()` helper from Phase 12; Resend API.
-**Outputs:** updated enrichment scripts; new `budget-monitor.yml` GHA cron (weekly).
-**Success:** spend telemetry visible in cron status footer; test budget-monitor by setting a spike threshold to $0.01 and confirming the email fires.
-**Dependencies:** 13b-1 through 13b-7 (instrumentation runs over them).
-**Effort:** 3–4 hours.
-**Parallel:** sequential after 13b-7 in practice, since it instruments the others.
+**Rationale for split from 13b-2:** the LIR fetch (13b-2) is expensive (~12–18 hours wall-clock); the classification pass is cheap (in-memory cursor over `parcel_records`, ~minutes). Splitting the steps allows the classification logic — the code-to-string mapper, the cascade thresholds — to be revised and re-run without re-fetching any data from UGRC.
+
+**Inputs:** `parcel_records` (raw LIR fields from 13b-2); county-specific PROP_CLASS coding documentation.
+**Outputs:** `parcel_records.vacancy_status`. `parcel_enrichment_log` rows for `source='vacancy_classification'`.
+**Success:** ≥ 95% of parcels have non-null `vacancy_status`; spot-check that an `"AG"`-coded parcel classifies as `'agricultural'`; spot-check that a parcel with `BLDG_SQFT = 0` and `PROP_CLASS != "AG"` classifies as `'vacant'`; spot-check that the regression parcel in each jurisdiction returns an intuitive classification.
+**Dependencies:** 13b-2.
+**Effort:** 2–3 hours (dominated by building and validating the per-county code-to-string mapper).
+**Parallel:** runs alongside 13b-3, 13b-4, 13b-5, 13b-6b, 13b-7 after 13b-2 completes.
 
 ### 13b-9 — Zoning PDF vision (deferred/optional)
 
-**Status: DEFERRED — do not start until 13b-3 zoning ingestion task has populated `docs/zoning_jurisdiction_status.md` with the B1 fallback jurisdiction list.**
+**Status: DEFERRED — do not start until 13b-5 (zoning ingestion) has populated `docs/zoning_jurisdiction_status.md` with the B1 fallback jurisdiction list.**
 
 **Description:** For each jurisdiction whose zoning service is publicly inaccessible (listed in `docs/zoning_jurisdiction_status.md` as `status: no_service`), run an Opus-vision job to read that city's published zoning map PDF (most cities publish one on their planning dept website). Produce structured GeoJSON polygons by zoning class for each inaccessible city. Estimated one-time cost: **$5–15** in Opus API calls (small PDF per jurisdiction, not 250k individual parcels). Spatial-join the output GeoJSON polygons against parcel centroids to populate `zoning_current` for previously-unknown-detail parcels.
 
@@ -599,34 +610,52 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 
 ### Sub-task summary
 
-9 sub-tasks (13b-1 through 13b-8 mandatory; 13b-9 deferred/optional). ~5 mandatory tasks parallelizable after 13b-2 lands. Total estimated effort: **~3–4 days of Manus runtime** (clock time; actual compute is shorter), gated by 13b-5's discovery work which is the largest unknown.
+9 sub-tasks (13b-1 through 13b-8 mandatory; 13b-9 deferred/optional). 13b-6a starts immediately after 13b-1 (parallel to 13b-2). After 13b-2 completes, 6 sub-tasks run in parallel (13b-3, 13b-4, 13b-5, 13b-6b, 13b-7, 13b-8). Total estimated effort: **~3–4 days of Manus runtime** (clock time; actual compute is shorter), gated by 13b-5's per-jurisdiction discovery work, which is the largest unknown. Telemetry is distributed — each sub-task writes to `parcel_enrichment_log`; no separate telemetry step exists.
 
 ---
 
 ## 6. ROLLOUT ORDER
 
+### Dependency diagram
+
+```
+13b-1 (migration)
+  ├─→ 13b-2 (UGRC LIR ingestion, 7 counties)
+  │     ├─→ 13b-3 (roads / AADT)              ─┐
+  │     ├─→ 13b-4 (traffic signals)            ─┤
+  │     ├─→ 13b-5 (zoning + GP ingestion)      ─┤─→ [all run in parallel after 13b-2]
+  │     ├─→ 13b-6b (Census ACS spatial join)   ─┤
+  │     ├─→ 13b-7 (commute corridor scoring)   ─┤
+  │     └─→ 13b-8 (vacancy classification)     ─┘
+  │
+  └─→ 13b-6a (Census ACS county pull — parallel to 13b-2, depends only on 13b-1)
+        └─→ [feeds into 13b-6b above once 13b-2 also completes]
+
+13b-5 (when B1 fallback list known) ──→ 13b-9 (zoning PDF vision recovery, deferred)
+```
+
+Key: `13b-6a` and `13b-2` run concurrently immediately after `13b-1` merges. Everything from `13b-3` through `13b-8` fans out in parallel once `13b-2` completes. `13b-6b` additionally waits for `13b-6a`.
+
 ### Sequencing rationale (deliver visible value soonest)
 
 1. **13b-1** (schema migration) — must land first; cheap, fast.
-2. **13b-2** (UGRC LIR ingestion) — gates everything; this is where the parcels appear on the map at all. **Tooele runs first** (home territory, existing data validates the pipeline). After Tooele validates, run **Salt Lake + Utah + Davis + Weber in parallel**, then **Wasatch + Box Elder**. Once 13b-2 completes for all 7 counties, the map shows ~1.1M parcels with vacancy classification — this is the first user-visible win. The 4 parcel-base-only counties appear with neutral growth scores.
-3. **13b-6** (Census ACS) — fast, free, easy quick-win after 13b-2. Adds median_income to parcel detail panels.
-4. **13b-3 + 13b-4** (roads/AADT + signals) — parallel. These light up the corner / aadt / signal scoring components.
-5. **13b-7** (commute corridor) — also parallel; lights up the corridor scoring component.
-6. **13b-5** (zoning + GP) — the long-tail. Ship piecewise: first re-light Tooele (already wired in Phase 4), then add Salt Lake County jurisdictions, then Utah County. Each jurisdiction shipped independently moves the map's coverage forward.
-7. **13b-8** (telemetry + circuit breaker) — last; instruments the others. Critical before any Google Places call lands in Phase 13c.
+2. **13b-2 + 13b-6a in parallel** — 13b-2 is the long pole (12–18 hours wall-clock for the full 7-county LIR pull); kick off 13b-6a (Census ACS county-level pull, ~seconds) at the same time to have it ready. **13b-2: Tooele runs first** (home territory, existing data validates the pipeline). After Tooele validates, run **Salt Lake + Utah + Davis + Weber in parallel**, then **Wasatch + Box Elder**. Once 13b-2 completes for all 7 counties, the map shows ~1.1M parcel rows — this is the first user-visible win. The 4 parcel-base-only counties appear with neutral growth scores.
+3. **13b-3 + 13b-4 + 13b-5 + 13b-6b + 13b-7 + 13b-8 — all in parallel** after 13b-2 (and 13b-6a, for 13b-6b). Fire all six at once. Estimated to converge in 4–6 hours for 13b-3/4/6b/7/8 while 13b-5 runs for days in the background.
+4. **13b-5** (zoning + GP) — the long-tail. Ship piecewise: first re-light Tooele (already wired in Phase 4), then add Salt Lake County jurisdictions, then Utah County. Each jurisdiction shipped independently moves the map's zoning coverage forward.
+5. **13b-9** (deferred) — starts only after 13b-5 populates `docs/zoning_jurisdiction_status.md` with the B1 fallback list. Run per-jurisdiction, fully independently.
 
 ### Visible-value milestones for the user
 
 | After sub-task | What the user sees |
 |---|---|
-| 13b-2 | Map shows ~250k parcels in 13 jurisdictions; vacancy_status colors render; existing scoring profiles produce A/B/C/D grades using mock fallbacks for missing fields |
+| 13b-2 | Map shows ~1.1M parcel rows; ~250k in 13 signal-scope jurisdictions; existing scoring profiles produce A/B/C/D grades using neutral fallbacks for fields not yet enriched |
+| 13b-8 | vacancy_status colors render on the map; parcels recolor by classification |
 | 13b-3 | aadt + corner score components light up; gas-cstore profile starts producing meaningful rankings |
-| 13b-6 | median_income column populates; income-inversion in c-store profile activates |
-| 13b-5 (Tooele rerun) | zoning + GP gap layer matches Phase 4 output, but now persisted in D1 not just GeoJSON |
+| 13b-6b | median_income column populates; income-inversion in c-store profile activates |
+| 13b-5 (Tooele rerun) | zoning + GP gap layer matches Phase 4 output, now persisted in D1 not just GeoJSON |
 | 13b-5 (each new jurisdiction) | new city's parcels recolor with real zoning intensity |
 | 13b-7 | corridor tier visible in detail panel; pipeline scoring shifts |
 | 13b-4 | signal score component activates (small visible delta) |
-| 13b-8 | cron status footer turns green for the new sources; budget telemetry visible |
 
 ### What's NOT in Phase 13b
 
@@ -726,6 +755,17 @@ Before merging `phase-13b-*` branches to main:
 ---
 
 ## 8. RISKS & OPEN QUESTIONS
+
+### 8.0 ARCHITECTURAL DECISIONS (2026-05-05)
+
+**D1. Telemetry is distributed, not a separate sub-task — DECIDED.**
+An earlier draft had a "13b-8: Telemetry + circuit breaker hookup" sub-task that would instrument all prior scripts post-hoc. Decision: **each ingestion sub-task (13b-2 through 13b-8) ships with its own observability baked in.** Every script writes per-source rows to `parcel_enrichment_log` (source, status, details JSON, enriched_at). The circuit-breaker logic from §4.5 is implemented locally in each script that calls external APIs. The `cron_runs` table (Phase 12) remains the workflow-level heartbeat; `parcel_enrichment_log` is the per-source enrichment audit log. This eliminates a post-hoc wiring step, keeps each sub-task self-contained, and means Phase 13c can read per-source freshness from a single table rather than assembling it from multiple places.
+
+**D2. Vacancy classification is split from LIR ingestion — DECIDED.**
+13b-2 writes raw LIR fields only. 13b-8 applies the `classifyVacancy()` cascade and the per-county PROP_CLASS code-to-string mapper. Rationale: the LIR fetch (13b-2) is the most expensive operation in the pipeline (~12–18 hours); decoupling classification lets the vacancy logic iterate without re-fetching data.
+
+**D3. Census ACS pull is parallel to LIR ingestion — DECIDED.**
+The Census county-level pull (13b-6a) depends only on 13b-1 and can start immediately after migration, concurrent with the LIR fetch. The spatial join (13b-6b) waits for parcel centroids from 13b-2. See §6 dependency diagram.
 
 ### 8.1 BLOCKERS — ALL RESOLVED (2026-05-05)
 

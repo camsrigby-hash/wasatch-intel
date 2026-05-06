@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-05-05
-**Last agent:** Claude Code (Opus 4.7) — Phase 13a architecture session
-**Active phase:** Phase 13b — Manus execution of 8 enrichment sub-tasks per `docs/PHASE_13_ENRICHMENT_ARCH.md` (3 user-input blockers must resolve first)
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 13a arch reconciliation
+**Active phase:** Phase 13b — Manus execution of 9 enrichment sub-tasks per `docs/PHASE_13_ENRICHMENT_ARCH.md` (all blockers resolved; Manus sub-task prompts pending)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -743,6 +743,20 @@ to the Cloudflare API token (original token was Workers-only), and regenerating 
 (new deps were missing; no local Node on this machine). D1 database UUID: `8a8792c9-df0b-4644-8fdb-5ecfc5d6a66a`.
 Live endpoint verified: `/api/watchlists` returns `{"data":[],"meta":{"source":"d1:watchlists","freshness":"live",...}}`.
 Phase 8 is next.
+
+### 2026-05-05 — Phase 13a arch reconciliation — Claude Code (Sonnet 4.6)
+
+Architecture-only session. Three improvements applied to `docs/PHASE_13_ENRICHMENT_ARCH.md` §5 and §6 on branch `phase-13a-arch-reconciliation`:
+
+**D1 (telemetry, 13b-8 slot).** Removed the standalone "Telemetry + circuit breaker hookup" sub-task. Telemetry is now distributed: every ingestion script ships with its own `parcel_enrichment_log` writes. Circuit-breaker logic is embedded per script. The 13b-8 slot is reused for vacancy classification (see D2). Documented in new §8.0.
+
+**D2 (vacancy classification split).** 13b-8 is now "Vacancy classification" — a dedicated pass over the raw LIR fields written by 13b-2 that applies the `classifyVacancy()` cascade and the per-county PROP_CLASS code-to-string mapper. 13b-2 writes raw LIR fields only. Rationale: decouples the ~12–18 hr LIR fetch from the cheap classification pass, letting the latter iterate without re-fetching.
+
+**D3 (Census ACS parallel-safe).** 13b-6 restructured as two phases: 13b-6a (county-level pull, depends only on 13b-1, runs concurrent with 13b-2) and 13b-6b (spatial join, depends on 13b-2 + 13b-6a). Added an ASCII dependency diagram to §6. Sub-task summary updated to reflect that 6 sub-tasks fan out in parallel after 13b-2.
+
+**Numbering fix.** 13b-9 deferred note incorrectly referenced "13b-3 zoning ingestion task" — corrected to 13b-5 (zoning is 13b-5 in the arch doc; 13b-3 is roads).
+
+Next: user will provide the Manus sub-task prompt template; then generate paste-ready prompts for 13b-2 through 13b-9.
 
 ---
 
