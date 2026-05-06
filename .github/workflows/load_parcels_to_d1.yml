@@ -92,7 +92,7 @@ jobs:
 
           COUNTY = "${{ matrix.county }}"
           SIGNAL_COUNTIES = {"tooele", "salt_lake", "utah"}
-          CHUNK_SIZE = 200  # D1 100KB limit; ~300 bytes/row without polygon = ~60KB/chunk
+          CHUNK_SIZE = 500
           NOW = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
           SQL_DIR = "/tmp/sql"
           os.makedirs(SQL_DIR, exist_ok=True)
@@ -124,6 +124,9 @@ jobs:
               if v is None or str(v).strip() in ("", "None"):
                   return "NULL"
               return "'" + str(v).replace("'", "''") + "'"
+
+          def sq_notnull(v):
+              return "'" + str(v or "").replace("'", "''") + "'"
 
           def num(v):
               if v is None or str(v).strip() in ("", "None"):
@@ -172,7 +175,7 @@ jobs:
                       "field_hash,commute_corridor_method,enriched_at) VALUES("
                       + ",".join([
                           sq(pid),
-                          sq(jur or ''),
+                          sq_notnull(jur),
                           sq(COUNTY),
                           num(row.get("acreage")),
                           num(row.get("centroid_lng")),
@@ -245,13 +248,17 @@ jobs:
           FAILED=0
           for chunk in $(ls /tmp/sql/chunk_*.sql 2>/dev/null | sort); do
             echo "→ $chunk"
-            if ! npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
-              echo "Retry: $chunk (waiting 10s)"
-              sleep 10
-              if ! npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
-                echo "FAILED: $chunk"
-                FAILED=$((FAILED + 1))
+            OK=false
+            for delay in 15 30 60; do
+              if npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
+                OK=true; break
               fi
+              echo "Retry: $chunk (waiting ${delay}s)"
+              sleep $delay
+            done
+            if [ "$OK" = "false" ]; then
+              echo "FAILED: $chunk"
+              FAILED=$((FAILED + 1))
             fi
           done
           if [ "$FAILED" -gt 0 ]; then
@@ -266,12 +273,17 @@ jobs:
           FAILED=0
           for chunk in $(ls /tmp/sql/log_*.sql 2>/dev/null | sort); do
             echo "→ $chunk"
-            if ! npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
-              sleep 10
-              if ! npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
-                echo "FAILED: $chunk"
-                FAILED=$((FAILED + 1))
+            OK=false
+            for delay in 15 30 60; do
+              if npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
+                OK=true; break
               fi
+              echo "Retry: $chunk (waiting ${delay}s)"
+              sleep $delay
+            done
+            if [ "$OK" = "false" ]; then
+              echo "FAILED: $chunk"
+              FAILED=$((FAILED + 1))
             fi
           done
           if [ "$FAILED" -gt 0 ]; then
