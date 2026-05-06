@@ -53,9 +53,9 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install npm dependencies (wrangler)
+      - name: Install wrangler
         if: steps.filter.outputs.run == 'true'
-        run: npm ci
+        run: npm install -g wrangler
 
       - name: Download CSV from tooele-land-intel
         if: steps.filter.outputs.run == 'true'
