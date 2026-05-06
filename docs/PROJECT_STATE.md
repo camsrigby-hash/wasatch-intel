@@ -539,6 +539,22 @@ NAIP is documented for Phase 11+ pickup ~2026-07-25. Key action remaining:
 trigger `backfill.yml` from GitHub Actions tab (workflow_dispatch) to execute
 the backfill against live PMN data.
 
+### 2026-05-05 — Phase 13a blocker resolutions + 7-county expansion — Claude Code (Sonnet 4.6)
+
+User reviewed §8.1 BLOCKERS and §8.3 OPEN QUESTIONS in `docs/PHASE_13_ENRICHMENT_ARCH.md` and provided decisions on all items. Arch doc updated in-place; branch merged to main.
+
+**B1 (zoning fallback) — APPROVED.** Fallback to `'unknown_detail'` for inaccessible jurisdictions. `docs/zoning_jurisdiction_status.md` created to track discovery status per jurisdiction. 13b-9 (deferred Opus-vision zoning-PDF recovery) added as optional sub-task in §5, gated on the B1 fallback list being populated by 13b-5.
+
+**B2 (Google Places budget) — ON-DEMAND ONLY, $10/mo cap.** 90-day cache. Circuit breaker drops to neutral score (50) when cap hit. Bulk pulls explicitly rejected.
+
+**B3 (WFRC TAZ skim) — PROXY APPROVED.** Default: straight-line × 1.4 / 35 mph. Every parcel scored via proxy tagged `commute_corridor_method = 'proxy'` in D1 for future swap. WFRC email request documented in §8.2.
+
+**Q2 (county scope) — EXPANDED from 3 to 7 counties.** Parcel base now covers Tooele + Salt Lake + Utah + Davis + Weber + Wasatch + Box Elder (~1.1M total parcels). Signal collection scope unchanged (13 jurisdictions). Rationale: prospecting features require multi-county base coverage. Storage ~$2–4/mo at D1 rates. §1.1 updated with 4 new UGRC LIR endpoints; §2 updated with county enum extension (wasatch/box_elder) and commute_corridor_method column; §4 cost table updated; 13b-1 and 13b-2 sub-tasks updated.
+
+**Q3 (vector tiles) — PROMOTED to Phase 14 REQUIRED DELIVERABLE.** At 1.1M parcels, MapLibre cannot render direct GeoJSON. Phase 14 must include PMTiles + Tippecanoe pipeline. Documented in §8.2 and §8.4 Q3.
+
+Sub-task count is now 9 (13b-1 through 13b-8 mandatory; 13b-9 deferred). Branch `phase-13a-arch` merged to main.
+
 ### 2026-05-05 — Phase 13a (DONE) — Claude Code (Opus 4.7)
 Architecture-only session producing `docs/PHASE_13_ENRICHMENT_ARCH.md` (450+ lines, 8 sections)
 on the `phase-13a-arch` branch. No code written. Document specifies how to populate

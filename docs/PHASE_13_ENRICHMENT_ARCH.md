@@ -7,15 +7,21 @@
 
 This document specifies how to populate `parcel_records` (D1 table from migration `0002_pipeline_rebuild.sql`) for all 13 jurisdictions with real scoring-component data. It is the single source-of-truth that Phase 13b sub-tasks draw from.
 
-The 13 jurisdictions span 3 counties:
+The 13 jurisdictions span 3 counties (signal collection scope). The **parcel base is expanded to 7 counties** to support prospecting features (cross-parcel ownership lookup, inverse "parcels matching criteria but not listed" view, related-properties lookup) that require multi-county coverage:
 
-| County | Jurisdictions |
-|---|---|
-| Tooele | Erda, Grantsville, Tooele City |
-| Salt Lake | South Jordan, Herriman, Bluffdale, Draper |
-| Utah | Lehi, Saratoga Springs, Eagle Mountain, American Fork, Vineyard, Spanish Fork |
+| County | Jurisdictions (signal scope) | Notes |
+|---|---|---|
+| Tooele | Erda, Grantsville, Tooele City | Home territory |
+| Salt Lake | South Jordan, Herriman, Bluffdale, Draper | PMN signals collected |
+| Utah | Lehi, Saratoga Springs, Eagle Mountain, American Fork, Vineyard, Spanish Fork | PMN signals collected |
+| Davis | — | Parcel base only; neutral growth scores until PMN bodies added |
+| Weber | — | Parcel base only |
+| Wasatch | — | Parcel base only |
+| Box Elder | — | Parcel base only |
 
-Estimated parcel volume after city-boundary clip: **~250k–300k**. Raw county totals (UGRC LIR): Tooele 45,656; Salt Lake 394,610; Utah 327,655 = **767,921 county-wide**, of which a city-boundary intersection retains roughly one-third (incorporated portions only).
+Signal collection scope (PMN agendas, news, Reddit) is **UNCHANGED** — stays at 13 jurisdictions. Parcels in the 4 new counties appear on the map with neutral growth signal scores until/unless their PMN bodies are added in a future phase.
+
+Estimated parcel volume (city-boundary clip of 13 jurisdictions): **~250k–300k**. Full 7-county parcel base: **~1.1M**. Raw county totals (UGRC LIR): Tooele 45,656; Salt Lake 394,610; Utah 327,655; Davis 152,000; Weber 190,000; Wasatch 25,000; Box Elder 50,000 = **~1,185,000 county-wide**. Storage projection at full 7-county coverage: ~3–5 GB inclusive of polygon GeoJSON; D1 cost ~$2–4/mo.
 
 ---
 
@@ -25,11 +31,17 @@ Estimated parcel volume after city-boundary clip: **~250k–300k**. Raw county t
 
 Hosted on UGRC's AGOL tenant `services1.arcgis.com/99lidPhWCzftIe9K`. All endpoints anonymous, no API key. Confirmed live 2026-05-05.
 
-| County | Service URL | Records | Last edit (probed) |
+| County | Service URL | Records | Confirmed |
 |---|---|---|---|
-| Tooele | `/Parcels_Tooele_LIR/FeatureServer/0` | 45,656 | per UGRC update cycle |
-| Salt Lake | `/Parcels_SaltLake_LIR/FeatureServer/0` | 394,610 | per UGRC update cycle |
-| Utah | `/Parcels_Utah_LIR/FeatureServer/0` | 327,655 | per UGRC update cycle |
+| Tooele | `/Parcels_Tooele_LIR/FeatureServer/0` | 45,656 | live probe 2026-05-05 |
+| Salt Lake | `/Parcels_SaltLake_LIR/FeatureServer/0` | 394,610 | live probe 2026-05-05 |
+| Utah | `/Parcels_Utah_LIR/FeatureServer/0` | 327,655 | live probe 2026-05-05 |
+| Davis | `/Parcels_Davis_LIR/FeatureServer/0` | ~152,000 | naming-convention probe 2026-05-05 |
+| Weber | `/Parcels_Weber_LIR/FeatureServer/0` | ~190,000 | naming-convention probe 2026-05-05 |
+| Wasatch | `/Parcels_Wasatch_LIR/FeatureServer/0` | ~25,000 | naming-convention probe 2026-05-05 |
+| Box Elder | `/Parcels_BoxElder_LIR/FeatureServer/0` | ~50,000 | naming-convention probe 2026-05-05 |
+
+All 7 base URLs prepend `https://services1.arcgis.com/99lidPhWCzftIe9K/ArcGIS/rest/services/`. Davis/Weber/Wasatch/BoxElder confirmed by naming-convention probe (same `Parcels_<County>_LIR` pattern, anonymous AGOL); sub-task 13b-2 must do a live record-count probe at start-of-run and fail fast if any endpoint returns 0 or 404.
 
 **Auth:** none (anonymous AGOL). **Rate limit:** undocumented but observed ~5 req/s sustainable; `maxRecordCount` = 1000 per page, so use `resultOffset` paging. **Cost:** free. **Robustness:** UGRC publishes update tables on the SGID Cadastre page; expect a 6–18 month lag from county recorder to LIR. Service-down events <1/year, typically <2 hours.
 
@@ -156,14 +168,14 @@ Static seed, same handling as 1.8. Required ramps for I-15 and US-89 between mil
 
 **Variable:** `B19013_001E` (median household income, prior 12 months in inflation-adjusted dollars).
 **Geography:** block group (`for=block%20group:*&in=state:49+county:<FIPS>+tract:*`).
-**FIPS codes:** Tooele = `49045`, Salt Lake = `49035`, Utah = `49049`.
+**FIPS codes:** Tooele = `49045`, Salt Lake = `49035`, Utah = `49049`, Davis = `49011`, Weber = `49057`, Wasatch = `49051`, Box Elder = `49003`.
 
 **Auth:** Census API key (free, instant signup at `https://api.census.gov/data/key_signup`); recommended for >500 calls/day. Set `CENSUS_API_KEY` Workers secret.
 **Rate limit:** 500 calls/day without key, effectively unlimited with key.
 **Cost:** free.
 **Robustness:** very stable. The API has not had a breaking change in 5+ years.
 
-Ingestion pattern: pull all block groups for the 3 counties in one shot (~3,000 block groups), join to parcels by spatial intersection (block-group polygon contains parcel centroid). Refresh annually after Census's December release.
+Ingestion pattern: pull all block groups for all 7 counties in one shot (~8,000 block groups total), join to parcels by spatial intersection (block-group polygon contains parcel centroid). Refresh annually after Census's December release.
 
 ### 1.11 City zoning + General Plan (per-jurisdiction)
 
@@ -207,7 +219,7 @@ For every column in `parcel_records` (migration `0002_pipeline_rebuild.sql`), th
 |---|---|---|---|---|---|---|
 | `id` | UGRC LIR | `PARCEL_ID` | TEXT | required | per-county LIR cycle | LIR re-publish |
 | `jurisdiction` | UGRC LIR + UGRC Municipal Boundaries spatial join | `PARCEL_CITY` ∪ polygon containment | TEXT | required | annual | new annexation |
-| `county` | derived | first 2 of PARCEL_ID, or county name | TEXT | required | static | never (county-FIPS stable) |
+| `county` | derived | first 2 of PARCEL_ID, or county name | TEXT (enum) | required | static | never (county-FIPS stable) |
 | `acreage` | UGRC LIR | `PARCEL_ACRES` | REAL | NULL | per-county LIR cycle | LIR re-publish |
 | `centroid_lng`, `centroid_lat` | UGRC LIR geometry | computed via shapely centroid | REAL | NULL | per-county LIR cycle | LIR re-publish |
 | `polygon_geojson` | UGRC LIR geometry | `?returnGeometry=true&outSR=4326` | TEXT | NULL | per-county LIR cycle | LIR re-publish |
@@ -284,6 +296,7 @@ See §1.11 for the partial-coverage caveat. The intensity tables in `tooele-land
 | Column | Source | Path | Type | Default | Freshness | Invalidation |
 |---|---|---|---|---|---|---|
 | `commute_corridor_tier` | WFRC TAZ + employment nodes + I-15/US-89 ramps | computed | TEXT | `'None'` | annual | WFRC republish or employment-node revision |
+| `commute_corridor_method` | derived | `'proxy'` until WFRC skim received; `'wfrc'` after | TEXT (enum) | `'proxy'` | on WFRC skim incorporation | manual swap when real WFRC skim arrives |
 
 **Algorithm:**
 1. Parcel centroid → containing TAZ.
@@ -294,7 +307,7 @@ See §1.11 for the partial-coverage caveat. The intensity tables in `tooele-land
    - **Secondary**: 1–2 employment nodes within 30 min, OR within 1 mi of a US-89 ramp
    - **None**: otherwise
 
-**Simplification for v1:** skip the WFRC skim matrix; use straight-line distance + 1.4 detour multiplier as the drive-time proxy. Document the simplification; revisit if the corridor score correlates poorly with intuition.
+**Default (v1):** use straight-line distance × 1.4 / 35 mph as the drive-time proxy instead of the WFRC skim matrix. Every parcel scored via this proxy **MUST** be tagged `commute_corridor_method = 'proxy'` in D1 so a future phase can swap in real WFRC skim values without a schema migration. When the real WFRC AM-peak skim matrix is received (see §8.2), re-run 13b-7 against that data and flip the field to `'wfrc'`.
 
 ### 2.10 Growth signal + STIP (read internal sources)
 
@@ -320,13 +333,19 @@ CREATE TABLE IF NOT EXISTS parcel_enrichment_log (
 );
 ```
 
-This is **migration 0004_parcel_enrichment_log.sql** — to be authored as part of Phase 13b sub-task 13b-schema (small, low-risk, no breaking change). The single `parcel_records.enriched_at` stays as a coarse "any field updated at this time" hint.
+This is **migration 0004_parcel_enrichment_log.sql** — to be authored as part of Phase 13b sub-task 13b-1. In addition to the `parcel_enrichment_log` table and `field_hash` column, migration 0004 must also:
+
+1. **Extend the `county` enum** on `parcel_records` to add `wasatch` and `box_elder`. Migration 0002 used `(davis | weber | salt_lake | tooele | utah)`. Migration 0004 extends to `(davis | weber | salt_lake | tooele | utah | wasatch | box_elder)`. This is a non-breaking addition.
+
+2. **Add `commute_corridor_method` column** to `parcel_records`: `TEXT NOT NULL DEFAULT 'proxy' CHECK (commute_corridor_method IN ('wfrc', 'proxy'))`. Allows a future phase to swap real WFRC skim values in without a schema migration.
+
+The single `parcel_records.enriched_at` stays as a coarse "any field updated at this time" hint.
 
 ---
 
 ## 3. CACHE STRATEGY
 
-Cannot refetch 250k parcels per run. Three layers of caching, each with distinct semantics.
+Cannot refetch ~1.1M parcels per run. Three layers of caching, each with distinct semantics. At full 7-county coverage (~1.1M parcel rows), D1 storage is ~3–5 GB including polygon GeoJSON — within D1 limits and at ~$2–4/mo storage cost.
 
 ### 3.1 Edge cache (Cloudflare Workers Cache API)
 
@@ -361,13 +380,14 @@ For Phase 13b execution: each Manus task gets `data/cache/` for raw API response
 
 For UGRC LIR re-pulls, the cheap-and-correct pattern is:
 
-1. **First pass (cold cache):** paginated full pull of all 250k parcels per county, ~5 hours per county at 5 req/s.
+1. **First pass (cold cache):** paginated full pull of all ~1.1M parcels across 7 counties. At 5 req/s with 1000-record pages, each county takes 1–6 hours depending on size. Run counties in parallel (separate GHA jobs or Manus sub-runs). Budget ~10–12 hours total wall-clock for the initial cold pull.
 2. **Subsequent passes:** UGRC LIR services do NOT expose `editFieldsInfo.dataLastEditDate` per-feature, so per-feature delta isn't possible directly. Instead:
    - Hash each parcel's enrichment-relevant fields (BLDG_SQFT, BUILT_YR, PROP_CLASS, TOTAL_MKT_VALUE) into a `field_hash` column on `parcel_records`.
    - On refresh pass, fetch the same fields from UGRC, compute the new hash, only re-classify vacancy / re-write the row if the hash changed.
    - For the polygon geometry itself: refetch only when a feature's `OBJECTID` changes (rare, indicates a parcel split / merge).
+   - At 1.1M rows the field-hash strategy is critical — a naive full re-enrichment pass would be cost- and time-prohibitive.
 
-3. **Out-of-band signal:** UGRC publishes a `Parcels_Tooele_LIR/info/itemInfo` last-modified field. Check it weekly; if unchanged from last poll, skip the entire delta-pass for that county.
+3. **Out-of-band signal:** UGRC publishes a `Parcels_<County>_LIR/info/itemInfo` last-modified field per county. Check it weekly per county; if unchanged from last poll, skip the entire delta-pass for that county.
 
 For non-UGRC sources, freshness comes from the per-source TTL (§3.2).
 
@@ -402,7 +422,9 @@ The corollary: `parcel_records` should ONLY store source-of-truth fields, never 
 
 ### 4.3 Google Places — the budget killer
 
-Naïve approach: 250k parcels × 1 nearby search per parcel = 250k requests = **$8,000 one-time** at Pro $32/1k. Even with a 90-day cache and 5% MoM growth, monthly steady-state ~80k requests = $2,560/mo. **Off the table.**
+Naïve approach: 1.1M parcels × 1 nearby search per parcel = 1.1M requests = **$35,200 one-time** at Pro $32/1k. Even scoped to just the 13-jurisdiction ~250k city-clip: 250k requests = $8,000 one-time. **Off the table for bulk pulls.**
+
+**Decision (B2 resolved):** Google Places runs **on-demand only with a $10/mo hard cap**. Results cached 90 days. When the $10/mo cap is hit, the circuit breaker drops all new Places requests and sets `competition_count` to a neutral score of 50 for any parcel lacking a cached value. Bulk pulls are explicitly rejected.
 
 **Strategy:** Google Places must NOT run as a bulk pass. Three tiers of trigger:
 
@@ -441,6 +463,8 @@ If `errors_5xx + errors_4xx > 0.10 × calls` in any run, OR if `spend_dollars > 
 
 If `spend_dollars` over a 30-day rolling window exceeds the per-month cap, Phase 13b sub-task `13b-budget-monitor` (small, recurring) emails the user and sets a `cron_runs` flag that the next scheduled run reads to abort early.
 
+**Google Places cap-hit behavior:** when the $10/mo rolling cap is exceeded mid-run, stop Places calls immediately and set `competition_count = 50` (neutral score) for all parcels requested during that run that lack a cached value. Log `status: 'partial-budget-cap'` in `cron_runs`. The neutral 50 score prevents the circuit-breaker from producing zero-scored parcels that would unfairly suppress pipeline rankings.
+
 ### 4.6 Backoff strategy on 429s
 
 Standard exponential: 1s, 2s, 4s, 8s, 16s, then circuit-break. UGRC and UDOT very rarely 429; Google Places does at sustained >600 QPM.
@@ -468,7 +492,11 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 
 ### 13b-1 — Schema migration 0004
 
-**Description:** Author and apply migration `migrations/0004_parcel_enrichment_log.sql` adding the `parcel_enrichment_log` table (§2.11) and a `field_hash TEXT` column to `parcel_records`.
+**Description:** Author and apply migration `migrations/0004_parcel_enrichment_log.sql` covering three changes (see §2.11):
+1. Add `parcel_enrichment_log` table for per-source freshness tracking.
+2. Add `field_hash TEXT` column to `parcel_records`.
+3. Extend the `county` enum on `parcel_records` to include `wasatch` and `box_elder` (migration 0002 only had `davis | weber | salt_lake | tooele | utah`).
+4. Add `commute_corridor_method TEXT NOT NULL DEFAULT 'proxy' CHECK (commute_corridor_method IN ('wfrc', 'proxy'))` column to `parcel_records`.
 
 **Inputs:** existing `parcel_records` schema.
 **Outputs:** `migrations/0004_parcel_enrichment_log.sql`; new GHA workflow `d1-migrate-phase13.yml` (mirror of phase11/phase12).
@@ -477,15 +505,17 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Effort:** 1–2 hours.
 **Parallel:** must run before any other 13b task that writes to `parcel_records`.
 
-### 13b-2 — UGRC LIR ingestion (3 counties)
+### 13b-2 — UGRC LIR ingestion (7 counties)
 
-**Description:** Pull all parcels for Tooele, Salt Lake, Utah counties from UGRC LIR FeatureServer endpoints. Filter to the 13 jurisdictions via PARCEL_CITY + UGRC Municipal Boundaries spatial intersection. Compute centroids. Bulk-insert / upsert into `parcel_records` with `id`, `jurisdiction`, `county`, `acreage`, `centroid_lng`, `centroid_lat`, `polygon_geojson`, `bldg_sqft`, `built_yr`, `prop_class`, `field_hash`. Compute `vacancy_status` via the existing `classifyVacancy()` rule (port to Python).
+**Description:** Pull all parcels for all 7 counties (Tooele, Salt Lake, Utah, Davis, Weber, Wasatch, Box Elder) from UGRC LIR FeatureServer endpoints. For the 3 signal-scope counties (Tooele/Salt Lake/Utah), filter to the 13 jurisdictions via PARCEL_CITY + UGRC Municipal Boundaries spatial intersection and populate `jurisdiction`. For the 4 parcel-base-only counties (Davis/Weber/Wasatch/Box Elder), ingest all county parcels; set `jurisdiction = null`. Compute centroids. Bulk-insert / upsert into `parcel_records` with `id`, `jurisdiction`, `county`, `acreage`, `centroid_lng`, `centroid_lat`, `polygon_geojson`, `bldg_sqft`, `built_yr`, `prop_class`, `field_hash`. Compute `vacancy_status` via the existing `classifyVacancy()` rule (port to Python).
+
+**Parallelizable per-county:** each county's pull is fully independent. Run as 7 sub-jobs (separate Manus sub-runs or GHA matrix strategy).
 
 **Inputs:** UGRC LIR endpoints (§1.1), UGRC Municipal Boundaries.
-**Outputs:** `parcel_records` rows (~250k). Disk cache under `data/cache/lir/`. `parcel_enrichment_log` rows for `source='ugrc_lir'`.
-**Success:** all 13 jurisdictions have non-zero parcel counts; spot-check parcel `080480106` in Erda (West Haven) appears with bldg_sqft = 0 (per regression target in §7); total parcel count between 200k and 350k.
+**Outputs:** `parcel_records` rows (~1.1M total). Disk cache under `data/cache/lir/<county>/`. `parcel_enrichment_log` rows for `source='ugrc_lir'`.
+**Success:** all 13 jurisdictions have non-zero parcel counts; all 7 counties have non-zero raw parcel counts; live endpoint probe at start-of-run confirms each county URL returns 200; spot-check parcel `080480106` appears with bldg_sqft = 0; total parcel count between 900k and 1.3M.
 **Dependencies:** 13b-1.
-**Effort:** 8–12 hours (long fetches; budget for ~3 hours pure I/O across the 3 counties).
+**Effort:** 12–18 hours total wall-clock (long fetches; most time is I/O across 7 counties running in parallel; ~2–3 hours per large county).
 **Parallel:** can run concurrently with 13b-4, 13b-6, 13b-7 (no shared writes).
 
 ### 13b-3 — Roads enrichment (corner + AADT)
@@ -523,7 +553,7 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 
 ### 13b-6 — Census ACS income enrichment
 
-**Description:** Pull `B19013_001E` for all block groups in the 3 counties via Census API. Spatial-join parcel centroids → block groups → median income. Write `parcel_records.median_income`.
+**Description:** Pull `B19013_001E` for all block groups in all 7 counties via Census API (7 FIPS codes — see §1.10). Spatial-join parcel centroids → block groups → median income. Write `parcel_records.median_income`.
 
 **Inputs:** Census API key (must be set as `CENSUS_API_KEY` Workers secret + GHA secret); parcel centroids.
 **Outputs:** `parcel_records.median_income`. `parcel_enrichment_log` rows.
@@ -537,7 +567,7 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Description:** Build static employment-node + on-ramp seed JSON files (§1.8, §1.9). Pull WFRC TAZ polygon layer (§1.7). For each parcel centroid: identify containing TAZ → compute drive-time proxy to each employment node → assign `commute_corridor_tier` per the algorithm in §2.9.
 
 **Inputs:** WFRC TAZ; static employment_nodes.json; static onramps.json; parcel centroids.
-**Outputs:** `parcel_records.commute_corridor_tier`. `tooele-land-intel/data/employment_nodes.json`. `tooele-land-intel/data/onramps.json`. `parcel_enrichment_log` rows.
+**Outputs:** `parcel_records.commute_corridor_tier` and `parcel_records.commute_corridor_method` (set to `'proxy'` for all rows in v1). `tooele-land-intel/data/employment_nodes.json`. `tooele-land-intel/data/onramps.json`. `parcel_enrichment_log` rows.
 **Success:** Lehi/Saratoga Springs/American Fork parcels generally hit `Primary` (Silicon Slopes proximity); rural Tooele parcels hit `None`; spot-check passes with intuition.
 **Dependencies:** 13b-2.
 **Effort:** 4–6 hours including hand-curation of the static seeds.
@@ -554,9 +584,22 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 **Effort:** 3–4 hours.
 **Parallel:** sequential after 13b-7 in practice, since it instruments the others.
 
+### 13b-9 — Zoning PDF vision (deferred/optional)
+
+**Status: DEFERRED — do not start until 13b-3 zoning ingestion task has populated `docs/zoning_jurisdiction_status.md` with the B1 fallback jurisdiction list.**
+
+**Description:** For each jurisdiction whose zoning service is publicly inaccessible (listed in `docs/zoning_jurisdiction_status.md` as `status: no_service`), run an Opus-vision job to read that city's published zoning map PDF (most cities publish one on their planning dept website). Produce structured GeoJSON polygons by zoning class for each inaccessible city. Estimated one-time cost: **$5–15** in Opus API calls (small PDF per jurisdiction, not 250k individual parcels). Spatial-join the output GeoJSON polygons against parcel centroids to populate `zoning_current` for previously-unknown-detail parcels.
+
+**Inputs:** `docs/zoning_jurisdiction_status.md` fallback list; zoning-map PDFs from each fallback jurisdiction's planning department website.
+**Outputs:** GeoJSON polygon files per jurisdiction in `tooele-land-intel/data/zoning_fallback/<jurisdiction>.geojson`; updated `parcel_records.zoning_current` for affected parcels.
+**Success:** each fallback jurisdiction has ≥ 80% of parcels upgraded from `'unknown_detail'` to a real zoning class.
+**Dependencies:** 13b-5 (establishes the fallback list).
+**Effort:** 4–8 hours per jurisdiction (vision + GeoJSON production + join).
+**Parallel:** each jurisdiction is fully independent.
+
 ### Sub-task summary
 
-8 sub-tasks, ~5 of them parallelizable after 13b-2 lands. Total estimated effort: **~3–4 days of Manus runtime** (clock time; actual compute is shorter), gated by 13b-5's discovery work which is the largest unknown.
+9 sub-tasks (13b-1 through 13b-8 mandatory; 13b-9 deferred/optional). ~5 mandatory tasks parallelizable after 13b-2 lands. Total estimated effort: **~3–4 days of Manus runtime** (clock time; actual compute is shorter), gated by 13b-5's discovery work which is the largest unknown.
 
 ---
 
@@ -565,7 +608,7 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 ### Sequencing rationale (deliver visible value soonest)
 
 1. **13b-1** (schema migration) — must land first; cheap, fast.
-2. **13b-2** (UGRC LIR ingestion) — gates everything; this is where the parcels appear on the map at all. **Once 13b-2 completes, the map has 250k parcels with vacancy classification — this is the first user-visible win.**
+2. **13b-2** (UGRC LIR ingestion) — gates everything; this is where the parcels appear on the map at all. **Tooele runs first** (home territory, existing data validates the pipeline). After Tooele validates, run **Salt Lake + Utah + Davis + Weber in parallel**, then **Wasatch + Box Elder**. Once 13b-2 completes for all 7 counties, the map shows ~1.1M parcels with vacancy classification — this is the first user-visible win. The 4 parcel-base-only counties appear with neutral growth scores.
 3. **13b-6** (Census ACS) — fast, free, easy quick-win after 13b-2. Adds median_income to parcel detail panels.
 4. **13b-3 + 13b-4** (roads/AADT + signals) — parallel. These light up the corner / aadt / signal scoring components.
 5. **13b-7** (commute corridor) — also parallel; lights up the corridor scoring component.
@@ -619,13 +662,22 @@ Numbering: `13b-N` where N is intended sequence (see §6 for parallelism notes).
 | Vineyard | (TBD) | Geneva Rd | mixed |
 | Spanish Fork | (TBD) | Main / I-15 | mixed |
 
+For the 4 parcel-base-only counties, use county-seat centroids as initial sanity checks until the user supplies known-good parcels:
+
+| County | Initial Sanity-Check Centroid | City | Expected |
+|---|---|---|---|
+| Davis | county seat centroid, Farmington (~40.9808, -111.8874) | Farmington | parcel present with non-null centroid |
+| Weber | county seat centroid, Ogden (~41.2230, -111.9738) | Ogden | parcel present |
+| Wasatch | county seat centroid, Heber City (~40.5069, -111.4133) | Heber City | parcel present |
+| Box Elder | county seat centroid, Brigham City (~41.5100, -112.0156) | Brigham City | parcel present |
+
 These (TBD) values must be filled in during 13b-2 by the operator inspecting the parcel layer for 1–2 well-known parcels per city. Each sub-task writes a `tests/regression_parcels.json` entry referencing the expected output for that sub-task's columns.
 
 ### 7.2 Sampling strategy
 
 For each sub-task:
 
-1. Pick **20 random parcels per jurisdiction** (260 total parcels for the 13).
+1. Pick **20 random parcels per signal-scope jurisdiction** (260 total for the 13) + **5 random parcels per parcel-base-only county** (20 for the 4 new counties) = 280 total.
 2. For 5 of those 20 per jurisdiction, the operator manually verifies the relevant fields by:
    - Cross-referencing county GIS (e.g., `https://gis.utahcounty.gov/maps`) for parcel boundary, owner, acreage
    - Google Street View for vacancy / building presence
@@ -659,7 +711,7 @@ Targets:
 | 13b-6 (Census) | <1 min (1 county-wide query, then in-memory join) |
 | 13b-7 (corridor) | 5 min |
 
-Any sub-task significantly over budget (≥ 2× target) indicates a missing cache or wrong batch size.
+Any sub-task significantly over budget (≥ 2× target) indicates a missing cache or wrong batch size. At 1.1M total parcels, the 13b-2 cold pull is expected to take ~12–18 hours wall-clock total (running counties in parallel); the per-10k benchmark above applies within each county's run.
 
 ### 7.4 Pre-deploy verification
 
@@ -675,18 +727,24 @@ Before merging `phase-13b-*` branches to main:
 
 ## 8. RISKS & OPEN QUESTIONS
 
-### 8.1 BLOCKERS (need user input before Phase 13b starts)
+### 8.1 BLOCKERS — ALL RESOLVED (2026-05-05)
 
-**B1. Per-jurisdiction zoning service discovery (sub-task 13b-5).**
-Salt Lake and Utah county jurisdictions don't share a common GIS host. Each city operates its own portal. Discovering 10 distinct services is real work, not gluework. Some cities may not expose their zoning layer publicly — if so, the parcel `zoning_current` falls back to `'unknown_detail'` for that city. **Acceptable to user?**
+**B1. Per-jurisdiction zoning service discovery (sub-task 13b-5) — RESOLVED.**
+Decision: fallback is approved. For jurisdictions where zoning service is not publicly accessible, default to `zoning_current = 'unknown_detail'`. Maintain a list of fallback jurisdictions in `docs/zoning_jurisdiction_status.md` (file to be created by 13b-5 operator during discovery work). 13b-9 (deferred/optional) provides a future Opus-vision path to recover real zoning from PDF maps once the fallback list is known.
 
-**B2. Google Places budget.**
-Per §4.3, even an on-demand-only Places integration will burn ~$32/mo at modest user activity. If the user wants Places enrichment to fully populate `competition_count` for any meaningfully-sized share of parcels, the budget must rise. **Confirm the user prefers (a) on-demand-only Places (current recommendation), (b) raise the cap to $50/mo, or (c) defer Places entirely until Phase 17.**
+**B2. Google Places budget — RESOLVED.**
+Decision: **on-demand only with a $10/mo hard cap. 90-day cache. Bulk pulls explicitly rejected.** Circuit breaker drops to neutral competition score (50) when cap is hit. See §4.3 and §4.5.
 
-**B3. WFRC TAZ-to-TAZ skim matrix availability.**
-The §2.9 algorithm calls for drive-time between TAZs. WFRC publishes the skim as a CSV (TAZ_orig, TAZ_dest, AM_drive_time_min) but it's not in the open-data hub. Sub-task 13b-7 will likely need to email `analytics@wfrc.org` to request the latest skim, or default to the straight-line × 1.4 / 35 mph proxy. **Default to proxy, and revisit later if scoring quality is poor?**
+**B3. WFRC TAZ-to-TAZ skim matrix — RESOLVED.**
+Decision: **default to straight-line × 1.4 / 35 mph proxy.** Every parcel scored via proxy is tagged `commute_corridor_method = 'proxy'` in D1. When real WFRC skim is received, re-run 13b-7 and flip to `'wfrc'`. WFRC skim request is an open action item documented in §8.2.
 
-### 8.2 KNOWN-RISK items (proceed but document)
+### 8.2 OPEN ACTION ITEMS
+
+**WFRC AM-peak skim matrix request (from B3 resolution).** Email `analytics@wfrc.org` (WFRC is a public agency with federally funded data — the skim matrix is a standard data product they share on request). Request: "TAZ-to-TAZ AM peak drive-time skim matrix from the current adopted TDM run, in CSV format (TAZ_orig, TAZ_dest, AM_drive_time_min)." When received, re-run sub-task 13b-7 with real skim data and flip `commute_corridor_method` from `'proxy'` to `'wfrc'` for all scored parcels.
+
+**Phase 14 vector-tile pipeline (from Q3 promotion).** At ~1.1M parcels, MapLibre cannot render direct GeoJSON at acceptable performance. Phase 14 is now a **required deliverable** for PMTiles + Tippecanoe pipeline. See §8.3 Q3 and §8.4.
+
+### 8.3 KNOWN-RISK items (proceed but document)
 
 **R1. UGRC LIR field naming variance.**
 Some counties have slightly different LIR schemas (e.g., Davis has `EFFBUILT_YR`, Tooele only `BUILT_YR`). Sub-task 13b-2 must probe the FeatureServer metadata at start-of-run, not hard-code field lists.
@@ -706,21 +764,15 @@ Hardcoded `AADT2024_Unrounded` will break when UDOT publishes 2025 (~April 2026 
 **R6. Salt Lake County's huge parcel volume.**
 394,610 parcels in Salt Lake County alone. The 4 SL jurisdictions (South Jordan, Herriman, Bluffdale, Draper) probably contain ~80k–100k parcels combined — a meaningful share of the 250k total. Pagination and disk-cache discipline is critical. Budget the full pull at 6+ hours.
 
-### 8.3 OPEN QUESTIONS for user
+### 8.4 QUESTIONS RESOLVED (2026-05-05)
 
-**Q1. Is NAIP land-cover deferred entirely, partially, or rolled into 13b?**
+**Q1. NAIP land-cover — CONFIRMED: stays in Phase 19.** NAIP is a correction layer over UGRC, not a replacement. v1 of `parcel_records` is fine without it. No change to Phase 19 plan.
 
-The Phase 13a brief explicitly puts NAIP in Phase 19 (separate, Manus, 3–5 days). My recommendation is to keep it there — NAIP adds satellite-verified vacancy as a *correction* layer over UGRC, not a replacement, and v1 of `parcel_records` is fine without it. **Confirm: NAIP stays in Phase 19?**
+**Q2. County scope — EXPANDED from 3 to 7 counties.** Decision: expand parcel base to Tooele + Salt Lake + Utah + Davis + Weber + Wasatch + Box Elder. Rationale: prospecting features (cross-parcel ownership lookup, inverse view, related-properties lookup) require multi-county base parcel coverage. Storage cost ~$2–4/mo at D1 rates, well within the $25/mo ceiling. Signal collection scope (PMN agendas, news, Reddit) is UNCHANGED at 13 jurisdictions. Parcels in the 4 new counties appear with neutral growth signal scores until their PMN bodies are added in a future phase. See §1.1 for updated UGRC LIR endpoint table.
 
-**Q2. Are non-13 jurisdictions explicitly out of scope?**
+**Q3. Vector tiles for 1.1M parcels — PROMOTED to Phase 14 REQUIRED DELIVERABLE.** At ~1.1M parcels across 7 counties, MapLibre cannot render direct GeoJSON at acceptable performance. Phase 14 **must** include a PMTiles + Tippecanoe pipeline (one-time Tippecanoe build ~30 min; PMTiles served from Cloudflare R2, negligible storage cost at ~200–400 MB for 1.1M polygons). This is no longer a "flag for awareness" — it is a hard Phase 14 acceptance criterion. Phase 13b is unaffected (enrichment populates D1, not the tile pipeline).
 
-The current playbook scope is 13 jurisdictions. Davis and Weber counties (where the CM_RE codebase originated) are NOT in this list. If Phase 13b's `Parcels_Davis_LIR` / `Parcels_Weber_LIR` ingestion happens "for free" because the same code runs against a different county, do we ingest them? **Recommendation: skip for now; add later if user requests.**
-
-**Q3. Do we need a polygon-tile layer for 250k parcels on the frontend map?**
-
-MapLibre choking on 250k parcel features as a single GeoJSON source is a real risk. The current `MapCanvas.tsx` from Phase 4 / Phase 11 handles ~10k features fine. At 250k it will need vector tiles (Tippecanoe + serve as PMTiles from a Cloudflare R2 bucket, or use `clustering: true` on the source). This is **a Phase 14 frontend concern, not Phase 13b**, but flag now so it doesn't surprise. Cost: a one-time Tippecanoe build (~30 min on a beefy machine) + R2 storage (negligible at 250k parcel polygons in PMTiles ~50MB).
-
-### 8.4 Total Phase 13 estimated cost
+### 8.5 Total Phase 13 estimated cost
 
 | Source | Cost / month | Cost one-time |
 |---|---|---|
@@ -729,15 +781,16 @@ MapLibre choking on 250k parcel features as a single GeoJSON source is a real ri
 | Census ACS | $0 | $0 |
 | OSM Overpass | $0 | $0 |
 | WFRC | $0 | $0 |
-| Google Places (on-demand only, capped) | $5–10 | $0 |
-| Anthropic API (no new usage in 13b — vacancy classifier is rule-based) | $0 | $0 |
+| Google Places (on-demand only, capped at $10/mo) | $5–10 | $0 |
+| D1 storage (7 counties, ~3–5 GB at full coverage) | ~$2–4 | $0 |
+| Anthropic API (13b-9 deferred zoning-PDF vision only if executed) | $0 | $5–15 (one-time, optional) |
 | Manus credits (Phase 13b execution) | (separate billing) | (separate billing) |
-| **Total Phase 13 incremental burn** | **$5–10** | **$0** |
+| **Total Phase 13 incremental burn** | **$7–14** | **$0–15 (one-time optional)** |
 
-Stays within the $25/mo project ceiling. The Anthropic API and Resend lines from prior phases are unchanged.
+Stays within the $25/mo project ceiling. The Anthropic API and Resend lines from prior phases are unchanged. The upper end (~$14/mo) reflects both the D1 storage addition and the Google Places cap at full utilization.
 
 ---
 
 ## END
 
-Phase 13b sub-tasks may begin once this document is reviewed by the user and BLOCKERS B1–B3 in §8.1 are resolved.
+Phase 13b sub-tasks may begin. All §8.1 blockers (B1/B2/B3) are resolved as of 2026-05-05. Open action items documented in §8.2 (WFRC skim request, Phase 14 vector-tile required deliverable).
