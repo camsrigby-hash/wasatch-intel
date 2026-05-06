@@ -139,7 +139,7 @@ jobs:
                       "field_hash,commute_corridor_method,enriched_at) VALUES("
                       + ",".join([
                           sq(pid),
-                          sq(jur),
+                          sq(jur or ''),
                           sq(COUNTY),
                           num(row.get("acreage")),
                           num(row.get("centroid_lng")),
@@ -156,8 +156,8 @@ jobs:
                   )
                   lg_buf.append(
                       "INSERT OR REPLACE INTO parcel_enrichment_log"
-                      "(parcel_id,source_name,status,enriched_at) VALUES("
-                      + ",".join([sq(pid), "'ugrc_lir'", "'success'", f"'{NOW}'"]) + ");"
+                      "(parcel_id,source,status,enriched_at) VALUES("
+                      + ",".join([sq(pid), "'ugrc_lir'", "'ok'", f"'{NOW}'"]) + ");"
                   )
 
                   if len(pc_buf) >= CHUNK_SIZE:
