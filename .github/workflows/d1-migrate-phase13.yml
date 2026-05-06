@@ -1,0 +1,43 @@
+name: D1 migrate — Phase 13 (parcel_enrichment_log + field_hash + commute_corridor_method)
+# Applies migrations/0004_phase13_enrichment.sql via wrangler d1 migrations apply.
+# Safe to re-run: wrangler tracks applied migrations in D1_MIGRATIONS table.
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Apply migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply wasatch-intel-db --remote
+
+      - name: Verify schema
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "=== Gate A: parcel_enrichment_log exists ==="
+          npx wrangler d1 execute wasatch-intel-db --remote \
+            --command="SELECT name FROM sqlite_master WHERE type='table' AND name='parcel_enrichment_log';"
+
+          echo "=== Gate C/D: new parcel_records columns ==="
+          npx wrangler d1 execute wasatch-intel-db --remote \
+            --command="SELECT name FROM pragma_table_info('parcel_records') WHERE name IN ('field_hash','commute_corridor_method');"
+
+          echo "=== Gate D: parcel_enrichment_log columns ==="
+          npx wrangler d1 execute wasatch-intel-db --remote \
+            --command="PRAGMA table_info(parcel_enrichment_log);"
