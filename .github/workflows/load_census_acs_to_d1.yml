@@ -74,7 +74,7 @@ jobs:
           import csv, json, os, sys, pathlib, hashlib
 
           csv.field_size_limit(10_000_000)
-          CHUNK_SIZE = 10  # D1 100KB statement limit; boundary_geojson ~6KB/row
+          CHUNK_SIZE = 100  # boundary_geojson excluded below; rows ~100 bytes each
           sql_dir = pathlib.Path("/tmp/acs_sql_chunks")
           sql_dir.mkdir(exist_ok=True)
 
@@ -106,7 +106,9 @@ jobs:
                   tract = esc(row["tract"])
                   bg = esc(row["block_group"])
                   income = nullable_int(row["median_income"])
-                  boundary = nullable_str(row["boundary_geojson"])
+                  # boundary_geojson omitted: D1 100KB limit; polygons up to 649KB each.
+                  # Boundary data lives in tooele-land-intel tiger cache.
+                  boundary = "NULL"
                   fetched = esc(row["fetched_at"])
 
                   lines_acs.append(
