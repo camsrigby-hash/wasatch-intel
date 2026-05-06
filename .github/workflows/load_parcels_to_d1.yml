@@ -61,18 +61,25 @@ jobs:
         if: steps.filter.outputs.run == 'true'
         run: |
           mkdir -p /tmp/parcels
-          curl -fsSL \
-            "https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data/raw/parcels_${{ matrix.county }}.csv" \
-            -o "/tmp/parcels/parcels_${{ matrix.county }}.csv"
-          echo "Downloaded $(wc -l < /tmp/parcels/parcels_${{ matrix.county }}.csv) lines (including header)"
+          BASE="https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data/raw"
+          COUNTY="${{ matrix.county }}"
+          # Try .csv.gz first (large counties), fall back to .csv
+          if curl -fsSL "$BASE/parcels_${COUNTY}.csv.gz" -o "/tmp/parcels/parcels_${COUNTY}.csv.gz" 2>/dev/null; then
+            echo "Downloaded compressed CSV, decompressing..."
+            gunzip "/tmp/parcels/parcels_${COUNTY}.csv.gz"
+          else
+            curl -fsSL "$BASE/parcels_${COUNTY}.csv" -o "/tmp/parcels/parcels_${COUNTY}.csv"
+          fi
+          echo "Downloaded $(wc -l < /tmp/parcels/parcels_${COUNTY}.csv) lines (including header)"
 
       - name: Generate SQL chunks
         if: steps.filter.outputs.run == 'true'
         id: gen
         run: |
           cat > /tmp/gen_sql.py << 'PYEOF'
-          import csv, hashlib, json, os
+          import csv, hashlib, json, os, sys
           from datetime import datetime, timezone
+          csv.field_size_limit(sys.maxsize)
 
           COUNTY = "${{ matrix.county }}"
           SIGNAL_COUNTIES = {"tooele", "salt_lake", "utah"}
