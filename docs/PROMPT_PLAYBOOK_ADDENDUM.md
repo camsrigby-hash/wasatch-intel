@@ -8,10 +8,10 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-05
 
-- Phases 0–11 shipped + Phase 12 code on branch (pending verification). MVP live at https://wasatch-intel.cam-s-rigby.workers.dev.
-- **Active phase: Phase 13 — Real enrichment GHA jobs (the big one). Phase 12 code on `phase-12-deferred-feedback` branch in both repos pending user local verification + merge.**
+- Phases 0–12 shipped. Phase 13a (architecture session) complete on `phase-13a-arch` branch — produced `docs/PHASE_13_ENRICHMENT_ARCH.md`.
+- **Active phase: Phase 13b — Manus execution of 8 enrichment sub-tasks (13b-1 through 13b-8) per `docs/PHASE_13_ENRICHMENT_ARCH.md`. User must resolve BLOCKERS B1 (per-jurisdiction zoning service discovery acceptable?), B2 (Google Places budget treatment), B3 (WFRC TAZ skim matrix vs proxy) before kicking off 13b-2.**
 - Phase 12 acceptance criteria #2 and #7 require the user to manually trigger the new GHA workflows (`extract_parcels_from_pdfs.yml` and `scrape_pmn_archive.py` workflow_dispatch) after merging the branch — they are code-complete but not yet run.
-- Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover.
+- Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover. Phase 13 incremental burn projected at $5–10/mo (Google Places on-demand only).
 
 ---
 

@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-05-05
-**Last agent:** Claude Code (Opus 4.7) — Phase 12 implementation session
-**Active phase:** Phase 13 — Real enrichment GHA jobs (Phase 12 code on `phase-12-deferred-feedback` branch pending verification)
+**Last agent:** Claude Code (Opus 4.7) — Phase 13a architecture session
+**Active phase:** Phase 13b — Manus execution of 8 enrichment sub-tasks per `docs/PHASE_13_ENRICHMENT_ARCH.md` (3 user-input blockers must resolve first)
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -538,6 +538,58 @@ Phase 10 NAIP addendum explicitly deferred — the addendum's own prerequisite
 NAIP is documented for Phase 11+ pickup ~2026-07-25. Key action remaining:
 trigger `backfill.yml` from GitHub Actions tab (workflow_dispatch) to execute
 the backfill against live PMN data.
+
+### 2026-05-05 — Phase 13a (DONE) — Claude Code (Opus 4.7)
+Architecture-only session producing `docs/PHASE_13_ENRICHMENT_ARCH.md` (450+ lines, 8 sections)
+on the `phase-13a-arch` branch. No code written. Document specifies how to populate
+`parcel_records` (D1 table from migration 0002) for all 13 jurisdictions. Confirmed
+UGRC LIR FeatureServer URLs by direct probe: `Parcels_Tooele_LIR` (45,656),
+`Parcels_SaltLake_LIR` (394,610 — note `SaltLake` no underscore between Salt and Lake),
+`Parcels_Utah_LIR` (327,655) — total 767,921 parcels county-wide, ~250k after city-clip.
+Confirmed UDOT public AADT layer at `services.arcgis.com/pA2nEVnB6tquxgOW/AADT2024_Unrounded/FeatureServer/3`
+(4,574 segments, 22 historical years), UDOT signals at `signalscount2_3` (576 records),
+Census ACS at `api.census.gov/data/2023/acs/acs5` variable `B19013_001E`. WFRC TAZ
+discoverable at data.wfrc.org but exact AGOL item ID must be resolved at ingest time
+(noted as a 13b-7 sub-task config). Existing UGRC Roads layer already embeds DOT_AADT
+(no new UDOT trip needed for non-state-route AADT).
+
+Document covers 8 mandatory sections: data sources & endpoints (13 sources catalogued
+with auth/rate-limit/cost/robustness for each), schema mapping (every column in
+`parcel_records` plus a recommended new `parcel_enrichment_log` table for per-source
+freshness tracking via migration 0004), cache strategy (per-source TTL table; UGRC LIR
+delta-fetch via field_hash since LIR has no per-feature dataLastEditDate),
+rate-limiting/budget (Google Places $32/1000 Pro tier — naïve bulk pull would cost
+$8,000; recommendation is on-demand-only triggered on user "Refresh enrichment" click,
+capped at $10/mo), 8-task Manus sub-task breakdown (13b-1 schema, 13b-2 LIR ingestion,
+13b-3 roads/AADT, 13b-4 signals, 13b-5 zoning + GP — long-tail per-jurisdiction
+discovery, 13b-6 Census income, 13b-7 commute corridor + employment nodes/onramps
+static seed, 13b-8 telemetry+circuit breaker), rollout order (LIR ingestion first → map
+visible win → Census/roads/signals/corridor in parallel → zoning long-tail piecewise →
+telemetry last), testing strategy (regression parcel per jurisdiction TBD by operator
+during 13b-2; 20-random-per-jurisdiction sampling with manual ground-truth verification
+in `tests/manual_verification_phase13b.csv`), and risks/blockers (3 BLOCKERS for user
+input: per-jurisdiction zoning gating, Google Places budget treatment, WFRC TAZ skim
+proxy default).
+
+Key architecture decisions made autonomously (per WORKING STYLE):
+- Add `parcel_enrichment_log` table (migration 0004) for per-source timestamps; keep
+  the single `parcel_records.enriched_at` as a coarse "last-touched" hint
+- Compute scores at request-time in the Worker (don't store derived score columns)
+- Cache via D1 itself (no separate cache layer); per-source TTL table in §3.2
+- Field-hash strategy for LIR delta-fetch since UGRC doesn't expose per-feature
+  dataLastEditDate
+- Static JSON for employment nodes (~25 hand-curated coords) and freeway on-ramps
+  (~40 hand-curated coords) committed to repo, not fetched per run
+- Google Places: on-demand only, never bulk; default `competition_count = NULL`
+  for newly-saved parcels with "—" UI label until user clicks Refresh
+
+Total Phase 13 incremental burn projected at $5–10/mo (Google Places only). Stays under
+$25/mo project ceiling. Manus credits separately billed for 13b execution.
+
+Phase 13b can begin once user resolves §8.1 BLOCKERS B1/B2/B3. Recommended next step:
+user reads §8.1 in `docs/PHASE_13_ENRICHMENT_ARCH.md`, decides on each blocker, then
+asks for the first 13b sub-task prompt. Branch: `phase-13a-arch` pushed, NOT merged
+to main per Phase 13a brief.
 
 ### 2026-05-05 — Phase 12 (CODE COMPLETE — user verification pending) — Claude Code (Opus 4.7)
 Deferred-feedback bundle on `phase-12-deferred-feedback` branch in both repos. Six items:
