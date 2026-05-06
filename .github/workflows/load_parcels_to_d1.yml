@@ -21,28 +21,44 @@ jobs:
         county: [tooele, salt_lake, utah, davis, weber, wasatch, box_elder]
     runs-on: ubuntu-latest
     timeout-minutes: 240
-    if: ${{ github.event.inputs.county == 'all' || github.event.inputs.county == matrix.county }}
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
+      - name: Check county filter
+        id: filter
+        run: |
+          INPUT="${{ github.event.inputs.county }}"
+          COUNTY="${{ matrix.county }}"
+          if [ "$INPUT" = "all" ] || [ "$INPUT" = "$COUNTY" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping $COUNTY (input county: $INPUT)"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.filter.outputs.run == 'true'
 
       - name: Set up Python
+        if: steps.filter.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Set up Node.js
+        if: steps.filter.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Install npm dependencies (wrangler)
+        if: steps.filter.outputs.run == 'true'
         run: npm ci
 
       - name: Download CSV from tooele-land-intel
+        if: steps.filter.outputs.run == 'true'
         run: |
           mkdir -p /tmp/parcels
           curl -fsSL \
@@ -51,6 +67,7 @@ jobs:
           echo "Downloaded $(wc -l < /tmp/parcels/parcels_${{ matrix.county }}.csv) lines (including header)"
 
       - name: Generate SQL chunks
+        if: steps.filter.outputs.run == 'true'
         id: gen
         run: |
           cat > /tmp/gen_sql.py << 'PYEOF'
@@ -199,14 +216,14 @@ jobs:
           python3 /tmp/gen_sql.py
 
       - name: Upload SQL artifacts (dry-run inspection)
-        if: github.event.inputs.dry_run == 'true'
+        if: steps.filter.outputs.run == 'true' && github.event.inputs.dry_run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: sql-chunks-${{ matrix.county }}
           path: /tmp/sql/
 
       - name: Execute parcel_records chunks
-        if: github.event.inputs.dry_run != 'true'
+        if: steps.filter.outputs.run == 'true' && github.event.inputs.dry_run != 'true'
         run: |
           DB="wasatch-intel-db"
           FAILED=0
@@ -227,7 +244,7 @@ jobs:
           fi
 
       - name: Execute parcel_enrichment_log chunks
-        if: github.event.inputs.dry_run != 'true'
+        if: steps.filter.outputs.run == 'true' && github.event.inputs.dry_run != 'true'
         run: |
           DB="wasatch-intel-db"
           FAILED=0
@@ -247,7 +264,7 @@ jobs:
           fi
 
       - name: Write cron_runs summary
-        if: github.event.inputs.dry_run != 'true'
+        if: steps.filter.outputs.run == 'true' && github.event.inputs.dry_run != 'true'
         run: |
           ROWS="${{ steps.gen.outputs.rows }}"
           NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -256,7 +273,7 @@ jobs:
             "INSERT OR IGNORE INTO cron_runs (id, workflow_name, ran_at, status, items_processed, notes) VALUES ('${RUN_ID}', 'load_parcels_to_d1', '${NOW}', 'success', ${ROWS:-0}, 'county=${{ matrix.county }}');"
 
       - name: Upload failed SQL artifacts
-        if: failure()
+        if: steps.filter.outputs.run == 'true' && failure()
         uses: actions/upload-artifact@v4
         with:
           name: failed-sql-${{ matrix.county }}
