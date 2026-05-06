@@ -8,10 +8,11 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-05
 
-- Phases 0–11 shipped + Phase 12 code on branch (pending verification). MVP live at https://wasatch-intel.cam-s-rigby.workers.dev.
-- **Active phase: Phase 13 — Real enrichment GHA jobs (the big one). Phase 12 code on `phase-12-deferred-feedback` branch in both repos pending user local verification + merge.**
+- Phases 0–12 shipped. Phase 13a architecture + blocker resolution complete. `phase-13a-arch` merged to main.
+- **Active phase: Phase 13b — Real enrichment GHA jobs (Manus execution sub-tasks, 7-county scope).** All B1/B2/B3 blockers resolved. 9 sub-tasks (13b-1 through 13b-8 mandatory; 13b-9 deferred). Arch doc at `docs/PHASE_13_ENRICHMENT_ARCH.md`. Sub-task prompts ready on request.
+- Phase 14 is now a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** (promoted from optional concern) — at 1.1M parcels MapLibre cannot render direct GeoJSON.
 - Phase 12 acceptance criteria #2 and #7 require the user to manually trigger the new GHA workflows (`extract_parcels_from_pdfs.yml` and `scrape_pmn_archive.py` workflow_dispatch) after merging the branch — they are code-complete but not yet run.
-- Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover.
+- Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover. Phase 13 incremental burn projected at $7–14/mo (Google Places on-demand capped + D1 7-county storage).
 
 ---
 
