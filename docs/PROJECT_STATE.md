@@ -9,8 +9,8 @@ Update this file at the end of every work session. The "Current Status" section 
 ## CURRENT STATUS
 
 **Last updated:** 2026-05-06
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 13b-2 closeout + retroactive 13b-1 schema fix
-**Active phase:** Phase 13b — sub-tasks 13b-3 through 13b-8 (parallel dispatch ready) + 13b-6a (parallel-ready since 13b-1). 13b-1 schema CONFIRMED applied 2026-05-06. 13b-2 PRs merged; awaiting user go-ahead to trigger scrape workflow.
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 13b-6a closeout
+**Active phase:** Phase 13b — 13b-6a COMPLETE. Sub-tasks 13b-3 through 13b-8 (parallel dispatch ready). 13b-2 PRs merged; awaiting user go-ahead to trigger scrape workflow (`scrape_ugrc_lir.yml -f county=all`).
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -609,17 +609,32 @@ to main per Phase 13a brief.
 
 ### 2026-05-06 — Phase 13b-2 partial closeout + retroactive 13b-1 fix — Claude Code (Sonnet 4.6)
 
-### 2026-05-06 — Phase 13b-6a Census ACS County-Level Pull — Manus
+### 2026-05-06 — Phase 13b-6a Census ACS County-Level Pull — Manus + Claude Code closeout
 
-**13b-6a PRs opened:**
-- `tooele-land-intel` PR #2 (fetch_census_acs.py, GHA workflow, CSV data)
-- `wasatch-intel` PR #2 (D1 load workflow, staging table DDL, runbook)
+**13b-6a PRs merged:**
+- `tooele-land-intel` PR #2 merged to main — `fetch_census_acs.py`, `fetch_census_acs.yml` GHA workflow, `census_acs_blockgroups.csv` (1,608 rows), TIGERweb boundary cache (7 counties), data dictionary.
+- `wasatch-intel` PR #2 merged to main — `load_census_acs_to_d1.yml` GHA workflow, `create_census_acs_staging.sql`, runbook, PROJECT_STATE.md 13b-6a stub.
 
-**Results:**
-- 1,608 block groups across 7 counties. 96.6% median income coverage. 100% boundary GeoJSON coverage.
-- Per-county block groups: Salt Lake (712), Utah (434), Davis (193), Weber (166), Box Elder (42), Tooele (39), Wasatch (22).
-- Telemetry: 1,608 `parcel_enrichment_log` rows with status='ok' ready for D1 load.
-- Pending user review, merge, and manual trigger.
+**Workflow files added manually (Claude Code) — token scope blocker:**
+Both workflow YAML files were unavailable to Manus due to OAuth `workflow` scope restriction on its token. Claude Code committed and pushed them directly to the feature branches before merge:
+- `tooele-land-intel`: commit `88ad252`
+- `wasatch-intel`: commit `1df5fd3`
+
+**D1 load fixes applied (Claude Code):**
+- Initial chunk size (1000 rows) caused `SQLITE_TOOBIG` — individual block-group boundary polygons reached 649KB, far over D1's 100KB statement limit.
+- Fix: omit `boundary_geojson` from D1 inserts (nullable column; boundary data served from tooele-land-intel tiger cache). Raise CHUNK_SIZE to 100. Committed to main: `df81fdd`.
+
+**Gate checks (pre-merge, both green):**
+- Gate A: `parcel_enrichment_log` table exists ✅
+- Gate B: column named `source` (canonical) ✅
+
+**D1 verification (post-load, all passing):**
+- `census_acs_blockgroups` total: **1,608** ✅ (expected ~1,608)
+- Per-county: Salt Lake 712, Utah 434, Davis 193, Weber 166, Box Elder 42, Tooele 39, Wasatch 22 ✅ (exact match)
+- `median_income IS NOT NULL`: **1,554** ✅ (96.6%, >90% threshold)
+- `parcel_enrichment_log WHERE source='census_acs' AND status='ok'`: **1,608** ✅
+
+**Status: COMPLETE.** `census_acs_blockgroups` table live in D1. 13b-6b (spatial join) is unblocked.
 
 **13b-2 PR merges:**
 - tooele-land-intel PR #1 merged to main: `54224d78` (scraper + scrape_ugrc_lir.yml workflow)
