@@ -1,0 +1,245 @@
+name: Load Census ACS to D1
+
+# Phase 13b-6a: Reads census_acs_blockgroups.csv from tooele-land-intel main
+# branch, generates chunked SQL, and loads into D1 census_acs_blockgroups table.
+# Also writes parcel_enrichment_log rows and cron_runs summary.
+# Spec: wasatch-intel/docs/PHASE_13_ENRICHMENT_ARCH.md §5 13b-6a
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (generate SQL but do not execute against D1)"
+        type: boolean
+        default: false
+
+jobs:
+  load-acs:
+    name: Load ACS Block Groups to D1
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install wrangler
+        run: npm install
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── Step 1: Ensure staging table exists ──────────────────────────────
+      - name: Create census_acs_blockgroups staging table (idempotent)
+        if: ${{ inputs.dry_run != true }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "CREATE TABLE IF NOT EXISTS census_acs_blockgroups (
+               geoid TEXT PRIMARY KEY,
+               state_fips TEXT NOT NULL,
+               county_fips TEXT NOT NULL,
+               tract TEXT NOT NULL,
+               block_group TEXT NOT NULL,
+               median_income INTEGER,
+               boundary_geojson TEXT,
+               fetched_at TIMESTAMP NOT NULL
+             );
+             CREATE INDEX IF NOT EXISTS idx_acs_county
+               ON census_acs_blockgroups(state_fips, county_fips);"
+
+      # ── Step 2: Fetch CSV from tooele-land-intel ─────────────────────────
+      - name: Download census_acs_blockgroups.csv
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/main/data/raw/census_acs_blockgroups.csv" \
+            -o /tmp/census_acs_blockgroups.csv
+          ROW_COUNT=$(tail -n +2 /tmp/census_acs_blockgroups.csv | wc -l | tr -d ' ')
+          echo "Downloaded ${ROW_COUNT} block-group rows"
+          echo "ROW_COUNT=${ROW_COUNT}" >> "$GITHUB_ENV"
+
+      # ── Step 3: Generate chunked SQL ─────────────────────────────────────
+      - name: Generate SQL chunks
+        run: |
+          python3 - <<'PYEOF'
+          import csv, json, os, sys, pathlib, hashlib
+
+          csv.field_size_limit(10_000_000)
+          CHUNK_SIZE = 1000
+          sql_dir = pathlib.Path("/tmp/acs_sql_chunks")
+          sql_dir.mkdir(exist_ok=True)
+
+          now_expr = "CURRENT_TIMESTAMP"
+          rows_all = []
+          with open("/tmp/census_acs_blockgroups.csv", encoding="utf-8") as f:
+              for row in csv.DictReader(f):
+                  rows_all.append(row)
+
+          def esc(s):
+              return s.replace("'", "''") if s else ""
+
+          def nullable_int(s):
+              return s if s.strip() != "" else "NULL"
+
+          def nullable_str(s):
+              return f"'{esc(s)}'" if s.strip() != "" else "NULL"
+
+          chunks = [rows_all[i:i+CHUNK_SIZE] for i in range(0, len(rows_all), CHUNK_SIZE)]
+          print(f"Total rows: {len(rows_all)}, chunks: {len(chunks)}", flush=True)
+
+          for idx, chunk in enumerate(chunks):
+              lines_acs = []
+              lines_log = []
+              for row in chunk:
+                  geoid = esc(row["geoid"])
+                  state = esc(row["state_fips"])
+                  county = esc(row["county_fips"])
+                  tract = esc(row["tract"])
+                  bg = esc(row["block_group"])
+                  income = nullable_int(row["median_income"])
+                  boundary = nullable_str(row["boundary_geojson"])
+                  fetched = esc(row["fetched_at"])
+
+                  lines_acs.append(
+                      f"('{geoid}','{state}','{county}','{tract}','{bg}',"
+                      f"{income},{boundary},'{fetched}')"
+                  )
+
+                  # parcel_enrichment_log: parcel_id=geoid, source='census_acs'
+                  details = json.dumps({
+                      "median_income": row["median_income"] or None,
+                      "county_fips": row["county_fips"],
+                  }).replace("'", "''")
+                  lines_log.append(
+                      f"('{geoid}','census_acs',CURRENT_TIMESTAMP,'ok','{details}')"
+                  )
+
+              acs_sql = (
+                  "INSERT OR REPLACE INTO census_acs_blockgroups "
+                  "(geoid,state_fips,county_fips,tract,block_group,"
+                  "median_income,boundary_geojson,fetched_at) VALUES\n"
+                  + ",\n".join(lines_acs) + ";"
+              )
+              log_sql = (
+                  "INSERT OR REPLACE INTO parcel_enrichment_log "
+                  "(parcel_id,source,enriched_at,status,details) VALUES\n"
+                  + ",\n".join(lines_log) + ";"
+              )
+
+              with open(sql_dir / f"chunk_{idx:04d}_acs.sql", "w") as f:
+                  f.write(acs_sql)
+              with open(sql_dir / f"chunk_{idx:04d}_log.sql", "w") as f:
+                  f.write(log_sql)
+
+          print(f"Generated {len(chunks)*2} SQL files in {sql_dir}", flush=True)
+          PYEOF
+
+      # ── Step 4: Upload SQL chunks as artifact (always, for inspection) ───
+      - name: Upload SQL chunks artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: acs-sql-chunks
+          path: /tmp/acs_sql_chunks/
+          retention-days: 7
+
+      # ── Step 5: Execute SQL chunks against D1 ────────────────────────────
+      - name: Load ACS rows into D1
+        if: ${{ inputs.dry_run != true }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          FAILED=0
+          PROCESSED=0
+          START_TIME=$(date +%s%3N)
+
+          for SQL_FILE in $(ls /tmp/acs_sql_chunks/chunk_*_acs.sql | sort); do
+            echo "Executing: $SQL_FILE"
+            if ! npx wrangler d1 execute wasatch-intel-db --remote --file "$SQL_FILE"; then
+              echo "Chunk failed, retrying in 10s: $SQL_FILE"
+              sleep 10
+              if ! npx wrangler d1 execute wasatch-intel-db --remote --file "$SQL_FILE"; then
+                echo "ERROR: Chunk failed after retry: $SQL_FILE"
+                FAILED=$((FAILED + 1))
+              fi
+            fi
+            PROCESSED=$((PROCESSED + 1))
+          done
+
+          # Load enrichment log chunks
+          for SQL_FILE in $(ls /tmp/acs_sql_chunks/chunk_*_log.sql | sort); do
+            echo "Executing log: $SQL_FILE"
+            if ! npx wrangler d1 execute wasatch-intel-db --remote --file "$SQL_FILE"; then
+              sleep 10
+              npx wrangler d1 execute wasatch-intel-db --remote --file "$SQL_FILE" || true
+            fi
+          done
+
+          END_TIME=$(date +%s%3N)
+          DURATION_MS=$((END_TIME - START_TIME))
+          echo "DURATION_MS=${DURATION_MS}" >> "$GITHUB_ENV"
+          echo "FAILED_CHUNKS=${FAILED}" >> "$GITHUB_ENV"
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "ERROR: ${FAILED} chunk(s) failed after retry"
+            exit 1
+          fi
+
+      # ── Step 6: Write cron_runs summary row ──────────────────────────────
+      - name: Write cron_runs summary
+        if: ${{ inputs.dry_run != true && always() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            CRON_STATUS="success"
+          else
+            CRON_STATUS="failure"
+          fi
+          DURATION="${DURATION_MS:-0}"
+          ROWS="${ROW_COUNT:-0}"
+          NOTES="Phase 13b-6a: loaded ${ROWS} ACS block groups. Failed chunks: ${FAILED_CHUNKS:-0}."
+
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "INSERT INTO cron_runs (workflow_name, ran_at, status, duration_ms, items_processed, notes)
+             VALUES (
+               'load_census_acs_to_d1',
+               CURRENT_TIMESTAMP,
+               '${CRON_STATUS}',
+               ${DURATION},
+               ${ROWS},
+               '${NOTES}'
+             );"
+
+      # ── Step 7: Verify row counts ─────────────────────────────────────────
+      - name: Verify D1 row counts
+        if: ${{ inputs.dry_run != true && success() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "=== census_acs_blockgroups total ==="
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT COUNT(*) as total FROM census_acs_blockgroups;"
+
+          echo "=== Per-county counts ==="
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT county_fips, COUNT(*) as count FROM census_acs_blockgroups GROUP BY county_fips ORDER BY county_fips;"
+
+          echo "=== Income coverage ==="
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT COUNT(*) as with_income FROM census_acs_blockgroups WHERE median_income IS NOT NULL;"
+
+          echo "=== parcel_enrichment_log rows for census_acs ==="
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT status, COUNT(*) as count FROM parcel_enrichment_log WHERE source='census_acs' GROUP BY status;"

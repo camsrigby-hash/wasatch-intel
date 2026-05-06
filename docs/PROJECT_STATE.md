@@ -609,6 +609,18 @@ to main per Phase 13a brief.
 
 ### 2026-05-06 — Phase 13b-2 partial closeout + retroactive 13b-1 fix — Claude Code (Sonnet 4.6)
 
+### 2026-05-06 — Phase 13b-6a Census ACS County-Level Pull — Manus
+
+**13b-6a PRs opened:**
+- `tooele-land-intel` PR #2 (fetch_census_acs.py, GHA workflow, CSV data)
+- `wasatch-intel` PR #2 (D1 load workflow, staging table DDL, runbook)
+
+**Results:**
+- 1,608 block groups across 7 counties. 96.6% median income coverage. 100% boundary GeoJSON coverage.
+- Per-county block groups: Salt Lake (712), Utah (434), Davis (193), Weber (166), Box Elder (42), Tooele (39), Wasatch (22).
+- Telemetry: 1,608 `parcel_enrichment_log` rows with status='ok' ready for D1 load.
+- Pending user review, merge, and manual trigger.
+
 **13b-2 PR merges:**
 - tooele-land-intel PR #1 merged to main: `54224d78` (scraper + scrape_ugrc_lir.yml workflow)
 - wasatch-intel PR #1 merged to main: `11ffabf9` (runbook + load_parcels_to_d1.yml workflow)
