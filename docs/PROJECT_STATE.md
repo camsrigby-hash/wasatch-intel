@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-06
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 13b-6a closeout
-**Active phase:** Phase 13b — 13b-6a COMPLETE. Sub-tasks 13b-3 through 13b-8 (parallel dispatch ready). 13b-2 PRs merged; awaiting user go-ahead to trigger scrape workflow (`scrape_ugrc_lir.yml -f county=all`).
+**Last updated:** 2026-05-07
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 13b-2 COMPLETE
+**Active phase:** Phase 13b — 13b-2 COMPLETE (947,863 parcels in D1). 13b-6a COMPLETE. Sub-tasks 13b-3 through 13b-8 (parallel dispatch ready, unblocked).
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -606,6 +606,33 @@ Phase 13b can begin once user resolves §8.1 BLOCKERS B1/B2/B3. Recommended next
 user reads §8.1 in `docs/PHASE_13_ENRICHMENT_ARCH.md`, decides on each blocker, then
 asks for the first 13b sub-task prompt. Branch: `phase-13a-arch` pushed, NOT merged
 to main per Phase 13a brief.
+
+### 2026-05-07 — Phase 13b-2 COMPLETE — Claude Code (Sonnet 4.6)
+
+**Scrape run:** [25419148937](https://github.com/camsrigby-hash/tooele-land-intel/actions/runs/25419148937) — 7/7 counties ✅ (wasatch 2m53s, tooele 4m8s, box_elder 4m23s, davis 12m38s, weber 22m19s, utah 34m43s, salt_lake 38m15s)
+
+**Load run:** [25466020044](https://github.com/camsrigby-hash/wasatch-intel/actions/runs/25466020044) — 7/7 counties ✅ (box_elder 7m43s, wasatch 8m3s, tooele 8m25s, weber 35m7s, davis 26m23s, utah 49m56s, salt_lake 55m47s)
+
+**D1 verification (Task 7):**
+- Total parcels by county: salt_lake 393,521 · utah 248,785 · davis 108,941 · weber 101,150 · tooele 33,860 · box_elder 31,317 · wasatch 30,289 = **947,863 total** ✅
+- `parcel_enrichment_log WHERE source='ugrc_lir' AND status='ok'`: **947,863** ✅ (1:1 match)
+- Spot-check parcel `080480106` (weber): county=weber, acreage=3.49, bldg_sqft=0, vacancy_status=vacant ✅
+
+**Bugs fixed during closeout (all committed to main):**
+- `shapely` missing from `requirements.txt` in tooele-land-intel → added
+- GitHub 100 MB file limit: CSVs ≥90 MB compressed to `.csv.gz`; salt_lake (147 MB compressed) uploaded to `large-parcels` GitHub release asset
+- `csv.field_size_limit(sys.maxsize)` — wasatch/box_elder polygon GeoJSON exceeded Python csv default 128 KB field limit
+- `npm ci` → `npm install -g wrangler` — project lock file out of sync; load workflow only needs wrangler
+- `sq(jur or '')` → `sq_notnull(jur)` — `sq()` treats empty string as NULL, violating NOT NULL on jurisdiction
+- CHUNK_SIZE 1000→200→500 — D1 execute batching tuning
+- D1_RESET_DO transient errors — retry backoff increased to 15s/30s/60s (3 attempts)
+- Git scrape commit push-failure detection — loop now exits 1 if all retries fail
+- GitHub Actions matrix context — replaced job-level `if` with step-level filter pattern (matrix not available at job level)
+- wasatch-intel repo private → public (GHA minutes exhausted for private repos)
+
+**Status: COMPLETE.** 13b-3 through 13b-8 are unblocked.
+
+---
 
 ### 2026-05-06 — Phase 13b-2 partial closeout + retroactive 13b-1 fix — Claude Code (Sonnet 4.6)
 
