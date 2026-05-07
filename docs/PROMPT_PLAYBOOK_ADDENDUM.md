@@ -843,6 +843,24 @@ On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDEND
 
 ---
 
+## BACKLOG — Technical Debt / Schema Improvements
+
+### Redesign `parcel_enrichment_log` — per-row design does not scale
+
+**Filed after**: Phase 13b-6b + Cloudflare plan upgrade (2026-05-07)
+
+The current `parcel_enrichment_log` schema stores one row per parcel per source. After loading 947K parcels via `ugrc_lir` and enriching 934K via `census_acs_join`, the table grew to 1.88M rows and pushed the D1 database to the 500 MB free-tier cap — forcing an emergency upgrade to Workers Paid and a table archive/prune operation.
+
+**Projected growth**: each enrichment source (13b-3 corner detection, 13b-4 AADT, 13b-5 zoning, 13b-7 commute corridor, 13b-8 vacancy) adds another ~947K rows. At 10 sources that's ~9.5M rows in this table alone — unmanageable in D1.
+
+**Recommended replacement**: one of two patterns:
+1. **Per-(source, batch_run_id) aggregate** — same shape as `parcel_enrichment_log_summary` (already created). Each enrichment run is one row per county, not one row per parcel. Auditability comes from `cron_runs` timestamps. Loses per-parcel "when was this parcel enriched?" but that's rarely queried.
+2. **JSON column on parcel_records** — `enrichment_sources TEXT` storing `{"ugrc_lir":"2026-05-07","census_acs_join":"2026-05-07",...}`. One row per parcel, updated in-place. Fully queryable via `json_extract()`. More compact than 10× log rows.
+
+**Blocking**: not blocking any current phase. Address before Phase 17 (Whitepages enrichment adds another ~947K rows). `parcel_enrichment_log_summary` covers the audit trail for completed phases.
+
+---
+
 ## Cost consolidation question
 
 There's no service that takes "X SaaS subscriptions" and reissues them as a single charge labeled "Wasatch Intel" — that doesn't exist for consumer SaaS. But there are real options:
