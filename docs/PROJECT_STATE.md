@@ -893,6 +893,12 @@ Next: user will provide the Manus sub-task prompt template; then generate paste-
 
 ---
 
+### 2026-05-07 — Migration 0006: parcel_records scoring columns — Claude Code (Sonnet 4.6)
+
+Schema-only session. Migration `0006_parcel_scoring_columns.sql` applied to `wasatch-intel-db` (remote). Five nullable REAL/TEXT columns added to `parcel_records` for Phase 13b-3/4/5/7/8 enrichment sub-tasks: `corner_score`, `aadt_score`, `zoning_score`, `commute_corridor_score`, `vacancy_class`. No data written; each column populated by its own Manus sub-task. DB at 254 MB post-cleanup (was 503 MB; `parcel_enrichment_log` per-row entries for `ugrc_lir` + `census_acs_join` archived to `parcel_enrichment_log_summary` and deleted).
+
+---
+
 ## REFERENCES — supporting docs
 
 - `docs/tli-full-spec.md` — every feature, current and future (the "110% complete" vision)
