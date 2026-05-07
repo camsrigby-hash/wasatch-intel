@@ -607,6 +607,38 @@ user reads §8.1 in `docs/PHASE_13_ENRICHMENT_ARCH.md`, decides on each blocker,
 asks for the first 13b sub-task prompt. Branch: `phase-13a-arch` pushed, NOT merged
 to main per Phase 13a brief.
 
+### 2026-05-07 — Phase 13b-2 CLOSEOUT: jurisdiction fallback fix + final verification — Claude Code (Sonnet 4.6)
+
+**Jurisdiction data-quality bug found and fixed.** The chunk generator (`load_parcels_to_d1.yml`) was forcing `jur = None` for the 4 non-SIGNAL_COUNTIES (box_elder, davis, wasatch, weber), which `sq_notnull()` mapped to `''`. Source CSVs had `parcel_city` populated for ~85% of those rows — the data was silently discarded at load time. Fix: preserve `parcel_city` when present; fall back to `"Unincorporated {County}"` when blank. `SIGNAL_COUNTIES` constant removed entirely. Commit `b50a1b9`.
+
+**Reload run 25477033819:** triggered immediately after push. All 7 counties completed green in ~57 min total (wasatch 6m21s · box_elder 7m47s · tooele 8m36s · davis 25m48s · weber 29m40s · salt_lake 53m · utah 54m). Prior partial load run 25455128053 had taken 4h and produced the 299,459 empty-jurisdiction rows.
+
+**Final verified row counts (post-fix reload, 2026-05-07):**
+
+| County | Rows |
+|---|---|
+| box_elder | 31,099 |
+| davis | 110,138 |
+| salt_lake | 393,521 |
+| tooele | 33,860 |
+| utah | 249,741 |
+| wasatch | 30,289 |
+| weber | 99,215 |
+| **Total** | **947,863** |
+
+- `parcel_enrichment_log WHERE source='ugrc_lir' AND status='ok'`: **947,863** (1:1) ✅
+- `parcel_records WHERE jurisdiction=''`: **0** ✅
+
+**Architecture lessons locked in:**
+- Polygon GeoJSON stays in the CSV (not D1); D1 has a 100 KB per-statement limit — polygon fields routinely exceed it.
+- CSVs <90 MB: plain git. 90–99 MB compressed: `.csv.gz` in git. ≥90 MB compressed (e.g., salt_lake 147 MB): GitHub Release asset under tag `large-parcels`. Load workflow tries `.csv.gz` → `.csv` → release asset.
+- `sq_notnull()` must be used for every NOT NULL column — `sq()` maps empty string to NULL, violating the constraint.
+- D1 chunk size 500, 3-retry with backoff 15s/30s/60s (commit `dc63ddc`) is stable at 947K rows.
+
+**Status: COMPLETE AND VERIFIED.** 13b-3/4/5/6b/7/8 ready for Manus dispatch.
+
+---
+
 ### 2026-05-07 — Phase 13b-2 COMPLETE — Claude Code (Sonnet 4.6)
 
 **Scrape run:** [25419148937](https://github.com/camsrigby-hash/tooele-land-intel/actions/runs/25419148937) — 7/7 counties ✅ (wasatch 2m53s, tooele 4m8s, box_elder 4m23s, davis 12m38s, weber 22m19s, utah 34m43s, salt_lake 38m15s)

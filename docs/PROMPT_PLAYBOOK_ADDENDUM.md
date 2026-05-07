@@ -8,15 +8,14 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-07
 
-- Phases 0–13b COMPLETE. All 7 counties scraped and loaded to D1. Ready for Phase 14.
-- **13b-2 COMPLETE (2026-05-07).** 947,863 parcels across 7 counties loaded to D1. Perfect 1:1 enrichment log match. Spot-check parcel 080480106 (Weber, 3.49ac, vacant) verified. Bugs fixed: shapely missing from requirements.txt, csv.field_size_limit, NOT NULL jurisdiction constraint, D1_RESET_DO transient retries, CHUNK_SIZE tuned to 500.
-- **13b-1 CONFIRMED COMPLETE (retroactive, applied 2026-05-06).** Migration 0004 applied and verified. Schema additions: `parcel_enrichment_log` table, `field_hash` column, `commute_corridor_method` column. All 4 gate checks passing.
+- **13b-2 COMPLETE AND VERIFIED (2026-05-07).** 947,863 parcels loaded across 7 counties. Jurisdiction fallback fix applied (commit `b50a1b9`): zero empty-string jurisdictions; ~189K rows recovered. Final counts: box_elder 31,099 · davis 110,138 · salt_lake 393,521 · tooele 33,860 · utah 249,741 · wasatch 30,289 · weber 99,215 = **947,863**. Enrichment log: 947,863 ok / 0 failed.
+- **13b-1 CONFIRMED COMPLETE (retroactive, applied 2026-05-06).** Migration 0004 applied: `parcel_enrichment_log` table, `field_hash` column, `commute_corridor_method` column. All 4 gate checks passing.
 - **13b-6a COMPLETE (2026-05-06).** `census_acs_blockgroups` table live in D1: 1,608 rows, 7-county exact match, 96.6% income coverage.
 - **Large-file storage pattern established:** plain CSV in git (<90 MB), `.csv.gz` in git (90–99 MB compressed), GitHub Release asset `large-parcels` (≥90 MB compressed). Load workflow tries `.csv.gz` → `.csv` → release asset.
-- **Sub-tasks 13b-3 through 13b-8** (Google Places, flood/water, NAIP, ACS spatial join, PMN audio, scoring) are next in sequence after this 13b-2 data foundation.
-- Phase 14 is a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** (promoted from optional concern) — at ~1M parcels MapLibre cannot render direct GeoJSON.
-- Phase 12 acceptance criteria #2 and #7 require the user to manually trigger the new GHA workflows (`extract_parcels_from_pdfs.yml` and `scrape_pmn_archive.py` workflow_dispatch) after merging the branch — they are code-complete but not yet run.
-- Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover. Phase 13 incremental burn projected at $7–14/mo (Google Places on-demand capped + D1 7-county storage).
+- Phase 14 is a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** — at ~1M parcels MapLibre cannot render direct GeoJSON.
+- Cost ceiling: $25/mo total. Phase 13 incremental burn projected at $7–14/mo.
+
+**Phase 13b — Sub-tasks 13b-3 (corner detection), 13b-4 (AADT), 13b-5 (zoning + B1 fallback), 13b-6b (Census ACS spatial join), 13b-7 (commute corridor), 13b-8 (vacancy classification) — all unblocked, parallel-safe, ready for Manus dispatch.**
 
 ---
 
