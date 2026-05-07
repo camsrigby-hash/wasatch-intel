@@ -91,7 +91,6 @@ jobs:
           csv.field_size_limit(sys.maxsize)
 
           COUNTY = "${{ matrix.county }}"
-          SIGNAL_COUNTIES = {"tooele", "salt_lake", "utah"}
           CHUNK_SIZE = 500
           NOW = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
           SQL_DIR = "/tmp/sql"
@@ -158,9 +157,11 @@ jobs:
                       continue
                   rows_read += 1
 
-                  jur = (row.get("parcel_city") or "").strip() or None
-                  if COUNTY not in SIGNAL_COUNTIES:
-                      jur = None
+                  _city = (row.get("parcel_city") or "").strip()
+                  if _city:
+                      jur = _city
+                  else:
+                      jur = f"Unincorporated {COUNTY.replace('_', ' ').title()}"
 
                   bsqft = row.get("bldg_sqft", "0") or "0"
                   byr = row.get("built_yr") or row.get("effective_built_yr")
