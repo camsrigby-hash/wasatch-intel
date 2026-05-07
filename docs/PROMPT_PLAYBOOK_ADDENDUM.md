@@ -8,14 +8,22 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-07
 
-- **13b-2 COMPLETE AND VERIFIED (2026-05-07).** 947,863 parcels loaded across 7 counties. Jurisdiction fallback fix applied (commit `b50a1b9`): zero empty-string jurisdictions; ~189K rows recovered. Final counts: box_elder 31,099 · davis 110,138 · salt_lake 393,521 · tooele 33,860 · utah 249,741 · wasatch 30,289 · weber 99,215 = **947,863**. Enrichment log: 947,863 ok / 0 failed.
+- **13b-2 COMPLETE AND VERIFIED (2026-05-07).** 947,863 unique parcels loaded across 7 counties. D1 counts (live, post-reload): box_elder 34,192 · davis 105,699 · salt_lake 393,521 · tooele 33,860 · utah 249,100 · wasatch 30,289 · weber 101,202 = **947,863**. Jurisdiction fallback fix (commit `b50a1b9`): zero empty-string jurisdictions. Note: raw CSV row counts are higher due to intra-county duplicates and cross-county parcel_id overlap (~50,626 cross-county pairs); 947,863 is the true unique count.
 - **13b-1 CONFIRMED COMPLETE (retroactive, applied 2026-05-06).** Migration 0004 applied: `parcel_enrichment_log` table, `field_hash` column, `commute_corridor_method` column. All 4 gate checks passing.
 - **13b-6a COMPLETE (2026-05-06).** `census_acs_blockgroups` table live in D1: 1,608 rows, 7-county exact match, 96.6% income coverage.
+- **13b-6b IN PROGRESS (2026-05-07).** Census ACS spatial join workflow committed to main (`e2b30de`), triggered as run [25515621715](https://github.com/camsrigby-hash/wasatch-intel/actions/runs/25515621715). All 7 county jobs running. Expected runtime ~50–90 min. On completion: `SELECT COUNT(*) FROM parcel_records WHERE median_income IS NOT NULL;` should return ≥940,000. Local utility at `tooele-land-intel/scripts/join_census_acs.py`. Also in tooele-land-intel on branch `phase-13b-6b-census-acs-join` (commit `e6eceef`).
 - **Large-file storage pattern established:** plain CSV in git (<90 MB), `.csv.gz` in git (90–99 MB compressed), GitHub Release asset `large-parcels` (≥90 MB compressed). Load workflow tries `.csv.gz` → `.csv` → release asset.
 - Phase 14 is a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** — at ~1M parcels MapLibre cannot render direct GeoJSON.
 - Cost ceiling: $25/mo total. Phase 13 incremental burn projected at $7–14/mo.
 
-**Phase 13b — Sub-tasks 13b-3 (corner detection), 13b-4 (AADT), 13b-5 (zoning + B1 fallback), 13b-6b (Census ACS spatial join), 13b-7 (commute corridor), 13b-8 (vacancy classification) — all unblocked, parallel-safe, ready for Manus dispatch.**
+**After 13b-6b completes, verify median_income coverage:**
+```sql
+SELECT COUNT(*) FROM parcel_records WHERE median_income IS NOT NULL;
+SELECT county, COUNT(*) FROM parcel_records WHERE median_income IS NOT NULL GROUP BY county;
+```
+Then advance this marker to: "13b-6b COMPLETE" and proceed with 13b-3/4/5/7/8 fan-out.
+
+**Phase 13b — Sub-tasks 13b-3 (corner detection), 13b-4 (AADT), 13b-5 (zoning + B1 fallback), 13b-7 (commute corridor), 13b-8 (vacancy classification) — all unblocked, parallel-safe, ready for Manus dispatch.**
 
 ---
 
@@ -867,3 +875,48 @@ When you come back and say "I'm ready for the next prompt":
 5. After you run it, I confirm CURRENT STATE moved forward; if it didn't, we troubleshoot.
 
 That's the loop. The file is the state machine; this chat is the operator console; you're the conductor.
+
+---
+
+## Session Log — 2026-05-07 (Phase 13b-2 recovery + 13b-6b launch)
+
+**Tool**: Claude Code (Sonnet 4.6) · **Session**: dreamy-northcutt-c417f6
+
+### What was done
+
+**13b-2 partial-load diagnosis.** Prior Manus sessions had loaded ~4 of 7 counties at 0 or low row counts due to two bugs in `load_parcels_to_d1.yml`: (1) empty-string jurisdiction when `parcel_city` is blank caused a `NOT NULL` constraint failure, (2) no D1 rate-limit retry backoff. Both patches had already been applied (`b50a1b9`, `dc63ddc`). Verified correct.
+
+**County re-runs (Step 2).** Triggered `load_parcels_to_d1.yml` for box_elder, davis, weber, utah (the under-loaded counties). All completed successfully:
+- box_elder: completed in ~8 min
+- davis: completed in ~25 min
+- weber: completed in ~31 min
+- utah: completed in ~50 min (log chunks still finishing at summary time)
+
+**D1 verification (Step 3).** Final D1 counts post-reload:
+
+| county | rows |
+|---|---|
+| box_elder | 34,192 |
+| davis | 105,699 |
+| salt_lake | 393,521 |
+| tooele | 33,860 |
+| utah | 249,100 |
+| wasatch | 30,289 |
+| weber | 101,202 |
+| **TOTAL** | **947,863** |
+
+Root cause of "fewer than expected" row count: intra-county duplicates (davis CSV has ~30K dup parcel_ids; weber has ~95K) and cross-county parcel_id overlap (~50,626 cross-county pairs). 947,863 is the true unique-parcel count, confirmed by set-union analysis of all county CSV parcel_id sets.
+
+**13b-6b Census ACS spatial join (Steps 4–5).** Prior session claimed commits 7f930ad/b8c1781 existed — they did not. Implemented 13b-6b from scratch:
+- `wasatch-intel/.github/workflows/enrich_parcels_census_join.yml` — 7-county matrix, shapely STRtree point-in-polygon, UPDATE parcel_records SET median_income, parcel_enrichment_log inserts, cron_runs summary. Committed `e2b30de`, pushed to main.
+- `tooele-land-intel/scripts/join_census_acs.py` — local utility companion. Committed `e6eceef`, on branch `phase-13b-6b-census-acs-join`.
+- Run [25515621715](https://github.com/camsrigby-hash/wasatch-intel/actions/runs/25515621715) triggered 2026-05-07, all 7 county jobs in-progress at session end.
+
+### Pending (Step 6)
+
+Once run 25515621715 completes (~50–90 min from trigger), verify:
+```sql
+SELECT COUNT(*) FROM parcel_records WHERE median_income IS NOT NULL;
+SELECT county, COUNT(*) FROM parcel_records WHERE median_income IS NOT NULL GROUP BY county;
+```
+Expected: ≥940,000 rows with median_income. Then update CURRENT STATE to "13b-6b COMPLETE".
