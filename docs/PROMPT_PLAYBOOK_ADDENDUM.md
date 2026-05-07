@@ -6,16 +6,15 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-06
+## CURRENT STATE — 2026-05-07
 
-- Phases 0–12 shipped. Phase 13a architecture + blocker resolution complete. `phase-13a-arch` merged to main.
-- **Active phase: Phase 13b — Real enrichment GHA jobs (Manus execution sub-tasks, 7-county scope).**
+- Phases 0–13b COMPLETE. All 7 counties scraped and loaded to D1. Ready for Phase 14.
+- **13b-2 COMPLETE (2026-05-07).** 947,863 parcels across 7 counties loaded to D1. Perfect 1:1 enrichment log match. Spot-check parcel 080480106 (Weber, 3.49ac, vacant) verified. Bugs fixed: shapely missing from requirements.txt, csv.field_size_limit, NOT NULL jurisdiction constraint, D1_RESET_DO transient retries, CHUNK_SIZE tuned to 500.
 - **13b-1 CONFIRMED COMPLETE (retroactive, applied 2026-05-06).** Migration 0004 applied and verified. Schema additions: `parcel_enrichment_log` table, `field_hash` column, `commute_corridor_method` column. All 4 gate checks passing.
-- **13b-2 PRs merged.** Scraper + scrape workflow live on tooele-land-intel main. Runbook + load workflow live on wasatch-intel main. Awaiting user go-ahead to trigger scrape (`scrape_ugrc_lir.yml -f county=all`).
-- **13b-6a COMPLETE (2026-05-06).** `census_acs_blockgroups` table live in D1: 1,608 rows, 7-county exact match (SLC 712, Utah 434, Davis 193, Weber 166, Box Elder 42, Tooele 39, Wasatch 22), 96.6% income coverage (1,554/1,608), 1,608 enrichment log rows. Both PRs merged. boundary_geojson excluded from D1 (polygon sizes up to 649KB exceed D1's 100KB limit; boundary data in tooele-land-intel tiger cache). 13b-6b (spatial join) unblocked.
-- **Sub-tasks 13b-3 through 13b-8 parallel-dispatch ready** after 13b-2 ingestion completes. 13b-6b parallel-ready now.
-- **Verification query correction (13b-2 runbook):** uses `source_name` / `'success'` — both wrong. Correct: `SELECT COUNT(*) FROM parcel_enrichment_log WHERE source='ugrc_lir' AND status='ok';`
-- Phase 14 is now a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** (promoted from optional concern) — at 1.1M parcels MapLibre cannot render direct GeoJSON.
+- **13b-6a COMPLETE (2026-05-06).** `census_acs_blockgroups` table live in D1: 1,608 rows, 7-county exact match, 96.6% income coverage.
+- **Large-file storage pattern established:** plain CSV in git (<90 MB), `.csv.gz` in git (90–99 MB compressed), GitHub Release asset `large-parcels` (≥90 MB compressed). Load workflow tries `.csv.gz` → `.csv` → release asset.
+- **Sub-tasks 13b-3 through 13b-8** (Google Places, flood/water, NAIP, ACS spatial join, PMN audio, scoring) are next in sequence after this 13b-2 data foundation.
+- Phase 14 is a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** (promoted from optional concern) — at ~1M parcels MapLibre cannot render direct GeoJSON.
 - Phase 12 acceptance criteria #2 and #7 require the user to manually trigger the new GHA workflows (`extract_parcels_from_pdfs.yml` and `scrape_pmn_archive.py` workflow_dispatch) after merging the branch — they are code-complete but not yet run.
 - Cost ceiling: $25/mo total. Whitepages ($220/mo) explicitly deferred until Phase 17 cutover. Phase 13 incremental burn projected at $7–14/mo (Google Places on-demand capped + D1 7-county storage).
 
