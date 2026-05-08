@@ -1,0 +1,166 @@
+name: Load AADT scores to D1 (Phase 13b-4)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "tooele-land-intel ref to download data/raw/parcel_aadt_scores.csv from"
+        required: false
+        default: "main"
+      dry_run:
+        description: "Generate SQL chunks only; do not write to D1"
+        required: false
+        default: "false"
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Download parcel AADT score CSV
+        run: |
+          mkdir -p /tmp/aadt
+          REF="${{ github.event.inputs.source_ref }}"
+          URL="https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/${REF}/data/raw/parcel_aadt_scores.csv"
+          curl -fsSL "$URL" -o /tmp/aadt/parcel_aadt_scores.csv
+          echo "Downloaded $(wc -l < /tmp/aadt/parcel_aadt_scores.csv) lines including header"
+
+      - name: Generate 500-row UPDATE-only SQL chunks
+        id: gen
+        run: |
+          cat > /tmp/gen_aadt_sql.py << 'PYEOF'
+          import csv, json, os, pathlib, sys
+          csv.field_size_limit(sys.maxsize)
+          CSV_PATH = pathlib.Path('/tmp/aadt/parcel_aadt_scores.csv')
+          SQL_DIR = pathlib.Path('/tmp/aadt_sql_chunks')
+          CHUNK_SIZE = 500
+          SQL_DIR.mkdir(parents=True, exist_ok=True)
+
+          def sq(value):
+              return "'" + str(value).replace("'", "''") + "'"
+
+          def numeric_or_null(value):
+              value = (value or '').strip()
+              if not value:
+                  return 'NULL'
+              try:
+                  return str(float(value))
+              except ValueError:
+                  return 'NULL'
+
+          chunks = 0
+          rows = 0
+          buf = []
+          with CSV_PATH.open(newline='', encoding='utf-8') as f:
+              reader = csv.DictReader(f)
+              required = {'parcel_id', 'aadt_score', 'nearest_aadt_value', 'distance_m'}
+              if not required.issubset(reader.fieldnames or []):
+                  raise SystemExit(f'Missing columns: {sorted(required - set(reader.fieldnames or []))}')
+              for row in reader:
+                  parcel_id = (row.get('parcel_id') or '').strip()
+                  if not parcel_id:
+                      continue
+                  score_sql = numeric_or_null(row.get('aadt_score'))
+                  # UPDATE only: do not insert any parcel_records rows.
+                  buf.append(f"UPDATE parcel_records SET aadt_score = {score_sql} WHERE id = {sq(parcel_id)};")
+                  rows += 1
+                  if len(buf) >= CHUNK_SIZE:
+                      (SQL_DIR / f'chunk_{chunks:04d}.sql').write_text('\n'.join(buf) + '\n', encoding='utf-8')
+                      chunks += 1
+                      buf = []
+          if buf:
+              (SQL_DIR / f'chunk_{chunks:04d}.sql').write_text('\n'.join(buf) + '\n', encoding='utf-8')
+              chunks += 1
+          meta = {'rows': rows, 'chunks': chunks, 'chunk_size': CHUNK_SIZE}
+          pathlib.Path('/tmp/aadt_meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')
+          print(json.dumps(meta, indent=2))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'rows={rows}\n')
+              out.write(f'chunks={chunks}\n')
+          PYEOF
+          python /tmp/gen_aadt_sql.py
+
+      - name: Upload SQL chunks artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aadt-sql-chunks
+          path: |
+            /tmp/aadt_sql_chunks/
+            /tmp/aadt_meta.json
+          retention-days: 7
+
+      - name: Execute AADT score chunks
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        run: |
+          DB="wasatch-intel-db"
+          FAILED=0
+          START_TIME=$(date +%s%3N)
+          for chunk in $(ls /tmp/aadt_sql_chunks/chunk_*.sql | sort); do
+            echo "→ $chunk"
+            OK=false
+            for delay in 15 30 60; do
+              if npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
+                OK=true
+                break
+              fi
+              echo "Retry: $chunk (waiting ${delay}s)"
+              sleep "$delay"
+            done
+            if [ "$OK" = "false" ]; then
+              echo "FAILED: $chunk"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          END_TIME=$(date +%s%3N)
+          echo "DURATION_MS=$((END_TIME - START_TIME))" >> "$GITHUB_ENV"
+          echo "FAILED_CHUNKS=$FAILED" >> "$GITHUB_ENV"
+          if [ "$FAILED" -gt 0 ]; then
+            echo "ERROR: $FAILED AADT chunk(s) failed"
+            exit 1
+          fi
+
+      - name: Write cron_runs summary
+        if: ${{ github.event.inputs.dry_run != 'true' && always() }}
+        run: |
+          STATUS="success"
+          if [ "${{ job.status }}" != "success" ]; then
+            STATUS="failure"
+          fi
+          ROWS="${{ steps.gen.outputs.rows }}"
+          DURATION="${DURATION_MS:-0}"
+          FAILED="${FAILED_CHUNKS:-0}"
+          NOTES="Phase 13b-4: UPDATE-only AADT score load from tooele-land-intel/${{ github.event.inputs.source_ref }}; failed_chunks=${FAILED}."
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "INSERT INTO cron_runs (workflow_name, ran_at, status, duration_ms, items_processed, notes) VALUES ('load_aadt_scores_to_d1', CURRENT_TIMESTAMP, '${STATUS}', ${DURATION}, ${ROWS:-0}, '${NOTES}');"
+
+      - name: Verification queries for CC
+        if: ${{ github.event.inputs.dry_run != 'true' && success() }}
+        run: |
+          echo "=== AADT coverage ==="
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT COUNT(*) AS total, SUM(CASE WHEN aadt_score IS NOT NULL THEN 1 ELSE 0 END) AS with_aadt_score, SUM(CASE WHEN aadt_score > 0 THEN 1 ELSE 0 END) AS positive_aadt_score FROM parcel_records;"
+          echo "=== AADT distribution ==="
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT aadt_score, COUNT(*) AS count FROM parcel_records GROUP BY aadt_score ORDER BY aadt_score;"
+          echo "=== High-traffic score share ==="
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT SUM(CASE WHEN aadt_score >= 0.7 THEN 1 ELSE 0 END) AS high_traffic, COUNT(*) AS total FROM parcel_records;"
