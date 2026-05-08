@@ -1,0 +1,177 @@
+name: Load zoning scores to D1
+
+on:
+  workflow_dispatch:
+    inputs:
+      tooele_ref:
+        description: "tooele-land-intel ref containing data/raw/parcel_zoning_scores.csv"
+        required: true
+        default: "phase-13b-5-zoning-score"
+        type: string
+      dry_run:
+        description: "Generate SQL chunks without executing D1 writes"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  load-zoning-scores:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout wasatch-intel
+        uses: actions/checkout@v4
+
+      - name: Checkout tooele-land-intel zoning scores
+        uses: actions/checkout@v4
+        with:
+          repository: camsrigby-hash/tooele-land-intel
+          ref: ${{ inputs.tooele_ref }}
+          path: tooele-land-intel
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build 500-row SQL chunks
+        env:
+          SOURCE_CSV: tooele-land-intel/data/raw/parcel_zoning_scores.csv
+        run: |
+          python3 <<'PYEOF'
+          import csv
+          import os
+          import pathlib
+          import sys
+
+          csv.field_size_limit(sys.maxsize)
+          source = pathlib.Path(os.environ["SOURCE_CSV"])
+          if not source.exists():
+              raise SystemExit(f"Missing zoning score CSV: {source}")
+
+          out_dir = pathlib.Path("/tmp/zoning_score_sql_chunks")
+          out_dir.mkdir(parents=True, exist_ok=True)
+          chunk_size = 500
+
+          def q(value):
+              return "'" + str(value).replace("'", "''") + "'"
+
+          chunks = []
+          current = []
+          total_seen = 0
+          total_scored = 0
+          with source.open(newline="", encoding="utf-8") as f:
+              reader = csv.DictReader(f)
+              required = {"parcel_id", "zoning_score"}
+              missing = required - set(reader.fieldnames or [])
+              if missing:
+                  raise SystemExit(f"Missing required columns in {source}: {sorted(missing)}")
+              for row in reader:
+                  total_seen += 1
+                  parcel_id = (row.get("parcel_id") or "").strip()
+                  score_text = (row.get("zoning_score") or "").strip()
+                  if not parcel_id or score_text == "":
+                      continue
+                  try:
+                      score = float(score_text)
+                  except ValueError:
+                      continue
+                  if score < 0.0 or score > 1.0:
+                      raise SystemExit(f"Invalid zoning_score {score!r} for parcel {parcel_id}")
+                  current.append((parcel_id, score))
+                  total_scored += 1
+                  if len(current) == chunk_size:
+                      chunks.append(current)
+                      current = []
+          if current:
+              chunks.append(current)
+
+          for idx, chunk in enumerate(chunks, start=1):
+              cases = "\n".join(f"    WHEN {q(parcel_id)} THEN {score:.1f}" for parcel_id, score in chunk)
+              ids = ",".join(q(parcel_id) for parcel_id, _score in chunk)
+              sql = f"""-- Phase 13b-5 zoning_score load chunk {idx}/{len(chunks)}; {len(chunk)} rows
+          UPDATE parcel_records
+          SET zoning_score = CASE parcel_id
+          {cases}
+          END
+          WHERE parcel_id IN ({ids});
+          """
+              (out_dir / f"chunk_{idx:05d}.sql").write_text(sql, encoding="utf-8")
+
+          print(f"Input rows: {total_seen:,}", flush=True)
+          print(f"Scored rows emitted: {total_scored:,}", flush=True)
+          print(f"SQL chunks: {len(chunks):,}", flush=True)
+          print(f"ROW_COUNT={total_scored}", file=open(os.environ["GITHUB_ENV"], "a"), flush=True)
+          print(f"CHUNK_COUNT={len(chunks)}", file=open(os.environ["GITHUB_ENV"], "a"), flush=True)
+          PYEOF
+
+      - name: Upload SQL chunks artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoning-score-sql-chunks
+          path: /tmp/zoning_score_sql_chunks/
+          retention-days: 7
+
+      - name: Load zoning scores into D1
+        if: ${{ inputs.dry_run != true }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          FAILED=0
+          PROCESSED=0
+          START_TIME=$(date +%s%3N)
+          for SQL_FILE in $(ls /tmp/zoning_score_sql_chunks/chunk_*.sql | sort); do
+            echo "Executing ${SQL_FILE}"
+            SUCCESS=false
+            for delay in 0 15 30 60; do
+              if [ "$delay" -gt 0 ]; then
+                echo "Retrying ${SQL_FILE} in ${delay}s..."
+                sleep "$delay"
+              fi
+              if npx wrangler d1 execute wasatch-intel-db --remote --file "$SQL_FILE"; then
+                SUCCESS=true
+                break
+              fi
+            done
+            if [ "$SUCCESS" != "true" ]; then
+              echo "ERROR: failed chunk ${SQL_FILE} after 15/30/60s retries"
+              FAILED=$((FAILED + 1))
+            fi
+            PROCESSED=$((PROCESSED + 1))
+          done
+          END_TIME=$(date +%s%3N)
+          DURATION_MS=$((END_TIME - START_TIME))
+          echo "DURATION_MS=${DURATION_MS}" >> "$GITHUB_ENV"
+          echo "FAILED_CHUNKS=${FAILED}" >> "$GITHUB_ENV"
+          echo "PROCESSED_CHUNKS=${PROCESSED}" >> "$GITHUB_ENV"
+          if [ "$FAILED" -gt 0 ]; then
+            exit 1
+          fi
+
+      - name: Write cron_runs summary
+        if: ${{ inputs.dry_run != true && always() }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            CRON_STATUS="success"
+          else
+            CRON_STATUS="failure"
+          fi
+          NOTES="Phase 13b-5: loaded zoning_score from parcel_zoning_scores.csv. Chunks: ${PROCESSED_CHUNKS:-0}; failed chunks: ${FAILED_CHUNKS:-0}."
+          SAFE_NOTES=${NOTES//\'/\'\'}
+          npx wrangler d1 execute wasatch-intel-db --remote --command \
+            "INSERT INTO cron_runs (workflow_name, ran_at, status, duration_ms, items_processed, notes)
+             VALUES ('load_zoning_scores_to_d1', CURRENT_TIMESTAMP, '${CRON_STATUS}', ${DURATION_MS:-0}, ${ROW_COUNT:-0}, '${SAFE_NOTES}');"
