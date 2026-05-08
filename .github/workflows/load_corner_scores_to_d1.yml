@@ -81,20 +81,11 @@ jobs:
 
           chunks = [rows[i:i + chunk_size] for i in range(0, len(rows), chunk_size)]
           for idx, chunk in enumerate(chunks, start=1):
-              cases = []
-              ids = []
+              stmts = []
               for parcel_id, score in chunk:
                   pid = sql_string(parcel_id)
-                  cases.append(f"WHEN {pid} THEN {score:.2f}")
-                  ids.append(pid)
-              sql = (
-                  "UPDATE parcel_records\n"
-                  "SET corner_score = CASE id\n  "
-                  + "\n  ".join(cases)
-                  + "\n  ELSE corner_score END\n"
-                  + "WHERE id IN (" + ",".join(ids) + ");\n"
-              )
-              (sql_dir / f'corner_scores_{idx:04d}.sql').write_text(sql)
+                  stmts.append(f"UPDATE parcel_records SET corner_score = {score:.2f} WHERE id = {pid};")
+              (sql_dir / f'corner_scores_{idx:04d}.sql').write_text('\n'.join(stmts) + '\n')
 
           with open(os.environ['GITHUB_OUTPUT'], 'a') as go:
               go.write(f'rows={len(rows)}\n')
@@ -121,7 +112,7 @@ jobs:
             echo "→ $chunk"
             OK=false
             for delay in 15 30 60; do
-              if npx wrangler d1 execute "$DB" --remote --command "$(cat "$chunk")" 2>&1; then
+              if npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
                 OK=true; break
               fi
               echo "Retry: $chunk (waiting ${delay}s)"
