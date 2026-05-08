@@ -17,6 +17,10 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 - **13b-6a COMPLETE (2026-05-06).** `census_acs_blockgroups` live: 1,608 rows, 7-county.
 - **13b-6b COMPLETE (2026-05-07).** `median_income` set on 933,863/947,863 parcels (98.5%).
 - **13b-5 COMPLETE (2026-05-08).** `zoning_score` loaded: 947,863/947,863 (100%). GHA run [25535182847](https://github.com/camsrigby-hash/wasatch-intel/actions/runs/25535182847), 56 min, 0 failed chunks. PRs: tooele-land-intel #5 + wasatch-intel #5 merged.
+- **13b-8 COMPLETE (2026-05-07).** `vacancy_class TEXT` loaded. FAILED_CHUNKS=0. PRs: tooele-land-intel #3 (78338e09) + wasatch-intel #3 (dd8c5de0) merged.
+- **13b-4 COMPLETE (2026-05-07).** `aadt_score REAL` loaded: 99.37% coverage, all 7 counties ≥98.35%, 5-bucket distribution, FAILED_CHUNKS=0. PRs: tooele-land-intel #4 (430ceb5) + wasatch-intel #4 (e0d0139) merged.
+- **13b-7 COMPLETE (2026-05-07).** `commute_corridor_score REAL` loaded: 98.52% coverage, all 7 counties ≥98.35%, 5-bucket distribution, FAILED_CHUNKS=0. PRs: tooele-land-intel #6 (10ec6a4) + wasatch-intel #6 (2c3b05d) merged.
+- **13b-3 COMPLETE (2026-05-07).** `corner_score REAL` loaded: 947,863/947,863 (100%), all 7 counties at 100%, 8-bucket distribution, FAILED_CHUNKS=0. GHA run [25536313899](https://github.com/camsrigby-hash/wasatch-intel/actions/runs/25536313899). PRs: tooele-land-intel #7 (8141259b) + wasatch-intel #7 (420c6056) merged.
 - **Large-file storage pattern established:** plain CSV in git (<90 MB), `.csv.gz` in git (90–99 MB compressed), GitHub Release asset `large-parcels` (≥90 MB compressed).
 - Phase 14 is a **REQUIRED PMTiles + Tippecanoe vector-tile deliverable** — at ~1M parcels MapLibre cannot render direct GeoJSON.
 - Cost ceiling: $25/mo total.

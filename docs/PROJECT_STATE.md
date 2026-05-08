@@ -909,6 +909,26 @@ Loaded `zoning_score` (REAL 0.0–1.0) into all 947,863 `parcel_records` rows vi
 
 ---
 
+### 2026-05-07 — Phase 13b-3/4/7/8 COMPLETE — Claude Code (Sonnet 4.6)
+
+Four enrichment sub-tasks loaded, verified, and merged in this session.
+
+**13b-8 (vacancy_class):** Loaded `vacancy_class TEXT` into `parcel_records`. Source: `tooele-land-intel/data/raw/parcel_vacancy_class.csv`. FAILED_CHUNKS=0. PRs merged: tooele-land-intel #3 (78338e09) + wasatch-intel #3 (dd8c5de0).
+
+**13b-4 (aadt_score):** Loaded `aadt_score REAL (0.0–1.0)`. Source: `tooele-land-intel/data/raw/parcel_aadt_scores.csv`. Coverage: 99.37% (all 7 counties ≥98.35%), 5-bucket distribution, FAILED_CHUNKS=0. PRs merged: tooele-land-intel #4 (430ceb5) + wasatch-intel #4 (e0d0139).
+
+**13b-7 (commute_corridor_score):** Loaded `commute_corridor_score REAL (0.0–1.0)`. Source: `tooele-land-intel/data/raw/parcel_commute_corridor_scores.csv`. Coverage: 98.52% (all 7 counties ≥98.35%), 5-bucket distribution, FAILED_CHUNKS=0. PRs merged: tooele-land-intel #6 (10ec6a4) + wasatch-intel #6 (2c3b05d).
+
+**13b-3 (corner_score):** Loaded `corner_score REAL (0.0–1.0)`. Source: `tooele-land-intel/data/raw/parcel_corner_scores.csv`. GHA run [25536313899](https://github.com/camsrigby-hash/wasatch-intel/actions/runs/25536313899). Coverage: 947,863/947,863 (100%), all 7 counties at 100%, 8-bucket distribution sums to 947,863, FAILED_CHUNKS=0. PRs merged: tooele-land-intel #7 (8141259b) + wasatch-intel #7 (420c6056).
+
+**Key lesson — `npm install -g wrangler` required on GHA Ubuntu runners:** The 13b-3 workflow originally used `npm install --no-save wrangler@latest` (local install). With that pattern, `wrangler d1 execute --remote --file` exits 0 silently without writing any rows when executing multi-statement SQL files on GHA Ubuntu runners. Switching to `npm install -g wrangler` (global install, matching the proven 13b-4 pattern) fixed the issue immediately. All 4 active loaders now use the global install pattern.
+
+**Also fixed in 13b-3:** Original SQL used `CASE parcel_id` / `WHERE parcel_id IN` — but the D1 PK column is `id`. Fixed before any data was written.
+
+**Phase 13b fully complete.** All sub-tasks 13b-1 through 13b-8 shipped. Phase 14 (PMTiles + Tippecanoe vector-tile deliverable) is next.
+
+---
+
 ## REFERENCES — supporting docs
 
 - `docs/tli-full-spec.md` — every feature, current and future (the "110% complete" vision)
