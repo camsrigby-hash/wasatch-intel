@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 8, 2026
+**Last updated**: May 8, 2026 (Phase 14 activated; sub-task 14-1 shipped)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -42,7 +42,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 13b-6b | Spatial join (median_income → parcels) | Shipped | May 8 2026 | 98.5% match rate. 14k unmatched are real geographic edge cases |
 | 13b-7 | Commute corridor scoring (proxy method) | Shipped | May 8 2026 | 98.52% coverage. All rows tagged `commute_corridor_method='proxy'` for future WFRC swap |
 | 13b-8 | Vacancy classification | Shipped | May 8 2026 | UGRC LIR cascade (vacant/partial/developed/unknown) |
-| **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Next** | — | Required, not optional. 1.1M parcels cannot render as raw GeoJSON in MapLibre. See SD-2 |
+| **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Active** | — | Sub-task split 14-1..14-6 (mirrors 13b). 14-1 ✓ 2026-05-08 (brief + stale doc fix). 14-2 next: R2 bucket + Worker tile route + wrangler binding. See SD-2, SD-10 |
 | 15 | CRE listings ingest + spread calc + Deal Heat | Pending | — | Replit scraper port. Listings = signal type on parcel, not separate silo. Reverse-geocode to UGRC LIR, target 70%+ match |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
@@ -109,6 +109,16 @@ Order: scoring engine (Phase 11 done) → enrichment data (Phase 13b done) → v
 **Rule**: GHA workflows that run wrangler MUST install it globally (`npm install -g wrangler`), not locally (`npm install --no-save wrangler@latest`).
 **Reason**: `wrangler d1 execute --remote --file <multi-statement>` silently exits 0 on Ubuntu runners with locally-installed wrangler — no rows written, no error reported. Caused a 4-run debugging cycle on 13b-3 before discovery. Global install fixes immediately.
 
+### SD-10 — Phase 14 architecture decisions (May 8, 2026)
+Decisions for the PMTiles + Tippecanoe pipeline, confirmed at 14-1 kickoff:
+
+1. **Hosting**: Cloudflare R2 bucket `wasatch-intel-tiles`, served via Worker route `/tiles/:filename` for range-request passthrough + CORS + future auth flexibility. Not a custom R2 public domain.
+2. **Attribute strategy**: bake the 8 static enrichment attributes (corner_score, aadt_score, zoning_score, commute_corridor_score, vacancy_class, median_income, prop_class, acreage) into tile features so paint expressions can recolor without rebuilding tiles. Preserve `setFeatureState` channel for dynamic overlays (pipeline stage, watchlist, Deal Heat, hover, selection).
+3. **Build trigger**: GHA `workflow_dispatch` only. No cron until Phase 15+ usage signals appropriate cadence (per "use the tool first" principle from Phase 10 graduation).
+4. **Polygon source**: CSVs in `tooele-land-intel/data/raw/` for small files + GH Release `large-parcels` for ≥90 MB compressed (per SD-5). The build workflow uses `gh release download large-parcels`, never just `git clone`.
+5. **Sub-task split**: 6 sub-tasks (14-1..14-6) mirroring the 13b decomposition pattern. Each is one CC session.
+6. **Scope reassignment**: the previous "Frontend ↔ API wiring + legacy cleanup" Phase 14 (pre-SD-2) is folded into Phase 16 (pipeline parcel-centric refinement).
+
 ---
 
 ## Working Style
@@ -137,4 +147,5 @@ This doc covers strategy and direction. For execution detail, see:
 
 ## Update history (newest first)
 
+- **May 8, 2026** — Phase 14 activated. Sub-task 14-1 shipped (operational brief written, stale Phase 14 section in PROMPT_PLAYBOOK_ADDENDUM.md replaced, 14-2..14-6 decomposed). SD-10 logged: hosting via R2 + Worker route, bake-with-feature-state-preserved attribute strategy, workflow_dispatch trigger, polygon source via SD-5 release pattern. Old "Frontend ↔ API wiring" scope folded into Phase 16.
 - **May 8, 2026** — Initial creation. Triggered by memory entry #18 going stale (it framed scoring engine as "next active build" when scoring engine had shipped in Phase 11 and Phase 14 was actually vector tiles per SD-2).

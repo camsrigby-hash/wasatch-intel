@@ -927,6 +927,25 @@ Four enrichment sub-tasks loaded, verified, and merged in this session.
 
 **Phase 13b fully complete.** All sub-tasks 13b-1 through 13b-8 shipped. Phase 14 (PMTiles + Tippecanoe vector-tile deliverable) is next.
 
+### 2026-05-08 — Phase 14-1 (DONE) — Claude Code (Opus 4.7)
+
+**Phase 14 kickoff: operational brief + stale doc reconciliation.** The Phase 14 brief in `docs/PROMPT_PLAYBOOK_ADDENDUM.md` was stale ("Frontend ↔ API wiring + legacy cleanup" — pre-SD-2 scope). The CURRENT STATE block, [PROJECT_STATE.md:554](#) and [:928](#), and [PROJECT_DIRECTION.md](#) Phase Ledger + SD-2 all already specified Phase 14 as PMTiles + Tippecanoe vector tile pipeline. CC reconciled by:
+
+- Replacing the stale brief (formerly addendum lines 584-608) with the new operational brief covering architecture, attribute-baking decisions, sub-task split (14-1..14-6), and acceptance criteria.
+- Confirming user decisions on the four open design questions (R2 hosting, bake-with-feature-state-preserved attribute strategy, GHA workflow_dispatch with no cron, polygon source via `large-parcels` GH Release per SD-5).
+- Decomposing Phase 14 into 6 sub-tasks following the 13b model: 14-1 brief (this), 14-2 R2+Worker, 14-3 data prep, 14-4 GHA tippecanoe, 14-5 MapLibre client, 14-6 verify.
+- Folding the dropped "Frontend ↔ API wiring" scope into Phase 16 (pipeline parcel-centric refinement).
+- Updating CURRENT STATE block to point at 14-2 next.
+
+Architecture notes for next sessions:
+- **MapCanvas.tsx** today uses `addSource("parcels", { type: "geojson", data })` with `paint: { "fill-color": ["get","fillColor"] }` reading a runtime-computed property. 14-5 swaps source to `{ type: "vector", url: "pmtiles:///tiles/parcels.pmtiles", promoteId: "parcel_id" }` and moves the score→color computation into a `case`/`match` paint expression keyed off the baked attributes (corner_score, aadt_score, zoning_score, commute_corridor_score, vacancy_class, median_income, prop_class, acreage). Existing setFeatureState usage at line 360 is preserved with the new promoteId.
+- **wrangler.jsonc** currently has only the D1 binding. 14-2 adds the R2 binding for `wasatch-intel-tiles` and a Worker route `/tiles/:filename` that proxies range requests.
+- **tooele-land-intel** clean state with one untracked file (`data/raw/parcel_zoning_scores.csv`) — unrelated to this commit.
+
+No code changes this session. Doc-only commit.
+
+**Status: 14-1 COMPLETE.** 14-2 is unblocked but may need user-side R2 bucket provisioning before CC can deploy the Worker route.
+
 ---
 
 ## REFERENCES — supporting docs

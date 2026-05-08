@@ -8,9 +8,25 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-08
 
-**Phase 13b COMPLETE — all sub-tasks 13b-1 through 13b-8 shipped.**
+**Phase 14 ACTIVE — sub-task 14-1 COMPLETE; 14-2 NOT_STARTED next.**
 
-`parcel_records` has 947,863 rows enriched with: `median_income` (98.5% coverage), `corner_score`, `aadt_score`, `zoning_score` (100% coverage, 0.0–1.0), `commute_corridor_score`, `vacancy_class`. D1 size: ~250 MB. Ready for Phase 14 scoring engine integration.
+Phase 14 = PMTiles + Tippecanoe vector tile pipeline (per [SD-2](PROJECT_DIRECTION.md)). The previous "Frontend ↔ API wiring" definition was stale and has been superseded — that work is now folded into Phase 16. See the Phase 14 brief below for the architecture, sub-task split, and decisions confirmed by the user on 2026-05-08:
+
+- **R2 hosting** (bucket `wasatch-intel-tiles`, served via Worker route `/tiles/:filename`)
+- **Bake 8 enrichment attributes** into tiles + **preserve `setFeatureState`** channel for dynamic overlays (pipeline stage, watchlist, Deal Heat, hover, selection)
+- **GHA `workflow_dispatch` only**, no cron — defer cadence until Phase 15+ usage signals it
+- **Polygon source**: CSVs in `tooele-land-intel/data/raw/` + GH Release `large-parcels` per SD-5
+
+### 14-1 COMPLETE (2026-05-08)
+Operational brief written, stale Phase 14 section replaced, sub-tasks 14-2..14-6 decomposed, PROJECT_STATE.md PHASE_LOG entry appended, PROJECT_DIRECTION.md ledger row marked Active.
+
+### 14-2 NOT_STARTED — R2 bucket + Worker route + wrangler binding
+Next CC session. May require user to provision the R2 bucket out-of-band before CC can deploy the Worker route. See sub-task split below.
+
+---
+
+### Phase 13b reference (frozen)
+`parcel_records` has 947,863 rows enriched with: `median_income` (98.5% coverage), `corner_score`, `aadt_score`, `zoning_score` (100% coverage, 0.0–1.0), `commute_corridor_score`, `vacancy_class`. D1 size: ~250 MB. These columns are the inputs Phase 14 bakes into the tiles.
 
 - **13b-2 COMPLETE (2026-05-07).** 947,863 unique parcels loaded, 7 counties.
 - **13b-1 CONFIRMED COMPLETE (retroactive, 2026-05-06).** Migration 0004 applied.
@@ -581,31 +597,62 @@ Pause and ask if a blocker persists past two attempts.
 
 ---
 
-## Phase 14 — Frontend ↔ API wiring + legacy cleanup
+## Phase 14 — PMTiles + Tippecanoe vector tile pipeline
 
-**Tool**: Claude Code · **Model**: `/model sonnet` · **Est. time**: 2–4 hours · **Est. LLM cost**: ~$1–2
+**Tool**: Claude Code · **Model**: `/model sonnet` (mostly) · **Est. time**: 2–4 sessions across 6 sub-tasks · **Est. LLM cost**: ~$2–4
 
-Mechanical refactor. IntelProvider stops reading mocks, starts calling the Hono endpoints stubbed in Phase 11 (now backed by real D1 data from Phase 13). Delete `ParcelDeepDive` and `DEALS` legacy mock. Migrate Feed/Agendas/Developers/Search/Watchlists routes to consume `IntelParcels`. Pure Sonnet work.
+Replaces the stale "Frontend ↔ API wiring" Phase 14 (superseded May 6 2026 by SD-2 in `docs/PROJECT_DIRECTION.md`). Frontend↔API wiring is now folded into Phase 16 (pipeline parcel-centric refinement). Phase 14's job is presentation: render all 947,863 parcels with their 8 enrichment columns on the MapLibre map at acceptable performance.
 
-### Kickoff prompt
+### Why this is required, not optional
+
+At ~1M parcels MapLibre cannot render direct GeoJSON. Current `MapCanvas.tsx` source is `{ type: "geojson", data: ... }`, which loads everything client-side. The tile pyramid solves this — the browser only fetches the visible area at the current zoom.
+
+### Architecture
+
+| Layer | Decision | Rationale |
+|---|---|---|
+| **Polygon source** | CSVs in `tooele-land-intel/data/raw/` (small) + GitHub Release `large-parcels` (≥90 MB compressed) | Per SD-5. Workflow uses `gh release download large-parcels` — never just `git clone`. |
+| **Attribute source** | D1 `parcel_records` export via `wrangler d1 execute --command` or HTTP API | 8 enrichment columns + identifiers. Joined to polygons in build step. |
+| **Tile build** | `tippecanoe` in GHA `workflow_dispatch` (no cron — defer cadence until Phase 15+ usage tells us how often scores actually change) | Per "use the tool first" principle from Phase 10 graduation. |
+| **Hosting** | Cloudflare R2 bucket `wasatch-intel-tiles`, served via Worker route `/tiles/parcels.pmtiles` (range-request passthrough) | R2 supports HTTP range requests natively. Worker route gives us CORS + cache headers + future auth. |
+| **Client** | `pmtiles` npm package + `addProtocol("pmtiles", ...)` + `addSource({ type: "vector", url: "pmtiles://..." })` | Standard pattern. |
+| **Static-baked attributes** | parcel_id, corner_score, aadt_score, zoning_score, commute_corridor_score (REAL), vacancy_class (TEXT), median_income (INT), prop_class, acreage | Read by paint expressions; profile/weight changes recolor without rebuilding tiles using `case`/`match` on these. |
+| **Dynamic overlay (preserved)** | `setFeatureState` channel kept for: pipeline stage, watchlist hits, listing presence (Phase 15+ Deal Heat), hover, selection | Bake what's static; keep the overlay channel open for what's dynamic. Today's `MapCanvas.tsx:360` already uses this for selection. |
+
+### Sub-task split
+
+Phase 14 is decomposed similarly to Phase 13b. Each sub-task is one CC session.
+
+- **14-1** — Operational brief + stale doc fix (this kickoff session). Writes the brief, replaces the stale Phase 14 section, decomposes sub-tasks, logs to PROJECT_STATE.md, marks the row Active in PROJECT_DIRECTION.md, commits + pushes both repos. **No code yet.**
+- **14-2** — R2 bucket + Worker route + wrangler binding. Creates `wasatch-intel-tiles` R2 bucket, adds R2 binding to `wrangler.jsonc`, writes a Worker route at `/tiles/:filename` that streams the R2 object with proper `Content-Range` / `Accept-Ranges` headers, deploys, smoke-tests with `curl --range`. Requires user to provision the R2 bucket + paste credentials if needed.
+- **14-3** — Data prep script (tooele-land-intel). New script `scripts/build_parcels_ndjson.py` that: (a) downloads `large-parcels` GH Release assets, (b) reads polygon CSVs, (c) reads D1 attribute export (passed in as a CSV), (d) joins on parcel_id, (e) emits NDJSON of GeoJSON features with the 8 baked attributes. Local-runnable for testing.
+- **14-4** — GHA workflow (tooele-land-intel). New workflow `.github/workflows/build_parcels_pmtiles.yml`. `workflow_dispatch` trigger only. Steps: install tippecanoe (apt), download large-parcels release, dump D1 attributes via wrangler, run prep script, run tippecanoe with sensible zoom params (e.g. `-z14 -Z6 --drop-densest-as-needed --extend-zooms-if-still-dropping --layer parcels`), upload `parcels.pmtiles` to R2 via `wrangler r2 object put`. CC writes the YAML; user merges (workflow scope).
+- **14-5** — MapLibre client wiring (wasatch-intel). Install `pmtiles` npm package. In `src/components/MapCanvas.tsx`, `addProtocol("pmtiles", new PMTiles(...).getProtocolHandler())`. Replace the `parcels` GeoJSON source with `{ type: "vector", url: "pmtiles:///tiles/parcels.pmtiles", promoteId: "parcel_id" }` and add `source-layer: "parcels"` to the fill layer. Move `fill-color` from `["get","fillColor"]` (which read a runtime-computed property) to a paint expression that computes the grade color from baked attributes via the active profile's weight vector — `case` chains keyed off `["get", "corner_score"]` etc. Verify `setFeatureState` for selection still works with the new `promoteId`.
+- **14-6** — Verification + perf check. Render `/map` at zooms 8/12/16. Confirm: all 947k parcels render bbox-correctly, profile change recolors via paint expression (not full re-fetch), selection feature-state still highlights, `npm run build` clean, no console errors. Manually run `gh workflow run build_parcels_pmtiles.yml` once end-to-end. Take a perf snapshot. Mark Phase 14 complete, advance CURRENT STATE → Phase 15, commit + push.
+
+### Acceptance (whole phase)
+
+- `/map` renders all 947,863 parcels at zooms 8–18 without crashing
+- Profile/weight changes recolor parcels via paint expression (no tile rebuild)
+- Hover/selection state still works (setFeatureState channel intact)
+- `gh workflow run build_parcels_pmtiles.yml` produces a fresh `parcels.pmtiles` in R2
+- Cost: R2 storage <100 MB (free), Worker requests well under 100k/day (free), tippecanoe runs in GHA free-tier minutes
+
+### Out of scope
+
+- Cron scheduling for tile rebuilds — defer per "use the tool first" principle
+- Listing overlay (Phase 15)
+- Watchlist polygon highlighting beyond setFeatureState (Phase 15+)
+- Custom R2 domain — Worker route is sufficient
+- The legacy "Frontend ↔ API wiring" work — moved to Phase 16
+
+### Kickoff prompt (for sub-tasks 14-2..14-6)
 
 ````
-cd C:/Users/camsr/code/wasatch-intel
-
-Phase 14 — Frontend↔API wiring + legacy cleanup. Append Phase 14 brief to docs/PROMPT_PLAYBOOK_ADDENDUM.md, update CURRENT STATE, then execute, then mark complete and point CURRENT STATE to Phase 15.
-
-Three deliverables:
-
-1. WIRE INTELPROVIDER TO HONO. In src/lib/intel-context.tsx, replace the in-memory INTEL_PARCELS load with a fetch to /api/parcels?bbox=... (use TanStack Query with appropriate cache keys). Same for /api/profiles, /api/pipeline. Add loading and error states. Add optimistic updates for stage changes, save/remove pipeline, custom profile saves.
-
-2. DELETE LEGACY. Remove src/components/ParcelDeepDive.tsx and any DEALS/DealStage exports from src/lib/mock-data.ts that are no longer referenced. Migrate any remaining consumers (likely Feed/Agendas/Developers/Search/Watchlists) to consume IntelParcels via useIntel(). The /watchlists route's saved-watchlist matching logic needs to be re-pointed at intel.parcels rather than the legacy PARCELS array.
-
-3. SMOKE TEST. Run bun run build clean. Run bun run dev. Click through every route. Open the network tab and verify each route is hitting /api/* endpoints (not loading from in-memory mocks). Save a parcel to pipeline; refresh; confirm it persists (D1-backed).
-
-Acceptance: zero regressions on legacy routes, all surfaces backed by real API calls, no dead code remaining from Phase 11's mock-only state.
-
-On completion, update docs/PROMPT_PLAYBOOK_ADDENDUM.md (Phase 14 PHASE_LOG entry, CURRENT STATE → Phase 15), commit, push.
+cd C:/Users/camsr/code/wasatch-intel, then read docs/CC_BOOTSTRAP.md and begin.
 ````
+
+The bootstrap reads CURRENT STATE which will name the next sub-task.
 
 ---
 
