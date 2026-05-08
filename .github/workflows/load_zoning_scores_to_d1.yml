@@ -101,10 +101,10 @@ jobs:
               ids = ",".join(q(parcel_id) for parcel_id, _score in chunk)
               sql = f"""-- Phase 13b-5 zoning_score load chunk {idx}/{len(chunks)}; {len(chunk)} rows
           UPDATE parcel_records
-          SET zoning_score = CASE parcel_id
+          SET zoning_score = CASE id
           {cases}
           END
-          WHERE parcel_id IN ({ids});
+          WHERE id IN ({ids});
           """
               (out_dir / f"chunk_{idx:05d}.sql").write_text(sql, encoding="utf-8")
 
