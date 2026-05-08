@@ -121,7 +121,7 @@ jobs:
             echo "→ $chunk"
             OK=false
             for delay in 15 30 60; do
-              if npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
+              if npx wrangler d1 execute "$DB" --remote --command "$(cat "$chunk")" 2>&1; then
                 OK=true; break
               fi
               echo "Retry: $chunk (waiting ${delay}s)"
