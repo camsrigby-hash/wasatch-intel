@@ -899,6 +899,16 @@ Schema-only session. Migration `0006_parcel_scoring_columns.sql` applied to `was
 
 ---
 
+### 2026-05-08 — Phase 13b-5: zoning score D1 load — Claude Code (Sonnet 4.6)
+
+Loaded `zoning_score` (REAL 0.0–1.0) into all 947,863 `parcel_records` rows via GHA workflow `load_zoning_scores_to_d1.yml`. Source: `tooele-land-intel/data/raw/parcel_zoning_scores.csv` on branch `phase-13b-5-zoning-score` (commit `02a9e26`, dedup fix: largest-county-wins strategy by Manus). SQL chunked into 1,896 × 500-row `UPDATE … CASE id … END` statements executed via `npx wrangler d1 execute --remote --file`.
+
+**Bug found and fixed mid-session:** original SQL used `CASE parcel_id … WHERE parcel_id IN (…)` but D1 primary key is `id`. First run (25532771472) hung 76 min with 0 rows written — every chunk failing `no such column: parcel_id` with 15s/30s/60s retries. Cancelled; fixed workflow (`CASE id … WHERE id IN`); re-ran as 25535182847.
+
+**Results:** run 25535182847, duration 3,351,296 ms (~56 min), FAILED_CHUNKS=0, 1,896/1,896 chunks succeeded. 947,863/947,863 rows scored (100%). Score distribution: 0.0→901,266 (95.1%), 0.2→6,974, 0.4→3,817, 0.7→470, 1.0→35,336. All 7 counties at 100% coverage. D1 size: 261,918,720 bytes (~250 MB). cron_runs entry: `load_zoning_scores_to_d1 / 2026-05-08 04:31:32 / success`. PRs merged: tooele-land-intel #5 (`f885880`) + wasatch-intel #5 (`9d0655d`).
+
+---
+
 ## REFERENCES — supporting docs
 
 - `docs/tli-full-spec.md` — every feature, current and future (the "110% complete" vision)
