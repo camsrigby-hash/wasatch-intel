@@ -35,7 +35,7 @@ jobs:
           node-version: "20"
 
       - name: Install Wrangler
-        run: npm install --no-save wrangler@latest
+        run: npm install -g wrangler
 
       - name: Download corner score CSV
         run: |
