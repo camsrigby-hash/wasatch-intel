@@ -66,6 +66,7 @@ Read these files in order. Each governs how you work:
 | `docs/PROMPT_PLAYBOOK.md` | Phase briefs — the master description of each phase's deliverables |
 | `docs/PROMPT_PLAYBOOK_ADDENDUM.md` | **Your state machine** — has `CURRENT STATE` at the top telling you which phase is next, plus CM_RE-heritage deltas to layer on top of the playbook briefs |
 | `docs/CM_RE_INTEGRATION.md` | Scope guardrails, what to reuse vs skip from the vendored `vendor/cm_re/` reference tree, file-level porting map |
+| `docs/PROJECT_DIRECTION.md` | Canonical phase ledger + strategic decisions log |
 
 If any of these files is missing, stop and tell the user which.
 
