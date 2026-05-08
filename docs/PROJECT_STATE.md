@@ -978,6 +978,23 @@ Smoke object cleaned up via `wrangler r2 object delete --remote`. Bucket is empt
 
 **Status: 14-2 COMPLETE.** 14-3 (data prep script in tooele-land-intel) unblocked.
 
+### 2026-05-08 — Phase 14-3 (DONE) — Claude Code (Sonnet 4.6)
+
+**Data prep script.** `tooele-land-intel/scripts/build_parcels_ndjson.py` (commit `c8b8c52`, pushed to main).
+
+Joins the 6 county polygon CSVs (box_elder, davis, tooele, wasatch as plain CSV; utah, weber as gzip from git) + GH Release `large-parcels` asset (`parcels_salt_lake.csv.gz`, downloaded on demand via `--download-large-parcels`) + a D1 attribute export file (CSV or wrangler JSON) -> NDJSON of GeoJSON features with 8 baked attributes ready for tippecanoe:
+
+- **From polygon CSV:** `parcel_id`, `acreage`, `prop_class`, `county`
+- **From D1 export:** `corner_score`, `aadt_score`, `zoning_score`, `commute_corridor_score`, `vacancy_class`, `median_income`
+
+Key design decisions:
+- D1 export accepts either a plain CSV (header: `parcel_id, corner_score, aadt_score, ...`) or wrangler JSON output (`[{"results":[...]}]`) — autodetected by `.json` extension.
+- `csv.field_size_limit(10 MB)` required — polygon GeoJSON columns routinely exceed Python's default 128 KB field limit (same lesson as 13b-2).
+- `--stats` flag prints per-county row/write/match counts + per-attribute fill-rate; useful for verifying D1 join coverage after the real D1 export is run in 14-4.
+- Local smoke test: 807,390 features emitted from 6 county sources (salt_lake absent locally, correct — it's in the GH Release). D1 join verified correct on matched parcels.
+
+**Status: 14-3 COMPLETE.** 14-4 (GHA tippecanoe workflow in tooele-land-intel) is next.
+
 ---
 
 ## REFERENCES — supporting docs

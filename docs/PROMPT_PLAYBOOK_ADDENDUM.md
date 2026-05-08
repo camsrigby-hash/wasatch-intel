@@ -8,7 +8,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-08
 
-**Phase 14 ACTIVE — sub-tasks 14-1 and 14-2 COMPLETE; 14-3 NOT_STARTED next.**
+**Phase 14 ACTIVE — sub-tasks 14-1, 14-2, and 14-3 COMPLETE; 14-4 NOT_STARTED next.**
 
 Phase 14 = PMTiles + Tippecanoe vector tile pipeline (per [SD-2](PROJECT_DIRECTION.md)). The previous "Frontend ↔ API wiring" definition was stale and has been superseded — that work is now folded into Phase 16. See the Phase 14 brief below for the architecture, sub-task split, and decisions confirmed by the user on 2026-05-08:
 
@@ -23,8 +23,11 @@ Operational brief written, stale Phase 14 section replaced, sub-tasks 14-2..14-6
 ### 14-2 COMPLETE (2026-05-08)
 R2 bucket `wasatch-intel-tiles` created, R2 binding `TILES` added to `wrangler.jsonc`, `Env` interface extended in `src/server/lib/d1-client.ts`, `/tiles/:filename` route handler added to `src/server/entry.ts` with full HTTP Range support (200/206/HEAD/OPTIONS, CORS open, ETag, Cache-Control 86400s). Worker deployed at version `f004e12c-1d2e-4a19-bd3a-ec141f0ad600`. All smoke tests passed (HEAD, full GET, mid-range, open-ended range, 404, OPTIONS preflight). Account-level R2 enable was a one-time manual step done before this sub-task.
 
-### 14-3 NOT_STARTED — Data prep script (tooele-land-intel)
-Next CC session. New `scripts/build_parcels_ndjson.py` that joins polygon CSVs + GH Release `large-parcels` assets + a D1 attribute export → NDJSON of GeoJSON features with the 8 baked attributes, ready to feed `tippecanoe`. Local-runnable for testing. See sub-task split below.
+### 14-3 COMPLETE (2026-05-08)
+`tooele-land-intel/scripts/build_parcels_ndjson.py` written and pushed (commit `c8b8c52`). Joins the 6 county polygon CSVs (box_elder, davis, tooele, wasatch plain; utah, weber gzip from git) + GH Release `large-parcels` (parcels_salt_lake.csv.gz, downloaded via `--download-large-parcels`) + D1 attribute export CSV or wrangler JSON -> NDJSON of GeoJSON features with 8 baked attrs. Smoke-tested locally: 807,390 features from 6 sources, D1 attr join confirmed correct on matched parcels. Accepts both CSV and wrangler JSON for the D1 export.
+
+### 14-4 NOT_STARTED — GHA workflow (tooele-land-intel)
+Next CC session. New workflow `.github/workflows/build_parcels_pmtiles.yml`. `workflow_dispatch` trigger only. Steps: install tippecanoe (apt), download large-parcels release, dump D1 attributes via wrangler, run prep script, run tippecanoe, upload `parcels.pmtiles` to R2 via `wrangler r2 object put`. See sub-task split below.
 
 ---
 
