@@ -1,0 +1,186 @@
+name: Load Vacancy Class to D1
+
+on:
+  workflow_dispatch:
+    inputs:
+      tooele_ref:
+        description: "tooele-land-intel ref containing data/raw/parcel_vacancy_class.csv"
+        required: false
+        default: "phase-13b-8-vacancy-class"
+      dry_run:
+        description: "Generate SQL chunks only; do not write D1"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      DB: wasatch-intel-db
+      CHUNK_SIZE: "500"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Download vacancy class CSV
+        env:
+          TOOEELE_REF: ${{ github.event.inputs.tooele_ref || 'phase-13b-8-vacancy-class' }}
+        run: |
+          mkdir -p /tmp/vacancy
+          URL="https://raw.githubusercontent.com/camsrigby-hash/tooele-land-intel/${TOOEELE_REF}/data/raw/parcel_vacancy_class.csv"
+          echo "Downloading $URL"
+          curl -fsSL "$URL" -o /tmp/vacancy/parcel_vacancy_class.csv
+          echo "Downloaded $(wc -l < /tmp/vacancy/parcel_vacancy_class.csv) lines including header"
+
+      - name: Generate 500-row SQL chunks
+        id: gen
+        run: |
+          cat > /tmp/generate_vacancy_sql.py <<'PY'
+          import csv
+          import json
+          import os
+          from pathlib import Path
+
+          INPUT = Path('/tmp/vacancy/parcel_vacancy_class.csv')
+          SQL_DIR = Path('/tmp/vacancy/sql')
+          SQL_DIR.mkdir(parents=True, exist_ok=True)
+          CHUNK_SIZE = int(os.environ.get('CHUNK_SIZE', '500'))
+          ALLOWED = {'vacant', 'partial', 'developed', 'unknown'}
+
+          def sq(value):
+              if value is None:
+                  return 'NULL'
+              return "'" + str(value).replace("'", "''") + "'"
+
+          rows = 0
+          chunk_index = 0
+          buffer = []
+          counts = {key: 0 for key in sorted(ALLOWED)}
+          seen = set()
+          duplicates = 0
+
+          with INPUT.open(newline='', encoding='utf-8') as f:
+              reader = csv.DictReader(f)
+              expected = ['parcel_id', 'vacancy_class', 'source_signal']
+              if reader.fieldnames != expected:
+                  raise SystemExit(f'Unexpected CSV header {reader.fieldnames}; expected {expected}')
+              for row in reader:
+                  parcel_id = (row.get('parcel_id') or '').strip()
+                  vacancy_class = (row.get('vacancy_class') or '').strip()
+                  if not parcel_id:
+                      raise SystemExit('Blank parcel_id encountered')
+                  if vacancy_class not in ALLOWED:
+                      raise SystemExit(f'Invalid vacancy_class {vacancy_class!r} for {parcel_id}')
+                  if parcel_id in seen:
+                      duplicates += 1
+                  seen.add(parcel_id)
+                  counts[vacancy_class] += 1
+                  rows += 1
+                  buffer.append(
+                      'UPDATE parcel_records SET vacancy_class = '
+                      + sq(vacancy_class)
+                      + ' WHERE id = '
+                      + sq(parcel_id)
+                      + ';'
+                  )
+                  if len(buffer) >= CHUNK_SIZE:
+                      (SQL_DIR / f'chunk_{chunk_index:05d}.sql').write_text('\n'.join(buffer) + '\n', encoding='utf-8')
+                      chunk_index += 1
+                      buffer = []
+
+          if buffer:
+              (SQL_DIR / f'chunk_{chunk_index:05d}.sql').write_text('\n'.join(buffer) + '\n', encoding='utf-8')
+              chunk_index += 1
+
+          if rows == 0:
+              raise SystemExit('No vacancy rows found')
+          if duplicates:
+              raise SystemExit(f'Duplicate parcel_id rows found: {duplicates}')
+
+          meta = {
+              'rows': rows,
+              'chunks': chunk_index,
+              'counts': counts,
+              'chunk_size': CHUNK_SIZE,
+          }
+          Path('/tmp/vacancy/meta.json').write_text(json.dumps(meta, indent=2) + '\n', encoding='utf-8')
+          print(json.dumps(meta, indent=2))
+
+          github_output = os.environ.get('GITHUB_OUTPUT')
+          if github_output:
+              with open(github_output, 'a', encoding='utf-8') as out:
+                  out.write(f"rows={rows}\n")
+                  out.write(f"chunks={chunk_index}\n")
+          PY
+          python /tmp/generate_vacancy_sql.py
+
+      - name: Upload SQL artifacts for dry run
+        if: github.event.inputs.dry_run != 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vacancy-class-sql-chunks
+          path: |
+            /tmp/vacancy/sql/
+            /tmp/vacancy/meta.json
+
+      - name: Execute vacancy_class UPDATE chunks
+        if: github.event.inputs.dry_run == 'false'
+        run: |
+          FAILED=0
+          for chunk in $(ls /tmp/vacancy/sql/chunk_*.sql | sort); do
+            echo "→ $chunk"
+            OK=false
+            for delay in 15 30 60; do
+              if npx wrangler d1 execute "$DB" --remote --file "$chunk" 2>&1; then
+                OK=true
+                break
+              fi
+              echo "Retry: $chunk (waiting ${delay}s)"
+              sleep "$delay"
+            done
+            if [ "$OK" = "false" ]; then
+              echo "FAILED: $chunk"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          if [ "$FAILED" -gt 0 ]; then
+            echo "ERROR: $FAILED vacancy_class chunk(s) failed"
+            exit 1
+          fi
+
+      - name: Write cron_runs summary
+        if: github.event.inputs.dry_run == 'false'
+        run: |
+          NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          RUN_ID="vacancy-class-$(date -u +%s)"
+          ROWS="${{ steps.gen.outputs.rows }}"
+          CHUNKS="${{ steps.gen.outputs.chunks }}"
+          npx wrangler d1 execute "$DB" --remote --command \
+            "INSERT OR IGNORE INTO cron_runs (id, workflow_name, ran_at, status, items_processed, notes) VALUES ('${RUN_ID}', 'load_vacancy_class_to_d1', '${NOW}', 'success', ${ROWS:-0}, 'Phase 13b-8 vacancy_class update; chunks=${CHUNKS:-0}.');"
+
+      - name: Upload failed SQL artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-vacancy-class-sql
+          path: |
+            /tmp/vacancy/sql/
+            /tmp/vacancy/meta.json
