@@ -89,10 +89,10 @@ jobs:
                   ids.append(pid)
               sql = (
                   "UPDATE parcel_records\n"
-                  "SET corner_score = CASE parcel_id\n  "
+                  "SET corner_score = CASE id\n  "
                   + "\n  ".join(cases)
                   + "\n  ELSE corner_score END\n"
-                  + "WHERE parcel_id IN (" + ",".join(ids) + ");\n"
+                  + "WHERE id IN (" + ",".join(ids) + ");\n"
               )
               (sql_dir / f'corner_scores_{idx:04d}.sql').write_text(sql)
 
