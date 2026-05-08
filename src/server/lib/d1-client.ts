@@ -2,6 +2,7 @@ import type { Watchlist, WatchlistHit, WatchlistCriteria, Deal, DealNote, DealCo
 
 export interface Env {
   DB?: D1Database;
+  TILES?: R2Bucket;
   RESEND_API_KEY?: string;
 }
 

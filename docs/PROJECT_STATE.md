@@ -946,6 +946,38 @@ No code changes this session. Doc-only commit.
 
 **Status: 14-1 COMPLETE.** 14-2 is unblocked but may need user-side R2 bucket provisioning before CC can deploy the Worker route.
 
+### 2026-05-08 — Phase 14-2 (DONE) — Claude Code (Opus 4.7)
+
+**R2 bucket + Worker route + wrangler binding.** Stack (frontend Worker side):
+
+- **Bucket**: `wasatch-intel-tiles` created via `wrangler r2 bucket create`. Required a one-time account-level R2 enable in the Cloudflare dashboard (error code 10042 surfaced this; user toggled it on inline). R2 stays within the existing Workers Paid plan ($5/mo) — no incremental cost at the 10 GB free tier.
+- **Binding**: `TILES` (uppercase, conventional like `DB`) added to `wrangler.jsonc` as the only `r2_buckets[]` entry. `Env` interface in `src/server/lib/d1-client.ts` extended with `TILES?: R2Bucket` so all route handlers can reference it through the existing typed env.
+- **Route**: `/tiles/:filename` handler inserted in `src/server/entry.ts` just before the TanStack SSR fallback at line 654. Method guard updated so `GET`/`HEAD`/`OPTIONS` against `/tiles/*` no longer fall through to TanStack. Handler responsibilities:
+  - Range parsing: closed (`bytes=N-M`) and open-ended (`bytes=N-`). Open-ended uses `env.TILES.head(key)` to resolve total size since R2's `get(key, { range })` requires explicit `length`.
+  - Status codes: `200` for unranged GET, `206` for ranged GET, `200` for HEAD, `204` for OPTIONS, `404` for missing key, `400` for invalid path (`..` traversal), `416` for malformed Range, `500` if binding is unbound.
+  - Headers: `Accept-Ranges: bytes`, `Content-Range: bytes start-end/total` on 206, ETag from R2 (`obj.httpEtag`), `Cache-Control: public, max-age=86400`, CORS open (`*`) with `Range` and `If-None-Match` allowed and `Content-Range`/`Content-Length`/`ETag`/`Accept-Ranges` exposed.
+  - Body: streamed directly from `R2ObjectBody.body` (no in-memory buffering), so large `.pmtiles` archives won't blow Worker memory limits.
+
+**Build plumbing gotcha:** `npx wrangler deploy` does NOT rebuild — it deploys whatever is in `dist/`. The `@cloudflare/vite-plugin` generates `dist/server/wrangler.json` at vite-build time with the bindings. First deploy attempt showed only `env.DB` because the stale generated config had `"r2_buckets":[]`. Fix: always run `npm run build` before `npx wrangler deploy`. (For Phase 14+ tile rebuild GHA workflow this matters — workflow MUST `npm run build` before `wrangler deploy`.)
+
+**Smoke tests** against deployed `https://wasatch-intel.cam-s-rigby.workers.dev/tiles/smoke.bin` (51-byte placeholder, uploaded with `wrangler r2 object put --remote`):
+
+| Test | Expected | Actual |
+|---|---|---|
+| `HEAD /tiles/smoke.bin` | 200, `Content-Length: 51`, ETag, all CORS | ✓ |
+| Full `GET /tiles/smoke.bin` | 200, body 51 bytes | ✓ |
+| `Range: bytes=0-15` | 206, `Content-Range: 0-15/51`, body 16 bytes | ✓ |
+| `Range: bytes=10-20` | 206, `Content-Range: 10-20/51`, body 11 bytes (`ACEHOLDER_F`) | ✓ |
+| `Range: bytes=35-` (open-ended) | 206, `Content-Range: 35-50/51`, body 16 bytes | ✓ |
+| GET nonexistent key | 404 | ✓ |
+| `OPTIONS` preflight with `Access-Control-Request-Headers: Range` | 204, all CORS | ✓ |
+
+Smoke object cleaned up via `wrangler r2 object delete --remote`. Bucket is empty and ready for `parcels.pmtiles` from 14-4.
+
+**Worker version**: `f004e12c-1d2e-4a19-bd3a-ec141f0ad600`.
+
+**Status: 14-2 COMPLETE.** 14-3 (data prep script in tooele-land-intel) unblocked.
+
 ---
 
 ## REFERENCES — supporting docs

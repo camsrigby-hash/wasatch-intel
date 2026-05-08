@@ -11,6 +11,12 @@
       "database_id": "8a8792c9-df0b-4644-8fdb-5ecfc5d6a66a"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "TILES",
+      "bucket_name": "wasatch-intel-tiles"
+    }
+  ],
   "triggers": {
     // Watchlist alert cron — runs every hour at :00
     "crons": ["0 * * * *"]

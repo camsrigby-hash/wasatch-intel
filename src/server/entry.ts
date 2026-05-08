@@ -114,7 +114,10 @@ export default {
        (url.pathname.startsWith("/api/parcels/") && url.pathname.endsWith("/refresh"))) &&
       (request.method === "POST" || request.method === "PATCH" || request.method === "DELETE");
 
-    if (request.method !== "GET" && !isParcelAnalyze && !isWatchlistMutation && !isDealMutation && !isPipelineOrProfileMutation) {
+    const isTileRequest = url.pathname.startsWith("/tiles/");
+    const isTileMethod = request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS";
+
+    if (request.method !== "GET" && !isParcelAnalyze && !isWatchlistMutation && !isDealMutation && !isPipelineOrProfileMutation && !(isTileRequest && isTileMethod)) {
       return tanstack.fetch(request);
     }
 
@@ -649,6 +652,95 @@ export default {
       return okNoCache({ parcel_id: parcelId, status: "queued", message: "Enrichment stub — Phase 13 wires real data" }, {
         source: "mock:enrichment_queue", freshness: "live", count: 1, fetchedAt: new Date().toISOString(),
       });
+    }
+
+    // ── /tiles/:filename — R2-backed tile serving with HTTP Range support ────
+    // Serves PMTiles archives (and any other range-served R2 objects) from the
+    // wasatch-intel-tiles bucket via the TILES binding. Required for MapLibre
+    // pmtiles:// protocol — pmtiles.js uses Range requests to read the archive
+    // header, directory pages, and individual tile bytes without downloading
+    // the full file. CORS open ('*') because the static frontend is served
+    // from the same Worker, but anonymous tile fetches are safe (public data).
+    if (isTileRequest) {
+      if (!env.TILES) return err500();
+
+      const key = decodeURIComponent(url.pathname.slice("/tiles/".length));
+      if (!key || key.includes("..")) return err400("Invalid tile key");
+
+      const corsHeaders = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "Range, If-None-Match",
+        "Access-Control-Expose-Headers": "Content-Range, Content-Length, ETag, Accept-Ranges",
+      } as const;
+
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsHeaders });
+      }
+
+      // Parse Range header — pmtiles only emits "bytes=start-end" (closed range).
+      const rangeHeader = request.headers.get("Range");
+      let range: { offset: number; length: number } | undefined;
+      if (rangeHeader) {
+        const match = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader);
+        if (!match) {
+          return new Response("Invalid Range header", { status: 416, headers: corsHeaders });
+        }
+        const start = parseInt(match[1], 10);
+        const endStr = match[2];
+        if (endStr === "") {
+          // Open-ended "bytes=N-" — fetch everything from N. Resolve length via head().
+          const head = await env.TILES.head(key);
+          if (!head) return err404(`Tile object not found: ${key}`);
+          range = { offset: start, length: head.size - start };
+        } else {
+          const end = parseInt(endStr, 10);
+          if (end < start) return new Response("Invalid Range", { status: 416, headers: corsHeaders });
+          range = { offset: start, length: end - start + 1 };
+        }
+      }
+
+      if (request.method === "HEAD") {
+        const head = await env.TILES.head(key);
+        if (!head) return err404(`Tile object not found: ${key}`);
+        return new Response(null, {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            "Accept-Ranges": "bytes",
+            "Content-Length": String(head.size),
+            "Content-Type": head.httpMetadata?.contentType ?? "application/octet-stream",
+            "Cache-Control": "public, max-age=86400",
+            "ETag": head.httpEtag,
+          },
+        });
+      }
+
+      const obj = range
+        ? await env.TILES.get(key, { range: { offset: range.offset, length: range.length } })
+        : await env.TILES.get(key);
+
+      if (!obj) return err404(`Tile object not found: ${key}`);
+
+      const totalSize = obj.size;
+      const headers: Record<string, string> = {
+        ...corsHeaders,
+        "Accept-Ranges": "bytes",
+        "Content-Type": obj.httpMetadata?.contentType ?? "application/octet-stream",
+        "Cache-Control": "public, max-age=86400",
+        "ETag": obj.httpEtag,
+      };
+
+      if (range) {
+        const start = range.offset;
+        const end = start + range.length - 1;
+        headers["Content-Range"] = `bytes ${start}-${end}/${totalSize}`;
+        headers["Content-Length"] = String(range.length);
+        return new Response(obj.body, { status: 206, headers });
+      }
+
+      headers["Content-Length"] = String(totalSize);
+      return new Response(obj.body, { status: 200, headers });
     }
 
     return tanstack.fetch(request);

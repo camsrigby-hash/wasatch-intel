@@ -8,7 +8,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-08
 
-**Phase 14 ACTIVE — sub-task 14-1 COMPLETE; 14-2 NOT_STARTED next.**
+**Phase 14 ACTIVE — sub-tasks 14-1 and 14-2 COMPLETE; 14-3 NOT_STARTED next.**
 
 Phase 14 = PMTiles + Tippecanoe vector tile pipeline (per [SD-2](PROJECT_DIRECTION.md)). The previous "Frontend ↔ API wiring" definition was stale and has been superseded — that work is now folded into Phase 16. See the Phase 14 brief below for the architecture, sub-task split, and decisions confirmed by the user on 2026-05-08:
 
@@ -20,8 +20,11 @@ Phase 14 = PMTiles + Tippecanoe vector tile pipeline (per [SD-2](PROJECT_DIRECTI
 ### 14-1 COMPLETE (2026-05-08)
 Operational brief written, stale Phase 14 section replaced, sub-tasks 14-2..14-6 decomposed, PROJECT_STATE.md PHASE_LOG entry appended, PROJECT_DIRECTION.md ledger row marked Active.
 
-### 14-2 NOT_STARTED — R2 bucket + Worker route + wrangler binding
-Next CC session. May require user to provision the R2 bucket out-of-band before CC can deploy the Worker route. See sub-task split below.
+### 14-2 COMPLETE (2026-05-08)
+R2 bucket `wasatch-intel-tiles` created, R2 binding `TILES` added to `wrangler.jsonc`, `Env` interface extended in `src/server/lib/d1-client.ts`, `/tiles/:filename` route handler added to `src/server/entry.ts` with full HTTP Range support (200/206/HEAD/OPTIONS, CORS open, ETag, Cache-Control 86400s). Worker deployed at version `f004e12c-1d2e-4a19-bd3a-ec141f0ad600`. All smoke tests passed (HEAD, full GET, mid-range, open-ended range, 404, OPTIONS preflight). Account-level R2 enable was a one-time manual step done before this sub-task.
+
+### 14-3 NOT_STARTED — Data prep script (tooele-land-intel)
+Next CC session. New `scripts/build_parcels_ndjson.py` that joins polygon CSVs + GH Release `large-parcels` assets + a D1 attribute export → NDJSON of GeoJSON features with the 8 baked attributes, ready to feed `tippecanoe`. Local-runnable for testing. See sub-task split below.
 
 ---
 
