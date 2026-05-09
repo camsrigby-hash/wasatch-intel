@@ -8,7 +8,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-08
 
-**Phase 14 ACTIVE — sub-tasks 14-1, 14-2, and 14-3 COMPLETE; 14-4 NOT_STARTED next.**
+**Phase 14 ACTIVE — sub-tasks 14-1, 14-2, 14-3, and 14-4 COMPLETE; 14-5 NOT_STARTED next.**
 
 Phase 14 = PMTiles + Tippecanoe vector tile pipeline (per [SD-2](PROJECT_DIRECTION.md)). The previous "Frontend ↔ API wiring" definition was stale and has been superseded — that work is now folded into Phase 16. See the Phase 14 brief below for the architecture, sub-task split, and decisions confirmed by the user on 2026-05-08:
 
@@ -26,8 +26,11 @@ R2 bucket `wasatch-intel-tiles` created, R2 binding `TILES` added to `wrangler.j
 ### 14-3 COMPLETE (2026-05-08)
 `tooele-land-intel/scripts/build_parcels_ndjson.py` written and pushed (commit `c8b8c52`). Joins the 6 county polygon CSVs (box_elder, davis, tooele, wasatch plain; utah, weber gzip from git) + GH Release `large-parcels` (parcels_salt_lake.csv.gz, downloaded via `--download-large-parcels`) + D1 attribute export CSV or wrangler JSON -> NDJSON of GeoJSON features with 8 baked attrs. Smoke-tested locally: 807,390 features from 6 sources, D1 attr join confirmed correct on matched parcels. Accepts both CSV and wrangler JSON for the D1 export.
 
-### 14-4 NOT_STARTED — GHA workflow (tooele-land-intel)
-Next CC session. New workflow `.github/workflows/build_parcels_pmtiles.yml`. `workflow_dispatch` trigger only. Steps: install tippecanoe (apt), download large-parcels release, dump D1 attributes via wrangler, run prep script, run tippecanoe, upload `parcels.pmtiles` to R2 via `wrangler r2 object put`. See sub-task split below.
+### 14-4 COMPLETE (2026-05-08)
+`tooele-land-intel/.github/workflows/build_parcels_pmtiles.yml` written. `workflow_dispatch` only (no cron). Steps: install tippecanoe (apt), download `parcels_salt_lake.csv.gz` from `large-parcels` GH release, export D1 `parcel_records` attributes as CSV via paginated `wrangler d1 execute --json` (50k rows/page, 3-retry with back-off, ~19 pages for 947k rows), run `build_parcels_ndjson.py`, run tippecanoe (`-Z6 -z14 --drop-densest-as-needed --extend-zooms-if-still-dropping --layer parcels`), upload `parcels.pmtiles` to `wasatch-intel-tiles` R2 via `wrangler r2 object put`, write `cron_runs` entry. `dry_run=true` option skips tippecanoe + R2 upload for NDJSON-only testing. **ACTION REQUIRED before first run:** add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets to `tooele-land-intel` repo (Settings → Secrets → Actions) — same values as in `wasatch-intel`.
+
+### 14-5 NOT_STARTED — MapLibre client wiring (wasatch-intel)
+Next CC session. Install `pmtiles` npm package. In `src/components/MapCanvas.tsx`, `addProtocol("pmtiles", ...)`. Replace parcels GeoJSON source with `{ type: "vector", url: "pmtiles:///tiles/parcels.pmtiles", promoteId: "parcel_id" }` and add `source-layer: "parcels"` to fill layer. Move `fill-color` to a paint expression keyed off baked attributes. Verify `setFeatureState` still works.
 
 ---
 

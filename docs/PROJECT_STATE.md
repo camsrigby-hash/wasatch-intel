@@ -995,6 +995,34 @@ Key design decisions:
 
 **Status: 14-3 COMPLETE.** 14-4 (GHA tippecanoe workflow in tooele-land-intel) is next.
 
+### 2026-05-08 — Phase 14-4 (DONE) — Claude Code (Sonnet 4.6)
+
+**GHA workflow: build_parcels_pmtiles.yml.** `tooele-land-intel/.github/workflows/build_parcels_pmtiles.yml` written and committed.
+
+`workflow_dispatch` only (no cron). Single job `build-pmtiles` on `ubuntu-latest`, 180-minute timeout.
+
+Pipeline:
+1. **tippecanoe** installed via `apt-get install tippecanoe` (Ubuntu 22.04 apt, no build-from-source needed).
+2. **large-parcels download** — `gh release download large-parcels --pattern parcels_salt_lake.csv.gz` into `data/raw/`; skips if already present (consistent with existing score workflow pattern).
+3. **D1 attribute export** — Python here-doc paginating `SELECT parcel_id, corner_score, aadt_score, zoning_score, commute_corridor_score, vacancy_class, median_income FROM parcel_records LIMIT 50000 OFFSET N` via `wrangler d1 execute --remote --json`. 3-retry with back-off per page; 2s sleep between pages. Writes incremental CSV to `/tmp/d1_parcel_attrs.csv` (memory-efficient — no full JSON list in RAM). ~19 pages for 947k rows.
+4. **NDJSON build** — `python3 scripts/build_parcels_ndjson.py --d1-export /tmp/d1_parcel_attrs.csv --stats`.
+5. **tippecanoe** — `-Z6 -z14 --drop-densest-as-needed --extend-zooms-if-still-dropping --layer parcels --force`.
+6. **R2 upload** — `wrangler r2 object put wasatch-intel-tiles/parcels.pmtiles --file ... --content-type application/octet-stream`.
+7. **cron_runs entry** — records workflow name, run timestamp, feature count, pmtiles size.
+8. **NDJSON artifact** — always uploaded (3-day retention) for dry-run inspection and debugging.
+
+`dry_run=true` input skips steps 5–7 (tippecanoe + R2 + cron_runs); useful for NDJSON-only smoke tests in CI.
+
+**ACTION REQUIRED before first run:** add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` to `tooele-land-intel` Settings → Secrets → Actions. Same token values as in `wasatch-intel`.
+
+Key decisions:
+- CSV export (not wrangler JSON) to avoid holding ~150 MB of parsed JSON in memory.
+- 50k rows/page keeps each D1 API response under the ~10 MB JSON limit with margin.
+- `--layer parcels` sets the vector tile layer name; required by Phase 14-5 `source-layer: "parcels"`.
+- No `--no-tile-size-limit` — `--drop-densest-as-needed` already manages tile size.
+
+**Status: 14-4 COMPLETE.** 14-5 (MapLibre client wiring in wasatch-intel) is next.
+
 ---
 
 ## REFERENCES — supporting docs
