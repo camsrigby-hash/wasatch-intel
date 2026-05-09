@@ -1021,6 +1021,11 @@ Key decisions:
 - `--layer parcels` sets the vector tile layer name; required by Phase 14-5 `source-layer: "parcels"`.
 - No `--no-tile-size-limit` — `--drop-densest-as-needed` already manages tile size.
 
+**Patch (2026-05-08):** Three quality gates added to `build_parcels_pmtiles.yml`:
+1. **Wrangler global install confirmed** — step name updated to reflect SD-9 mandate; `wrangler --version` now echoed to prove global binary is on PATH.
+2. **D1 match rate gate** — `--stats` output captured via `tee`; regex extracts overall match rate; job fails with clear error before tippecanoe runs if rate < 95%. `dry_run=true` path also enforces this gate (same step).
+3. **Post-upload PMTiles verification** — after R2 upload, `curl -H "Range: bytes=0-127"` asserts HTTP 206 and `python3` checks first 7 bytes == `b"PMTiles"`. Fails loudly on mismatch. Non-dry-run only.
+
 **Status: 14-4 COMPLETE.** 14-5 (MapLibre client wiring in wasatch-intel) is next.
 
 ---
