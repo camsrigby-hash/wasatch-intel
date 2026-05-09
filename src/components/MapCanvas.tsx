@@ -1,30 +1,66 @@
 import { useEffect, useRef } from "react";
 import maplibregl, { Map as MLMap, LngLatBoundsLike } from "maplibre-gl";
+import { Protocol } from "pmtiles";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { PARCELS, AGENDAS, signalLabel, type Parcel, type AgendaItem as MockAgendaItem } from "@/lib/mock-data";
 import type { AgendaItem as RealAgendaItem } from "@/lib/types";
+import type { WeightVector } from "@/lib/parcel-intel";
 
-interface MapCanvasProps {
-  layers: {
-    parcels: boolean;
-    gap: boolean;
-    agendas: boolean;
-    heatmap: boolean;
-    sitePlans: boolean;
-  };
-  onParcelClick?: (parcel: Parcel) => void;
-  onAgendaClick?: (agenda: MockAgendaItem | RealAgendaItem) => void;
-  selectedParcelId?: string | null;
-  /** Per-parcel fill color keyed by parcel id, e.g. from score grade. */
-  parcelColors?: Record<string, string>;
-  /** Polygon fill opacity 0–1. Defaults to 0.55. */
-  fillOpacity?: number;
-  /** When true, parcels not in parcelColors are dimmed to 0.10 opacity. */
-  dimMask?: boolean;
-  // Real-data props from Phase 4 (optional, ignored when using mock-data path)
-  agendaItems?: RealAgendaItem[];
-  gapLayer?: GeoJSON.FeatureCollection;
-  stipLayer?: GeoJSON.FeatureCollection;
+// Grade hex colors for GL paint expressions — CSS variables cannot be used in WebGL expressions.
+const TILE_GRADE_HEX = {
+  A: "#22c55e", // emerald (matches --grade-a)
+  B: "#eab308", // amber  (matches --grade-b)
+  C: "#f97316", // orange (matches --grade-c)
+  D: "#94a3b8", // slate  (matches --grade-d)
+} as const;
+
+// The four scoring dimensions baked into every tile feature (Phase 14-3/14-4 build pipeline).
+// Growth, signal, stip, competition are dynamic/not baked — they're excluded from the expression.
+const BAKED_ATTRS = {
+  corner: "corner_score",
+  aadt: "aadt_score",
+  zoning: "zoning_score",
+  corridor: "commute_corridor_score",
+} as const;
+type BakedDim = keyof typeof BAKED_ATTRS;
+const BAKED_DIMS: BakedDim[] = ["corner", "aadt", "zoning", "corridor"];
+
+/**
+ * Build a MapLibre paint expression that maps baked tile attributes to a grade color
+ * using the active profile's normalized weight vector.
+ *
+ * Grades: A ≥ 0.80 | B ≥ 0.70 | C ≥ 0.55 | D < 0.55
+ */
+function buildFillColorExpr(weights: WeightVector): maplibregl.ExpressionSpecification {
+  const total = BAKED_DIMS.reduce((s, d) => s + (weights[d] || 0), 0) || 1;
+  // Build one ["*", weight, ["coalesce", ["get", attr], 0.5]] term per baked dimension.
+  const terms = BAKED_DIMS.map((d) => [
+    "*",
+    weights[d] / total,
+    ["coalesce", ["get", BAKED_ATTRS[d]], 0.5],
+  ]);
+  const weightedSum = ["+", ...terms];
+  return [
+    "case",
+    [">=", weightedSum, 0.80], TILE_GRADE_HEX.A,
+    [">=", weightedSum, 0.70], TILE_GRADE_HEX.B,
+    [">=", weightedSum, 0.55], TILE_GRADE_HEX.C,
+    TILE_GRADE_HEX.D,
+  ] as unknown as maplibregl.ExpressionSpecification;
+}
+
+const DEFAULT_WEIGHTS: WeightVector = {
+  corner: 5, aadt: 5, signal: 5, competition: 5,
+  zoning: 5, growth: 5, stip: 5, corridor: 5,
+};
+
+// ── PMTiles protocol — installed once per page load ───────────────────────────
+let pmProtocolInstalled = false;
+function ensurePMTilesProtocol() {
+  if (pmProtocolInstalled) return;
+  const proto = new Protocol();
+  maplibregl.addProtocol("pmtiles", proto.tile);
+  pmProtocolInstalled = true;
 }
 
 const SATELLITE_STYLE: maplibregl.StyleSpecification = {
@@ -58,36 +94,32 @@ function colorForSignal(s: number): string {
   return "#60a5fa";
 }
 
-function buildParcelGeoJSON(
-  parcelColors: Record<string, string>,
-  fillOpacity: number,
-  dimMask: boolean,
-): GeoJSON.FeatureCollection {
-  return {
-    type: "FeatureCollection",
-    features: PARCELS.map((p) => {
-      const hex = parcelColors[p.id] ?? "#6366f1";
-      const opacity = dimMask
-        ? (parcelColors[p.id] ? fillOpacity : 0.10)
-        : fillOpacity;
-      return {
-        type: "Feature" as const,
-        id: p.id,
-        properties: {
-          id: p.id,
-          apn: p.apn,
-          hasGap: p.hasGap,
-          jurisdiction: p.jurisdiction,
-          zoning: p.zoning,
-          generalPlan: p.generalPlan,
-          acres: p.acres,
-          fillColor: hex,
-          fillOpacity: opacity,
-        },
-        geometry: { type: "Polygon" as const, coordinates: [p.polygon] },
-      };
-    }),
+interface MapCanvasProps {
+  layers: {
+    parcels: boolean;
+    gap: boolean;
+    agendas: boolean;
+    heatmap: boolean;
+    sitePlans: boolean;
   };
+  onParcelClick?: (parcel: Parcel) => void;
+  onAgendaClick?: (agenda: MockAgendaItem | RealAgendaItem) => void;
+  selectedParcelId?: string | null;
+  /**
+   * Active profile weight vector. MapCanvas rebuilds the fill-color paint expression
+   * whenever this changes — no tile rebuild required.
+   */
+  profileWeights?: WeightVector;
+  /** Unused in vector-tile mode. Grade coloring is handled by the paint expression. */
+  parcelColors?: Record<string, string>;
+  /** Polygon fill opacity 0–1. Defaults to 0.55. */
+  fillOpacity?: number;
+  /** Unused in vector-tile mode; kept for API compatibility. */
+  dimMask?: unknown;
+  // Real-data props (optional)
+  agendaItems?: RealAgendaItem[];
+  gapLayer?: GeoJSON.FeatureCollection;
+  stipLayer?: GeoJSON.FeatureCollection;
 }
 
 const DEFAULT_OPACITY = 0.55;
@@ -97,29 +129,36 @@ export function MapCanvas({
   onParcelClick,
   onAgendaClick,
   selectedParcelId,
-  parcelColors = {},
+  profileWeights,
   fillOpacity = DEFAULT_OPACITY,
-  dimMask = false,
   agendaItems,
   stipLayer,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MLMap | null>(null);
   const loadedRef = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track previous selection so we can clear it with removeFeatureState.
+  const prevSelectedRef = useRef<string | null>(null);
 
-  // ── Sync parcelColors / fillOpacity / dimMask into the GeoJSON source ────────
+  // ── Sync profileWeights → fill-color paint expression ────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const src = map.getSource("parcels") as maplibregl.GeoJSONSource | undefined;
-      if (src) src.setData(buildParcelGeoJSON(parcelColors, fillOpacity, dimMask));
-    }, 50);
-  }, [parcelColors, fillOpacity, dimMask]);
+    map.setPaintProperty(
+      "parcels-fill",
+      "fill-color",
+      buildFillColorExpr(profileWeights ?? DEFAULT_WEIGHTS),
+    );
+  }, [profileWeights]);
 
-  // ── Sync real agenda items (Phase 4 real-data path, optional) ────────────────
+  // ── Sync fillOpacity → fill-opacity ──────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    map.setPaintProperty("parcels-fill", "fill-opacity", fillOpacity);
+  }, [fillOpacity]);
+
+  // ── Sync real agenda items ────────────────────────────────────────────────────
   useEffect(() => {
     if (!agendaItems) return;
     const map = mapRef.current;
@@ -149,6 +188,7 @@ export function MapCanvas({
   // ── Map init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    ensurePMTilesProtocol();
 
     const map = new maplibregl.Map({
       container: containerRef.current,
@@ -173,21 +213,24 @@ export function MapCanvas({
       loadedRef.current = true;
       resizeMap();
 
-      // ── Parcels source — mock polygons with grade colors ──────────────────────
+      // ── PMTiles vector source — all 947k parcels with 8 baked attributes ──────
+      // promoteId: "parcel_id" sets each feature's id from the parcel_id property,
+      // enabling setFeatureState for selection, pipeline stage, and watchlist overlays.
       map.addSource("parcels", {
-        type: "geojson",
-        data: buildParcelGeoJSON(parcelColors, fillOpacity, dimMask),
-      });
+        type: "vector",
+        url: "pmtiles:///tiles/parcels.pmtiles",
+        promoteId: "parcel_id",
+        attribution: "Wasatch Intel",
+      } as maplibregl.VectorSourceSpecification & { promoteId: string });
 
-      // fill-color and fill-opacity are data-driven from GeoJSON properties
-      // so profile switches only need a setData call, not a repaint expression change.
       map.addLayer({
         id: "parcels-fill",
         type: "fill",
         source: "parcels",
+        "source-layer": "parcels",
         paint: {
-          "fill-color": ["get", "fillColor"],
-          "fill-opacity": ["get", "fillOpacity"],
+          "fill-color": buildFillColorExpr(profileWeights ?? DEFAULT_WEIGHTS),
+          "fill-opacity": fillOpacity,
         },
       });
 
@@ -195,9 +238,10 @@ export function MapCanvas({
         id: "parcels-outline",
         type: "line",
         source: "parcels",
+        "source-layer": "parcels",
         paint: {
-          "line-color": ["case", ["get", "hasGap"], "#e879f9", "#a5b4fc"],
-          "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 2.5, 1],
+          "line-color": "#a5b4fc",
+          "line-width": ["case", ["boolean", ["feature-state", "selected"], false], 2.5, 0.6],
         },
       });
 
@@ -219,7 +263,7 @@ export function MapCanvas({
         paint: { "line-color": "#facc15", "line-width": 2.2, "line-opacity": 0.95 },
       });
 
-      // ── Agenda pins — mock data by default, real data updates via effect ──────
+      // ── Agenda pins — mock by default, real data updates via effect ───────────
       const mockAgendaFeatures = AGENDAS.map((a) => ({
         type: "Feature" as const,
         id: a.id,
@@ -295,8 +339,17 @@ export function MapCanvas({
       map.on("click", "parcels-fill", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        const p = PARCELS.find((x) => x.id === f.properties?.id);
-        if (p) onParcelClick?.(p);
+        // Tile features use parcel_id; mock features use id.
+        const parcelId = (f.properties?.parcel_id ?? f.properties?.id) as string | undefined;
+        if (!parcelId) return;
+        const mock = PARCELS.find((x) => x.id === parcelId);
+        if (mock) {
+          onParcelClick?.(mock);
+        } else {
+          // Real tile parcel — pass minimal shape so selectedParcelId is set.
+          // Full data hydration via D1 API happens in Phase 16.
+          onParcelClick?.({ id: parcelId, ...f.properties } as unknown as Parcel);
+        }
       });
 
       map.on("click", "agenda-points", (e) => {
@@ -325,7 +378,6 @@ export function MapCanvas({
     return () => {
       window.removeEventListener("resize", resizeMap);
       resizeObserver.disconnect();
-      if (debounceRef.current) clearTimeout(debounceRef.current);
       map.remove();
       mapRef.current = null;
       loadedRef.current = false;
@@ -351,19 +403,27 @@ export function MapCanvas({
     setVis("stip-lines-glow", layers.sitePlans);
   }, [layers]);
 
-  // ── Selection highlight ───────────────────────────────────────────────────────
+  // ── Selection highlight via setFeatureState ───────────────────────────────────
+  // Vector tile sources require sourceLayer in the feature identifier.
+  // Use prevSelectedRef to clear the previous selection without iterating 947k features.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
 
-    PARCELS.forEach((p) => {
-      map.setFeatureState({ source: "parcels", id: p.id }, { selected: p.id === selectedParcelId });
-    });
-
-    if (selectedParcelId) {
-      const p = PARCELS.find((x) => x.id === selectedParcelId);
-      if (p) map.easeTo({ center: p.centroid, zoom: Math.max(map.getZoom(), 14), duration: 600 });
+    const prev = prevSelectedRef.current;
+    if (prev) {
+      map.removeFeatureState({ source: "parcels", sourceLayer: "parcels", id: prev });
     }
+    if (selectedParcelId) {
+      map.setFeatureState(
+        { source: "parcels", sourceLayer: "parcels", id: selectedParcelId },
+        { selected: true },
+      );
+      // easeTo only for mock parcels that have a known centroid.
+      const mock = PARCELS.find((x) => x.id === selectedParcelId);
+      if (mock) map.easeTo({ center: mock.centroid, zoom: Math.max(map.getZoom(), 14), duration: 600 });
+    }
+    prevSelectedRef.current = selectedParcelId ?? null;
   }, [selectedParcelId]);
 
   return <div ref={containerRef} className="absolute inset-0 min-h-full w-full bg-muted" />;

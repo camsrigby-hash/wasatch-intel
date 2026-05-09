@@ -6,9 +6,9 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-08
+## CURRENT STATE — 2026-05-09
 
-**Phase 14 ACTIVE — sub-tasks 14-1, 14-2, 14-3, and 14-4 COMPLETE; 14-5 NOT_STARTED next.**
+**Phase 14 ACTIVE — sub-tasks 14-1 through 14-5 COMPLETE; 14-6 NOT_STARTED next.**
 
 Phase 14 = PMTiles + Tippecanoe vector tile pipeline (per [SD-2](PROJECT_DIRECTION.md)). The previous "Frontend ↔ API wiring" definition was stale and has been superseded — that work is now folded into Phase 16. See the Phase 14 brief below for the architecture, sub-task split, and decisions confirmed by the user on 2026-05-08:
 
@@ -29,8 +29,19 @@ R2 bucket `wasatch-intel-tiles` created, R2 binding `TILES` added to `wrangler.j
 ### 14-4 COMPLETE (2026-05-08)
 `tooele-land-intel/.github/workflows/build_parcels_pmtiles.yml` written. `workflow_dispatch` only (no cron). Steps: install tippecanoe (apt), download `parcels_salt_lake.csv.gz` from `large-parcels` GH release, export D1 `parcel_records` attributes as CSV via paginated `wrangler d1 execute --json` (50k rows/page, 3-retry with back-off, ~19 pages for 947k rows), run `build_parcels_ndjson.py`, run tippecanoe (`-Z6 -z14 --drop-densest-as-needed --extend-zooms-if-still-dropping --layer parcels`), upload `parcels.pmtiles` to `wasatch-intel-tiles` R2 via `wrangler r2 object put`, write `cron_runs` entry. `dry_run=true` option skips tippecanoe + R2 upload for NDJSON-only testing. **ACTION REQUIRED before first run:** add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets to `tooele-land-intel` repo (Settings → Secrets → Actions) — same values as in `wasatch-intel`.
 
-### 14-5 NOT_STARTED — MapLibre client wiring (wasatch-intel)
-Next CC session. Install `pmtiles` npm package. In `src/components/MapCanvas.tsx`, `addProtocol("pmtiles", ...)`. Replace parcels GeoJSON source with `{ type: "vector", url: "pmtiles:///tiles/parcels.pmtiles", promoteId: "parcel_id" }` and add `source-layer: "parcels"` to fill layer. Move `fill-color` to a paint expression keyed off baked attributes. Verify `setFeatureState` still works.
+### 14-5 COMPLETE (2026-05-09) — MapLibre client wiring (wasatch-intel)
+`pmtiles` v4.4.1 installed. `Protocol` registered via `maplibregl.addProtocol("pmtiles", proto.tile)` (module-level singleton guard). `MapCanvas.tsx` rewritten:
+- GeoJSON source replaced with `{ type: "vector", url: "pmtiles:///tiles/parcels.pmtiles", promoteId: "parcel_id" }`.
+- `source-layer: "parcels"` added to both `parcels-fill` and `parcels-outline` layers.
+- New `buildFillColorExpr(weights)` builds a weighted-sum → grade-color paint expression using the 4 baked attributes (`corner_score`, `aadt_score`, `zoning_score`, `commute_corridor_score`). Grade thresholds: A≥0.80, B≥0.70, C≥0.55, D<0.55.
+- New `profileWeights?: WeightVector` prop. A `useEffect` on `profileWeights` calls `setPaintProperty("parcels-fill", "fill-color", ...)` so profile switches recolor without any tile rebuild.
+- `fillOpacity` changes handled via separate `setPaintProperty` effect.
+- `setFeatureState` updated to use `{ source, sourceLayer: "parcels", id }` (required for vector tile sources). Uses `prevSelectedRef` pattern instead of iterating all features.
+- `index.tsx` simplified: removed `scoreAll` per-parcel color memo; passes `profileWeights={intel.profile.weights}` instead.
+- `vite build` clean (zero TS errors). **ACTION REQUIRED before first real render:** run `gh workflow run build_parcels_pmtiles.yml` in `tooele-land-intel` to produce `parcels.pmtiles` and upload to R2. Until then the tile source will gracefully show no parcel features.
+
+### 14-6 NOT_STARTED — Verification + perf check
+Next CC session. Render `/map` at zooms 8/12/16, confirm 947k parcels render, profile change recolors via paint expression (no re-fetch), selection highlight works, `npm run build` clean, no console errors. Manually run `gh workflow run build_parcels_pmtiles.yml` once end-to-end. Take perf snapshot. Mark Phase 14 complete, advance CURRENT STATE → Phase 15, commit + push.
 
 ---
 

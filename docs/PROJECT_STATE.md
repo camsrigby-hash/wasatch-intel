@@ -1030,6 +1030,31 @@ Key decisions:
 
 **Status: 14-4 COMPLETE.** 14-5 (MapLibre client wiring in wasatch-intel) is next.
 
+### 2026-05-09 — Phase 14-5 (DONE) — Claude Code (Sonnet 4.6)
+
+**MapLibre client wired to PMTiles vector source.** `wasatch-intel` changes only.
+
+- `pmtiles` v4.4.1 added to dependencies (`npm install pmtiles`).
+- `src/components/MapCanvas.tsx` rewritten:
+  - `Protocol` from `pmtiles` registered once via module-level guard (`ensurePMTilesProtocol()`); uses `proto.tile` for MapLibre v4/v5 compatibility.
+  - `parcels` GeoJSON source → `{ type: "vector", url: "pmtiles:///tiles/parcels.pmtiles", promoteId: "parcel_id" }`.
+  - `source-layer: "parcels"` added to `parcels-fill` and `parcels-outline` layers.
+  - `buildFillColorExpr(weights)` computes a normalized weighted sum of 4 baked tile attributes (`corner_score`, `aadt_score`, `zoning_score`, `commute_corridor_score`) and maps to grade hex colors (A: #22c55e, B: #eab308, C: #f97316, D: #94a3b8). Grade thresholds A≥0.80, B≥0.70, C≥0.55 match the existing `gradeFromTotal` logic scaled to 0–1.
+  - New `profileWeights?: WeightVector` prop. `useEffect` on `profileWeights` → `setPaintProperty("parcels-fill", "fill-color", ...)`. Profile switches recolor without tile rebuild.
+  - `fillOpacity` changes reflected via dedicated `setPaintProperty` effect.
+  - `setFeatureState` updated for vector tiles: uses `{ source, sourceLayer: "parcels", id }` and `prevSelectedRef` pattern (no 947k-feature iteration).
+  - Removed: `buildParcelGeoJSON`, `parcelColors` debounce effect, `dimMask` logic.
+- `src/routes/index.tsx`: removed `scoreAll` per-parcel color memo; passes `profileWeights={intel.profile.weights}` to `MapCanvas`.
+- `vite build` clean, zero TS errors.
+- **Tile not yet live in R2** — run `gh workflow run build_parcels_pmtiles.yml` in `tooele-land-intel` to produce and upload `parcels.pmtiles`. 14-6 verifies end-to-end render.
+
+**Decisions made autonomously:**
+- Used only 4 of 8 scoring dimensions in the paint expression (corner, aadt, zoning, corridor — the ones baked into tiles). Growth, signal, stip, competition are dynamic/not baked; they're excluded from the GL expression and will be handled via `setFeatureState` overlays in Phase 16.
+- Hex colors hardcoded for grade legend (CSS custom properties cannot be used in WebGL paint expressions).
+- `parcelColors` and `dimMask` props kept in interface (marked as no-ops) to avoid breaking any callers; cleaned up from index.tsx computation.
+
+**Status: 14-5 COMPLETE.** 14-6 (end-to-end verification + perf check) is next.
+
 ---
 
 ## REFERENCES — supporting docs

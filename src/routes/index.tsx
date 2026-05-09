@@ -14,7 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { JURISDICTIONS, AGENDA_TYPES, type Parcel as BaseParcel, type AgendaItem, signalLabel } from "@/lib/mock-data";
 import { useIntel } from "@/lib/intel-context";
-import { scoreAll, GRADE_COLORS, VACANCY_META, type Grade } from "@/lib/parcel-intel";
+import { GRADE_COLORS, VACANCY_META, type Grade } from "@/lib/parcel-intel";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -49,25 +49,9 @@ function MapPage() {
   const [gradeFilter, setGradeFilter] = useState<Grade[]>(["A", "B", "C", "D"]);
   const [fillOpacity, setFillOpacity] = useState(0.65);
 
-  // Compute per-parcel grade colors under the active profile.
-  const { parcelColors, dimMask } = useMemo(() => {
-    const map = scoreAll(intel.profile, intel.isCustom);
-    const colors: Record<string, string> = {};
-    const visible = new Set<string>();
-    intel.parcels.forEach((p) => {
-      const s = map.get(p.id);
-      if (!s) return;
-      if (gradeFilter.includes(s.grade)) {
-        colors[p.id] = GRADE_COLORS[s.grade];
-        visible.add(p.id);
-      }
-    });
-    let dim: Set<string> | null = visible;
-    if (showMyPipeline) {
-      dim = new Set([...visible].filter((id) => intel.parcels.find((p) => p.id === id)?.in_pipeline));
-    }
-    return { parcelColors: colors, dimMask: dim };
-  }, [intel.parcels, intel.profile, intel.isCustom, gradeFilter, showMyPipeline]);
+  // Profile weights drive the fill-color paint expression in MapCanvas.
+  // Grade filtering and dimMask are deferred to Phase 16 when real tile data is wired.
+  const profileWeights = useMemo(() => intel.profile.weights, [intel.profile]);
 
   const selected = useMemo(
     () => intel.parcels.find((p) => p.id === selectedParcelId) ?? null,
@@ -81,9 +65,8 @@ function MapPage() {
         onParcelClick={(p: BaseParcel) => setSelectedParcelId(p.id)}
         onAgendaClick={setAgendaPopover}
         selectedParcelId={selectedParcelId}
-        parcelColors={layers.parcels ? parcelColors : undefined}
+        profileWeights={layers.parcels ? profileWeights : undefined}
         fillOpacity={fillOpacity}
-        dimMask={dimMask}
       />
 
       {/* Top toolbar — search + profile + chip row */}
