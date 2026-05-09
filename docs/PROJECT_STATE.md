@@ -1026,6 +1026,8 @@ Key decisions:
 2. **D1 match rate gate** — `--stats` output captured via `tee`; regex extracts overall match rate; job fails with clear error before tippecanoe runs if rate < 95%. `dry_run=true` path also enforces this gate (same step).
 3. **Post-upload PMTiles verification** — after R2 upload, `curl -H "Range: bytes=0-127"` asserts HTTP 206 and `python3` checks first 7 bytes == `b"PMTiles"`. Fails loudly on mismatch. Non-dry-run only.
 
+**Note:** Feature count (1,202,000) exceeds unique D1 rows (947,863) by ~27% due to cross-county polygon duplicates from 13b-2 fallback recovery (commit b50a1b9). Match rate is 100%; not a blocker. See 14-3 join test for example (parcel 010010006 in both box_elder and weber).
+
 **Status: 14-4 COMPLETE.** 14-5 (MapLibre client wiring in wasatch-intel) is next.
 
 ---
