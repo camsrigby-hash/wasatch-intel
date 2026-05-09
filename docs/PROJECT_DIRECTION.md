@@ -42,7 +42,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 13b-6b | Spatial join (median_income → parcels) | Shipped | May 8 2026 | 98.5% match rate. 14k unmatched are real geographic edge cases |
 | 13b-7 | Commute corridor scoring (proxy method) | Shipped | May 8 2026 | 98.52% coverage. All rows tagged `commute_corridor_method='proxy'` for future WFRC swap |
 | 13b-8 | Vacancy classification | Shipped | May 8 2026 | UGRC LIR cascade (vacant/partial/developed/unknown) |
-| **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Active** | — | Sub-task split 14-1..14-6 (mirrors 13b). 14-1 ✓ 2026-05-08 (brief + stale doc fix). 14-2 ✓ 2026-05-08 (R2 bucket + `/tiles/:filename` route + wrangler binding, all smoke tests pass). 14-3 next: data prep script in tooele-land-intel. See SD-2, SD-10, SD-11 |
+| **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Active** | — | Sub-task split 14-1..14-6 (mirrors 13b). 14-1 ✓ 2026-05-08 (brief + stale doc fix). 14-2 ✓ 2026-05-08 (R2 bucket + `/tiles/:filename` route + wrangler binding, all smoke tests pass). 14-3 next: data prep script in tooele-land-intel. See SD-2, SD-11, SD-12 |
 | 15 | CRE listings ingest + spread calc + Deal Heat | Pending | — | Replit scraper port. Listings = signal type on parcel, not separate silo. Reverse-geocode to UGRC LIR, target 70%+ match |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
@@ -109,12 +109,17 @@ Order: scoring engine (Phase 11 done) → enrichment data (Phase 13b done) → v
 **Rule**: GHA workflows that run wrangler MUST install it globally (`npm install -g wrangler`), not locally (`npm install --no-save wrangler@latest`).
 **Reason**: `wrangler d1 execute --remote --file <multi-statement>` silently exits 0 on Ubuntu runners with locally-installed wrangler — no rows written, no error reported. Caused a 4-run debugging cycle on 13b-3 before discovery. Global install fixes immediately.
 
+### SD-10 — wrangler r2 object put requires explicit --remote (Phase 14-4 lesson)
+**Rule**: All `wrangler r2 object put` commands in GHA workflows MUST include `--remote`.
+**Reason**: Wrangler 4.86.0+ defaults `r2 object put` to LOCAL mode (Miniflare simulation). Without `--remote`, the command exits 0, prints "Upload complete," and writes to ephemeral runner storage that's discarded at job end. No error, no warning above stderr — only a quiet "Resource location: local" hint in stdout. D1 commands already require `--remote` explicitly (per existing patterns), but R2 silently degrades. Caught only because Phase 14-4 included a post-upload Worker-fetch verification gate.
+**Reference**: Phase 14-4 full run #25594501499 (May 9, 2026). 93MB pmtiles file uploaded "successfully" to local Miniflare; Worker 404'd because R2 was empty.
+
 ### SD-11 — Vite-plugin pre-build required before wrangler deploy (Phase 14-2 lesson)
 **Rule**: any GHA workflow or local script that calls `wrangler deploy` for `wasatch-intel` MUST run `npm run build` first.
 **Reason**: `@cloudflare/vite-plugin` generates `dist/server/wrangler.json` at vite-build time, baking the current `wrangler.jsonc` bindings into the deploy artifact. `wrangler deploy` does NOT regenerate this — it deploys whatever bindings are already in `dist/`. Skipping the rebuild silently strips bindings added since the last build. Caught at 14-2 first deploy: R2 binding was in `wrangler.jsonc` but missing from the deployed Worker because `dist/server/wrangler.json` had `"r2_buckets":[]` from an earlier build.
-**Reference**: 14-4 GHA workflow that uploads tiles via wrangler must include `npm run build` before any `wrangler deploy` step (the upload of `parcels.pmtiles` itself uses `wrangler r2 object put`, no rebuild needed for that — but if the workflow ever redeploys the Worker, it must rebuild first).
+**Reference**: 14-4 GHA workflow that uploads tiles via wrangler must include `npm run build` before any `wrangler deploy` step (the upload of `parcels.pmtiles` itself uses `wrangler r2 object put --remote`, no rebuild needed for that — but if the workflow ever redeploys the Worker, it must rebuild first).
 
-### SD-10 — Phase 14 architecture decisions (May 8, 2026)
+### SD-12 — Phase 14 architecture decisions (May 8, 2026)
 Decisions for the PMTiles + Tippecanoe pipeline, confirmed at 14-1 kickoff:
 
 1. **Hosting**: Cloudflare R2 bucket `wasatch-intel-tiles`, served via Worker route `/tiles/:filename` for range-request passthrough + CORS + future auth flexibility. Not a custom R2 public domain.
@@ -152,6 +157,7 @@ This doc covers strategy and direction. For execution detail, see:
 
 ## Update history (newest first)
 
+- **May 9, 2026** — Phase 14-4 fix: added `--remote` to `wrangler r2 object put` in `build_parcels_pmtiles.yml`. SD-10 logged: wrangler 4.86.0+ silently defaults R2 uploads to local Miniflare without `--remote`. Old SD-10 (Phase 14 arch decisions) renumbered to SD-12.
 - **May 8, 2026** — Phase 14-2 shipped: R2 bucket `wasatch-intel-tiles`, `TILES` binding, `/tiles/:filename` Worker route with full HTTP Range support, all smoke tests passed. Worker version `f004e12c`. SD-11 logged: vite-plugin pre-build required before `wrangler deploy`.
 - **May 8, 2026** — Phase 14 activated. Sub-task 14-1 shipped (operational brief written, stale Phase 14 section in PROMPT_PLAYBOOK_ADDENDUM.md replaced, 14-2..14-6 decomposed). SD-10 logged: hosting via R2 + Worker route, bake-with-feature-state-preserved attribute strategy, workflow_dispatch trigger, polygon source via SD-5 release pattern. Old "Frontend ↔ API wiring" scope folded into Phase 16.
 - **May 8, 2026** — Initial creation. Triggered by memory entry #18 going stale (it framed scoring engine as "next active build" when scoring engine had shipped in Phase 11 and Phase 14 was actually vector tiles per SD-2).
