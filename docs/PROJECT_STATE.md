@@ -1055,6 +1055,41 @@ Key decisions:
 
 **Status: 14-5 COMPLETE.** 14-6 (end-to-end verification + perf check) is next.
 
+### 2026-05-09 — Phase 14-6 (DONE) — Claude Code (Sonnet 4.6)
+
+**End-to-end verification + three bug fixes.** 14-6 was supposed to be a pure verification run; it surfaced and fixed three sequential bugs before the phase could close.
+
+**Bug 1 + 2 — Camera resets on parcel click and on profile switch.**
+Root cause: `onParcelClick` and `onAgendaClick` prop callbacks were listed in the map-init `useEffect` dep array (`[onParcelClick, onAgendaClick, ...]`). Inline arrow functions in JSX create new references on every parent render, triggering the effect to re-run and the `map.remove()` cleanup to execute — resetting the map camera to the initial center/zoom. Fix: store callbacks in `useRef`, sync with single-dep `useEffect`s, empty dep array `[]` on the map-init effect. Commit `0b5e619` pushed to `origin/main`. Deployed Worker version `01fb5e09` at `2026-05-09T22:41:57Z`. User confirmed camera stays put.
+
+**Bug 3 — ParcelDetailPanel drawer never opens on real tile parcel click.**
+Root cause: `index.tsx` resolved the selected parcel via `intel.parcels.find(p => p.id === selectedParcelId)`. `intel.parcels` is the 3-5 mock `INTEL_PARCELS` array; real 947k tile parcel IDs are never found → result is `null` → `open={!!selected}` is `false` → drawer never mounts.
+
+Secondary issues surfaced during diagnosis:
+- `vacancy_class` (tile attr) vs `vacancy_status` (IntelParcel field) — name mismatch would crash `VACANCY_META` lookup
+- `spread` field missing from tile properties — `ParcelDetailPanel` uses it directly
+
+**Fix (commit `414c49f`, deployed Worker `6debd9d7` at `2026-05-09T23:12:53Z`):**
+- State refactored: `selectedParcelId: string | null` → `selectedParcel: IntelParcel | null`. `selectedParcelId` derived as `selectedParcel?.id ?? null` (MapCanvas prop surface unchanged).
+- `onParcelClick` first checks `intel.parcels` (mock path); if not found, calls `tileFeaturesToIntelParcel(props, centroid)` to construct a synthetic `IntelParcel` from tile feature properties.
+- `tileFeaturesToIntelParcel()` added to `src/lib/parcel-intel.ts`: maps `vacancy_class→vacancy_status`, `acreage→acres`; approximates `is_corner` (cornerScore>60), `inCommuteCorridor`, `aadt_primary` from baked scores; provides null-filled `SpreadBlock` sentinel; stubs `comps`/`owner`/`adjacentActivity`/`ddChecklist`.
+- MapCanvas click handler: passes `centroid: [e.lngLat.lng, e.lngLat.lat]` so Google Maps link works; removes debug console.logs.
+- `ParcelDetailPanel`: null guards on `VACANCY_META[...]` (fallback to `.insufficient`) and `spread` (fallback to null sentinel).
+- `gradeFromTotal` exported from `parcel-intel.ts` for use by `tileFeaturesToIntelParcel`.
+
+**Scoring display note**: Tile paint expression uses 4 of 8 scoring dimensions (corner, aadt, zoning, corridor — baked). Growth, STIP, competition, vacancy overlays are dynamic; deferred to Phase 16 `setFeatureState` overlays.
+
+**SD-13 lesson**: Bug 1+2 fix was committed locally but never pushed to `origin/main`. Bug was reported as "fixed" before the push step. Fix appeared broken in production because the deployed Worker still ran Phase 14-5 code. Always independently verify: (1) commit on origin/main, (2) deploy workflow triggered and succeeded, (3) Worker timestamp is after the fix commit.
+
+**Debug branch** `debug/14-6-drawer-trace` created for diagnosis (3 console.log points), pushed but NOT deployed. After main fix landed, branch deleted from remote and local.
+
+**All 14-6 checks passed in browser (verified by user).** Phase 14 closed.
+
+**Key commits (wasatch-intel):**
+- `1add84b` — feat: Phase 14-5 MapLibre PMTiles client wiring
+- `0b5e619` — fix: stable callback refs in MapCanvas (camera-reset bug 1+2)
+- `414c49f` — fix: Phase 14-6 Bug 3 — ParcelDetailPanel opens for real tile parcels
+
 ---
 
 ## REFERENCES — supporting docs

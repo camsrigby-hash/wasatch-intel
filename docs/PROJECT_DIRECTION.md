@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 8, 2026 (Phase 14 active; 14-1 + 14-2 shipped)
+**Last updated**: May 9, 2026 (Phase 14 shipped; Phase 15 pending)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -42,7 +42,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 13b-6b | Spatial join (median_income → parcels) | Shipped | May 8 2026 | 98.5% match rate. 14k unmatched are real geographic edge cases |
 | 13b-7 | Commute corridor scoring (proxy method) | Shipped | May 8 2026 | 98.52% coverage. All rows tagged `commute_corridor_method='proxy'` for future WFRC swap |
 | 13b-8 | Vacancy classification | Shipped | May 8 2026 | UGRC LIR cascade (vacant/partial/developed/unknown) |
-| **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Active** | — | Sub-task split 14-1..14-6 (mirrors 13b). 14-1 ✓ 2026-05-08 (brief + stale doc fix). 14-2 ✓ 2026-05-08 (R2 bucket + `/tiles/:filename` route + wrangler binding, all smoke tests pass). 14-3 next: data prep script in tooele-land-intel. See SD-2, SD-11, SD-12 |
+| **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Shipped** | May 9 2026 | All 6 sub-tasks complete. 947k parcels render on map, profile recolor via paint expression, drawer opens on tile parcel click (tileFeaturesToIntelParcel). 3 bugs found+fixed in 14-6 (camera-reset ×2, drawer ×1). See SD-12, SD-13 |
 | 15 | CRE listings ingest + spread calc + Deal Heat | Pending | — | Replit scraper port. Listings = signal type on parcel, not separate silo. Reverse-geocode to UGRC LIR, target 70%+ match |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
@@ -53,13 +53,29 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 
 ---
 
+## Free Tier Limits & Cost Ceiling
+
+**Hard ceiling: $25/mo total.** Current run rate: ~$8/mo (Workers Paid $5 + LLM ~$3).
+
+| Service | Free tier | Current usage | Trigger to alert |
+|---|---|---|---|
+| Cloudflare Workers Paid | $5/mo flat | baseline | n/a (already paid) |
+| D1 storage | 10 GB (Workers Paid) | ~250 MB (947k parcel rows + signals + watchlists) | >7 GB |
+| R2 storage | 10 GB | ~93 MB (parcels.pmtiles) | >7 GB |
+| R2 Class A ops (writes) | 1M/mo | ~1/rebuild | >500K/mo |
+| R2 Class B ops (reads) | 10M/mo | TBD post-Phase 14 use | >5M/mo |
+| GitHub Actions | 2000 min/mo (private) | ~50-100 min/mo | >1500 min/mo |
+| Anthropic API | n/a | ~$3/mo | >$15/mo |
+
+**Rule for any agent (CC, Manus, Lovable, Claude.ai)**: Before proposing any phase or scope change, estimate impact against this table. If projected usage crosses any "Trigger to alert" threshold, flag it explicitly in the proposal. Do not assume "we have headroom" — check.
+
+---
+
 ## What's Active Right Now
 
-**Phase 14 — Vector tile pipeline.** Renders all 947,863 parcels (with the 8 enrichment columns) on the map at acceptable performance.
+**Phase 14 SHIPPED (May 9, 2026).** 947,863 parcels render on the map as colored vector tiles, profile switching recolors via paint expression, ParcelDetailPanel opens on tile parcel click with baked score data.
 
-**Why this is next, not the scoring engine**: The engine shipped in Phase 11. Phases 13a/13b populated the data the engine consumes. The blocker now is presentation — MapLibre cannot render 1M raw GeoJSON polygons. PMTiles + Tippecanoe converts the data to a tile pyramid so the browser only loads what's visible at the current zoom.
-
-**User's standing principle (from Phase 10 graduation)**: USE the tool for several weeks before firing the next phase. Phase 13b deferred this principle because data ingestion was a hard prerequisite for any meaningful use. Once Phase 14 ships and parcels are visible+scored on the map, this principle reactivates — pause before Phase 15.
+**User's standing principle (from Phase 10 graduation)**: USE the tool for several weeks before firing the next phase. Phase 13b deferred this principle because data ingestion was a hard prerequisite for any meaningful use. Phase 14 is now shipped — this principle reactivates. Pause before Phase 15. Observe real usage patterns before committing Phase 15 scope.
 
 ---
 
@@ -114,6 +130,10 @@ Order: scoring engine (Phase 11 done) → enrichment data (Phase 13b done) → v
 **Reason**: Wrangler 4.86.0+ defaults `r2 object put` to LOCAL mode (Miniflare simulation). Without `--remote`, the command exits 0, prints "Upload complete," and writes to ephemeral runner storage that's discarded at job end. No error, no warning above stderr — only a quiet "Resource location: local" hint in stdout. D1 commands already require `--remote` explicitly (per existing patterns), but R2 silently degrades. Caught only because Phase 14-4 included a post-upload Worker-fetch verification gate.
 **Reference**: Phase 14-4 full run #25594501499 (May 9, 2026). 93MB pmtiles file uploaded "successfully" to local Miniflare; Worker 404'd because R2 was empty.
 
+### SD-13 — CC closeout requires push + deploy verification (Phase 14-6 lesson)
+**Rule**: After CC reports a phase or sub-phase "COMPLETE," verify three artifacts independently before trusting the report: (1) commits exist on `origin/main` (not just local), (2) the deployment workflow triggered and succeeded, (3) the deployed Worker timestamp is AFTER the fix commit. CC's narrative reports of "committed and pushed" have twice missed steps in Phase 14 (R2 `--remote` flag in 14-4, `git push` in 14-6). Treat "COMPLETE" as a hypothesis to verify, not a closeout.
+**Reference**: Phase 14-4 silent local R2 upload (May 9 2026); Phase 14-6 ref-based fix commit not pushed (May 9 2026).
+
 ### SD-11 — Vite-plugin pre-build required before wrangler deploy (Phase 14-2 lesson)
 **Rule**: any GHA workflow or local script that calls `wrangler deploy` for `wasatch-intel` MUST run `npm run build` first.
 **Reason**: `@cloudflare/vite-plugin` generates `dist/server/wrangler.json` at vite-build time, baking the current `wrangler.jsonc` bindings into the deploy artifact. `wrangler deploy` does NOT regenerate this — it deploys whatever bindings are already in `dist/`. Skipping the rebuild silently strips bindings added since the last build. Caught at 14-2 first deploy: R2 binding was in `wrangler.jsonc` but missing from the deployed Worker because `dist/server/wrangler.json` had `"r2_buckets":[]` from an earlier build.
@@ -157,6 +177,7 @@ This doc covers strategy and direction. For execution detail, see:
 
 ## Update history (newest first)
 
+- **May 9, 2026** — Phase 14 shipped (vector tile pipeline, MapLibre wiring, click handler, drawer hydration via `tileFeaturesToIntelParcel`). Added SD-13 (push+deploy verification rule). Added Free Tier Limits & Cost Ceiling section. Phase Ledger row 14 → Shipped.
 - **May 9, 2026** — Phase 14-4 fix: added `--remote` to `wrangler r2 object put` in `build_parcels_pmtiles.yml`. SD-10 logged: wrangler 4.86.0+ silently defaults R2 uploads to local Miniflare without `--remote`. Old SD-10 (Phase 14 arch decisions) renumbered to SD-12.
 - **May 8, 2026** — Phase 14-2 shipped: R2 bucket `wasatch-intel-tiles`, `TILES` binding, `/tiles/:filename` Worker route with full HTTP Range support, all smoke tests passed. Worker version `f004e12c`. SD-11 logged: vite-plugin pre-build required before `wrangler deploy`.
 - **May 8, 2026** — Phase 14 activated. Sub-task 14-1 shipped (operational brief written, stale Phase 14 section in PROMPT_PLAYBOOK_ADDENDUM.md replaced, 14-2..14-6 decomposed). SD-10 logged: hosting via R2 + Worker route, bake-with-feature-state-preserved attribute strategy, workflow_dispatch trigger, polygon source via SD-5 release pattern. Old "Frontend ↔ API wiring" scope folded into Phase 16.

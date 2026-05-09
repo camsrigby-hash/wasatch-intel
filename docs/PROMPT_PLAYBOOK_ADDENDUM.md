@@ -8,40 +8,57 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-09
 
-**Phase 14 ACTIVE — sub-tasks 14-1 through 14-5 COMPLETE; 14-6 NOT_STARTED next.**
+**Phase 15 NOT_STARTED — CRE listings ingest + spread calc + Deal Heat.**
 
-Phase 14 = PMTiles + Tippecanoe vector tile pipeline (per [SD-2](PROJECT_DIRECTION.md)). The previous "Frontend ↔ API wiring" definition was stale and has been superseded — that work is now folded into Phase 16. See the Phase 14 brief below for the architecture, sub-task split, and decisions confirmed by the user on 2026-05-08:
+Phase 14 (PMTiles + Tippecanoe vector tile pipeline) is COMPLETE as of 2026-05-09. All 6 sub-tasks shipped and verified in browser. See Phase 14 completion notes below.
 
-- **R2 hosting** (bucket `wasatch-intel-tiles`, served via Worker route `/tiles/:filename`)
-- **Bake 8 enrichment attributes** into tiles + **preserve `setFeatureState`** channel for dynamic overlays (pipeline stage, watchlist, Deal Heat, hover, selection)
-- **GHA `workflow_dispatch` only**, no cron — defer cadence until Phase 15+ usage signals it
-- **Polygon source**: CSVs in `tooele-land-intel/data/raw/` + GH Release `large-parcels` per SD-5
+---
+
+### PHASE 14 COMPLETION NOTES (2026-05-09)
+
+All 6 sub-tasks shipped. Phase verified in browser by user (all 14-6 checks passed).
+
+**Key commits:**
+- `0b5e619` — fix: stable callback refs in MapCanvas (ref-based pattern for onParcelClick/onAgendaClick; prevents map re-init on click/profile-switch)
+- `414c49f` — fix: Phase 14-6 Bug 3 — ParcelDetailPanel opens for real tile parcels
+- `1add84b` — feat: Phase 14-5 — MapLibre PMTiles client wiring
+- `7ce566f` — docs: Phase 14-4 complete — build_parcels_pmtiles.yml GHA workflow
+- `262cf4c` — docs: Phase 14-4 patch — coverage + post-upload verification gates
+- `f33f1ce` — docs: note cross-county duplicate source of feature/row count delta in 14-4 log
+
+**14-6 bugs found and fixed during verification (both deployed before closeout):**
+
+*Bug 1+2 (camera reset on click + on profile switch)*: Root cause — `onParcelClick` and `onAgendaClick` prop callbacks were in the map-init `useEffect` dep array. Inline arrow functions create new refs on every render, re-running the full map-init effect and resetting camera. Fix: store callbacks in `useRef`; sync with single-dep `useEffect`; map-init dep array → `[]`. Commit `0b5e619`.
+
+*Bug 3 (ParcelDetailPanel drawer never opens on tile parcel click)*: Root cause — `index.tsx` used `intel.parcels.find(id)` to resolve the selected parcel, but `intel.parcels` only contains 3-5 mock entries. Real tile parcel IDs are never found → `null` → `open={false}` → drawer never opens. Secondary issue: field name mismatches (`vacancy_class` vs `vacancy_status`, missing `spread`).
+
+Fix: replace `selectedParcelId: string | null` state with `selectedParcel: IntelParcel | null`. `onParcelClick` tries the mock list first; if not found, calls `tileFeaturesToIntelParcel()` to build a synthetic `IntelParcel` from baked tile properties (no API round-trip). `selectedParcelId` derived as `selectedParcel?.id ?? null` so the MapCanvas `setFeatureState` highlight prop is unchanged. `tileFeaturesToIntelParcel()` added to `src/lib/parcel-intel.ts`; maps `vacancy_class → vacancy_status`, `acreage → acres`, approximates `is_corner`/`inCommuteCorridor`/`aadt_primary` from baked scores; provides null-filled `SpreadBlock` sentinel; stubs `comps`/`owner`/`adjacentActivity`/`ddChecklist` for graceful tab degradation. `ParcelDetailPanel` gets null guards on `vac` and `spread`. Commit `414c49f`.
+
+**Scoring engine note**: `buildFillColorExpr` (tile paint expression) uses only 4 of 8 scoring dimensions — `corner_score`, `aadt_score`, `zoning_score`, `commute_corridor_score` (all baked into tiles). Growth, STIP, competition, and vacancy-class overlays are dynamic and cannot live in static tile paint expressions. These 4 dimensions will be handled via `setFeatureState` overlays in Phase 16.
+
+**Phase 16 exit ramp for tileFeaturesToIntelParcel**: When Phase 16 adds `/api/parcels/:id` D1 hydration, `tileFeaturesToIntelParcel` becomes the "open immediately" step and a follow-on `fetch` fills the panel with full data. Delete the function once all click paths go through D1.
+
+**SD-13 logged**: Push + deploy verification now required per SD-13. After CC reports a phase complete, independently verify: (1) commit on origin/main, (2) deploy workflow succeeded, (3) Worker timestamp is after the fix commit.
+
+---
 
 ### 14-1 COMPLETE (2026-05-08)
 Operational brief written, stale Phase 14 section replaced, sub-tasks 14-2..14-6 decomposed, PROJECT_STATE.md PHASE_LOG entry appended, PROJECT_DIRECTION.md ledger row marked Active.
 
 ### 14-2 COMPLETE (2026-05-08)
-R2 bucket `wasatch-intel-tiles` created, R2 binding `TILES` added to `wrangler.jsonc`, `Env` interface extended in `src/server/lib/d1-client.ts`, `/tiles/:filename` route handler added to `src/server/entry.ts` with full HTTP Range support (200/206/HEAD/OPTIONS, CORS open, ETag, Cache-Control 86400s). Worker deployed at version `f004e12c-1d2e-4a19-bd3a-ec141f0ad600`. All smoke tests passed (HEAD, full GET, mid-range, open-ended range, 404, OPTIONS preflight). Account-level R2 enable was a one-time manual step done before this sub-task.
+R2 bucket `wasatch-intel-tiles` created, R2 binding `TILES` added to `wrangler.jsonc`, `Env` interface extended in `src/server/lib/d1-client.ts`, `/tiles/:filename` route handler added to `src/server/entry.ts` with full HTTP Range support (200/206/HEAD/OPTIONS, CORS open, ETag, Cache-Control 86400s). Worker deployed at version `f004e12c-1d2e-4a19-bd3a-ec141f0ad600`. All smoke tests passed.
 
 ### 14-3 COMPLETE (2026-05-08)
-`tooele-land-intel/scripts/build_parcels_ndjson.py` written and pushed (commit `c8b8c52`). Joins the 6 county polygon CSVs (box_elder, davis, tooele, wasatch plain; utah, weber gzip from git) + GH Release `large-parcels` (parcels_salt_lake.csv.gz, downloaded via `--download-large-parcels`) + D1 attribute export CSV or wrangler JSON -> NDJSON of GeoJSON features with 8 baked attrs. Smoke-tested locally: 807,390 features from 6 sources, D1 attr join confirmed correct on matched parcels. Accepts both CSV and wrangler JSON for the D1 export.
+`tooele-land-intel/scripts/build_parcels_ndjson.py` written and pushed (commit `c8b8c52`). Joins 6 county polygon CSVs + GH Release `large-parcels` + D1 attribute export → NDJSON of GeoJSON features with 8 baked attrs. Smoke-tested: 807,390 features from 6 sources.
 
 ### 14-4 COMPLETE (2026-05-08)
-`tooele-land-intel/.github/workflows/build_parcels_pmtiles.yml` written. `workflow_dispatch` only (no cron). Steps: install tippecanoe (apt), download `parcels_salt_lake.csv.gz` from `large-parcels` GH release, export D1 `parcel_records` attributes as CSV via paginated `wrangler d1 execute --json` (50k rows/page, 3-retry with back-off, ~19 pages for 947k rows), run `build_parcels_ndjson.py`, run tippecanoe (`-Z6 -z14 --drop-densest-as-needed --extend-zooms-if-still-dropping --layer parcels`), upload `parcels.pmtiles` to `wasatch-intel-tiles` R2 via `wrangler r2 object put`, write `cron_runs` entry. `dry_run=true` option skips tippecanoe + R2 upload for NDJSON-only testing. **ACTION REQUIRED before first run:** add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets to `tooele-land-intel` repo (Settings → Secrets → Actions) — same values as in `wasatch-intel`.
+`tooele-land-intel/.github/workflows/build_parcels_pmtiles.yml` written. `workflow_dispatch` only. Pipeline: tippecanoe → R2 upload → cron_runs entry. Coverage gate (>95% D1 match), post-upload PMTiles magic-byte verification. SD-10 fix: `wrangler r2 object put --remote` required.
 
-### 14-5 COMPLETE (2026-05-09) — MapLibre client wiring (wasatch-intel)
-`pmtiles` v4.4.1 installed. `Protocol` registered via `maplibregl.addProtocol("pmtiles", proto.tile)` (module-level singleton guard). `MapCanvas.tsx` rewritten:
-- GeoJSON source replaced with `{ type: "vector", url: "pmtiles:///tiles/parcels.pmtiles", promoteId: "parcel_id" }`.
-- `source-layer: "parcels"` added to both `parcels-fill` and `parcels-outline` layers.
-- New `buildFillColorExpr(weights)` builds a weighted-sum → grade-color paint expression using the 4 baked attributes (`corner_score`, `aadt_score`, `zoning_score`, `commute_corridor_score`). Grade thresholds: A≥0.80, B≥0.70, C≥0.55, D<0.55.
-- New `profileWeights?: WeightVector` prop. A `useEffect` on `profileWeights` calls `setPaintProperty("parcels-fill", "fill-color", ...)` so profile switches recolor without any tile rebuild.
-- `fillOpacity` changes handled via separate `setPaintProperty` effect.
-- `setFeatureState` updated to use `{ source, sourceLayer: "parcels", id }` (required for vector tile sources). Uses `prevSelectedRef` pattern instead of iterating all features.
-- `index.tsx` simplified: removed `scoreAll` per-parcel color memo; passes `profileWeights={intel.profile.weights}` instead.
-- `vite build` clean (zero TS errors). **ACTION REQUIRED before first real render:** run `gh workflow run build_parcels_pmtiles.yml` in `tooele-land-intel` to produce `parcels.pmtiles` and upload to R2. Until then the tile source will gracefully show no parcel features.
+### 14-5 COMPLETE (2026-05-09)
+`pmtiles` v4.4.1 wired. `MapCanvas.tsx` rewritten: vector tile source, `buildFillColorExpr(weights)` paint expression, `profileWeights` prop, ref-based callback pattern, `setFeatureState` for vector tiles.
 
-### 14-6 NOT_STARTED — Verification + perf check
-Next CC session. Render `/map` at zooms 8/12/16, confirm 947k parcels render, profile change recolors via paint expression (no re-fetch), selection highlight works, `npm run build` clean, no console errors. Manually run `gh workflow run build_parcels_pmtiles.yml` once end-to-end. Take perf snapshot. Mark Phase 14 complete, advance CURRENT STATE → Phase 15, commit + push.
+### 14-6 COMPLETE (2026-05-09)
+End-to-end verification passed in browser. Three bugs found and fixed (camera-reset ×2, drawer ×1). All 14-6 checks green. Phase 14 closed.
 
 ---
 
