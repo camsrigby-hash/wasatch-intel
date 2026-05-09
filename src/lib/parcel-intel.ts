@@ -287,7 +287,7 @@ function buildSpread(zoning: string, gp: string, currentPsf: number, gpPsf: numb
   };
 }
 
-function gradeFromTotal(total: number): Grade {
+export function gradeFromTotal(total: number): Grade {
   if (total >= 80) return "A";
   if (total >= 70) return "B";
   if (total >= 55) return "C";
@@ -533,6 +533,80 @@ function defaultLOIFor(acres: number, spread: SpreadBlock): LOIDraft {
 }
 
 export const INTEL_PARCELS: IntelParcel[] = buildIntelParcels();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tile feature → IntelParcel synthetic hydration (Phase 14-6 / Phase 16 ramp)
+// Converts baked PMTiles vector feature properties into a renderable IntelParcel.
+// Missing tile attrs get safe sentinel values so the panel opens immediately;
+// Phase 16 will replace this with a D1 API fetch for full data.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NULL_SPREAD: SpreadBlock = {
+  current_psf: null, gp_psf: null, current_total: null, gp_total: null, spread_amount: null,
+};
+
+export function tileFeaturesToIntelParcel(
+  props: Record<string, unknown>,
+  clickLngLat?: [number, number],
+): IntelParcel {
+  const id = String(props.parcel_id ?? props.id ?? "unknown");
+  const acreage = typeof props.acreage === "number" ? props.acreage : 0;
+  const cornerScore = typeof props.corner_score === "number" ? props.corner_score : 0;
+  const aadtScore = typeof props.aadt_score === "number" ? props.aadt_score : 0;
+  const corridorScore = typeof props.commute_corridor_score === "number" ? props.commute_corridor_score : 0;
+  const medianIncome = typeof props.median_income === "number" ? props.median_income : 55000;
+  const vacRaw = String(props.vacancy_class ?? "insufficient");
+  const vacStatus: VacancyTier =
+    vacRaw in VACANCY_META ? (vacRaw as VacancyTier) : "insufficient";
+  const inCommute: IntelParcel["inCommuteCorridor"] =
+    corridorScore >= 70 ? "Primary" : corridorScore >= 45 ? "Secondary" : "None";
+
+  return {
+    // BaseParcel fields
+    id,
+    apn: id,
+    jurisdiction: String(props.jurisdiction ?? "Salt Lake City") as Jurisdiction,
+    acres: acreage,
+    centroid: clickLngLat ?? [0, 0],
+    polygon: [],
+    zoning: String(props.prop_class ?? ""),
+    generalPlan: "",
+    hasGap: false,
+    ownerId: "",
+    ownerName: "",
+    ownershipYears: 0,
+    utilitiesScore: 50,
+    adjacencyScore: 50,
+    politicalRisk: 50,
+    residualLandValue: 0,
+    agendaCount: 0,
+    // IntelParcel enriched fields
+    address: String(props.address ?? `Parcel ${id}`),
+    county: "salt_lake",
+    is_corner: cornerScore > 60,
+    bldg_sqft: typeof props.bldg_sqft === "number" ? props.bldg_sqft : 0,
+    built_yr: typeof props.built_yr === "number" ? props.built_yr : null,
+    prop_class: String(props.prop_class ?? ""),
+    vacancy_status: vacStatus,
+    aadt_primary: Math.round(aadtScore * 600),
+    has_signal: false,
+    median_income: medianIncome,
+    competitionCount: 0,
+    inCommuteCorridor: inCommute,
+    owner: { name: "—", type: "Individual", mailingAddress: "—" },
+    comps: [],
+    adjacentActivity: [],
+    spread: NULL_SPREAD,
+    ddChecklist: DEFAULT_DD_TEMPLATE.map((t) => ({ ...t, done: false })),
+    in_pipeline: false,
+    pipeline_stage: null,
+    outcome: null,
+    days_in_stage: null,
+    saved_at: null,
+    notes: "",
+    loi: null,
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Score lookup with profile-aware caching.

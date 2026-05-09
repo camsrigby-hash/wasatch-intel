@@ -74,8 +74,8 @@ function PanelInner({
   }, [parcel?.id]);
 
   const score = useMemo(() => scoreFor(parcel!, profile), [parcel, profile]);
-  const vac = VACANCY_META[parcel!.vacancy_status];
-  const spread = parcel!.spread;
+  const vac = VACANCY_META[parcel!.vacancy_status] ?? VACANCY_META.insufficient;
+  const spread = parcel!.spread ?? { current_psf: null, gp_psf: null, current_total: null, gp_total: null, spread_amount: null };
 
   const stageTabsAvailable = stage === "dd" || stage === "loi" || stage === "closed";
   const loiTabAvailable = stage === "loi";
@@ -334,7 +334,7 @@ function KV({ k, v, mono }: { k: string; v: string | number | React.ReactNode; m
 }
 
 function OverviewTab({ parcel }: { parcel: IntelParcel }) {
-  const vac = VACANCY_META[parcel.vacancy_status];
+  const vac = VACANCY_META[parcel.vacancy_status] ?? VACANCY_META.insufficient;
   return (
     <>
       <Section title="Vacancy Status">

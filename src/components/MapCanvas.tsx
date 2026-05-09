@@ -346,16 +346,14 @@ export function MapCanvas({
       map.on("click", "parcels-fill", (e) => {
         const f = e.features?.[0];
         if (!f) return;
-        // Tile features use parcel_id; mock features use id.
         const parcelId = (f.properties?.parcel_id ?? f.properties?.id) as string | undefined;
         if (!parcelId) return;
         const mock = PARCELS.find((x) => x.id === parcelId);
         if (mock) {
           onParcelClickRef.current?.(mock);
         } else {
-          // Real tile parcel — pass minimal shape so selectedParcelId is set.
-          // Full data hydration via D1 API happens in Phase 16.
-          onParcelClickRef.current?.({ id: parcelId, ...f.properties } as unknown as Parcel);
+          const centroid: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+          onParcelClickRef.current?.({ id: parcelId, ...f.properties, centroid } as unknown as Parcel);
         }
       });
 

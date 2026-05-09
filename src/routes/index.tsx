@@ -14,7 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { JURISDICTIONS, AGENDA_TYPES, type Parcel as BaseParcel, type AgendaItem, signalLabel } from "@/lib/mock-data";
 import { useIntel } from "@/lib/intel-context";
-import { GRADE_COLORS, VACANCY_META, type Grade } from "@/lib/parcel-intel";
+import { GRADE_COLORS, VACANCY_META, type Grade, type IntelParcel, tileFeaturesToIntelParcel } from "@/lib/parcel-intel";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -43,7 +43,7 @@ function MapPage() {
   const [layers, setLayers] = useState({ parcels: true, gap: true, agendas: true, heatmap: false, sitePlans: false });
   const [railOpen, setRailOpen] = useState(true);
   const [scoringOpen, setScoringOpen] = useState(true);
-  const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
+  const [selectedParcel, setSelectedParcel] = useState<IntelParcel | null>(null);
   const [agendaPopover, setAgendaPopover] = useState<AgendaItem | null>(null);
   const [showMyPipeline, setShowMyPipeline] = useState(false);
   const [gradeFilter, setGradeFilter] = useState<Grade[]>(["A", "B", "C", "D"]);
@@ -53,16 +53,24 @@ function MapPage() {
   // Grade filtering and dimMask are deferred to Phase 16 when real tile data is wired.
   const profileWeights = useMemo(() => intel.profile.weights, [intel.profile]);
 
-  const selected = useMemo(
-    () => intel.parcels.find((p) => p.id === selectedParcelId) ?? null,
-    [intel.parcels, selectedParcelId],
-  );
+  // Derived id for MapCanvas feature-state highlight (keeps MapCanvas prop surface unchanged).
+  const selectedParcelId = selectedParcel?.id ?? null;
 
   return (
     <AppShell padded={false}>
       <MapCanvas
         layers={layers}
-        onParcelClick={(p: BaseParcel) => setSelectedParcelId(p.id)}
+        onParcelClick={(p: BaseParcel) => {
+          const mock = intel.parcels.find((x) => x.id === p.id);
+          if (mock) {
+            setSelectedParcel(mock);
+          } else {
+            setSelectedParcel(tileFeaturesToIntelParcel(
+              p as unknown as Record<string, unknown>,
+              p.centroid,
+            ));
+          }
+        }}
         onAgendaClick={setAgendaPopover}
         selectedParcelId={selectedParcelId}
         profileWeights={layers.parcels ? profileWeights : undefined}
@@ -210,14 +218,14 @@ function MapPage() {
       )}
 
       <ParcelDetailPanel
-        parcel={selected}
+        parcel={selectedParcel}
         profile={intel.profile}
-        open={!!selected}
-        onClose={() => setSelectedParcelId(null)}
+        open={!!selectedParcel}
+        onClose={() => setSelectedParcel(null)}
         onStageChange={intel.updateStage}
         onOutcomeChange={intel.updateOutcome}
         onSavePipeline={intel.savePipeline}
-        onRemovePipeline={(id) => { intel.removePipeline(id); setSelectedParcelId(null); }}
+        onRemovePipeline={(id) => { intel.removePipeline(id); setSelectedParcel(null); }}
       />
     </AppShell>
   );
