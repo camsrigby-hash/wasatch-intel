@@ -140,6 +140,13 @@ export function MapCanvas({
   // Track previous selection so we can clear it with removeFeatureState.
   const prevSelectedRef = useRef<string | null>(null);
 
+  // Stable refs for callbacks — lets the map-init effect have an empty dep array
+  // while always calling the latest handler without recreating the map on every render.
+  const onParcelClickRef = useRef(onParcelClick);
+  const onAgendaClickRef = useRef(onAgendaClick);
+  useEffect(() => { onParcelClickRef.current = onParcelClick; }, [onParcelClick]);
+  useEffect(() => { onAgendaClickRef.current = onAgendaClick; }, [onAgendaClick]);
+
   // ── Sync profileWeights → fill-color paint expression ────────────────────────
   useEffect(() => {
     const map = mapRef.current;
@@ -344,11 +351,11 @@ export function MapCanvas({
         if (!parcelId) return;
         const mock = PARCELS.find((x) => x.id === parcelId);
         if (mock) {
-          onParcelClick?.(mock);
+          onParcelClickRef.current?.(mock);
         } else {
           // Real tile parcel — pass minimal shape so selectedParcelId is set.
           // Full data hydration via D1 API happens in Phase 16.
-          onParcelClick?.({ id: parcelId, ...f.properties } as unknown as Parcel);
+          onParcelClickRef.current?.({ id: parcelId, ...f.properties } as unknown as Parcel);
         }
       });
 
@@ -356,7 +363,7 @@ export function MapCanvas({
         const f = e.features?.[0];
         if (!f) return;
         const a = AGENDAS.find((x) => x.id === f.properties?.id);
-        if (a) onAgendaClick?.(a);
+        if (a) onAgendaClickRef.current?.(a);
       });
 
       map.on("click", "agenda-clusters", (e) => {
@@ -382,8 +389,10 @@ export function MapCanvas({
       mapRef.current = null;
       loadedRef.current = false;
     };
+    // Empty dep array: map is created once per mount. Callbacks are accessed via
+    // refs (onParcelClickRef / onAgendaClickRef) so they never trigger a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onParcelClick, onAgendaClick]);
+  }, []);
 
   // ── Layer-toggle visibility ───────────────────────────────────────────────────
   useEffect(() => {
