@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-07
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 13b-2 COMPLETE
-**Active phase:** Phase 13b — 13b-2 COMPLETE (947,863 parcels in D1). 13b-6a COMPLETE. Sub-tasks 13b-3 through 13b-8 (parallel dispatch ready, unblocked).
+**Last updated:** 2026-05-09
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 14 COMPLETE; Phase 15 decomposed
+**Active phase:** Phase 15 — CRE Listings Ingest + Spread Calc + Deal Heat. 15a dispatched to Manus (CREXI + Land.com + county recorders; build from scratch). 15b–15e queued for CC Sonnet.
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -44,7 +44,7 @@ Update this file at the end of every work session. The "Current Status" section 
 ### What's next
 - **ACTION REQUIRED**: Trigger `backfill.yml` workflow (workflow_dispatch) in GitHub Actions to run the Phase 10 historical backfill across all 13 PMN bodies
 - **ACTION REQUIRED**: Run `d1-migrate.yml` workflow (workflow_dispatch) in GitHub Actions to apply Phase 8 schema to live D1 (if not already done)
-- Phase 11: Future features (see tli-full-spec.md §6) — Claude-vision site plan extraction, PMN audio transcription, site plan polygon overlay
+- Phase 11: Future features — Claude-vision site plan extraction, PMN audio transcription, site plan polygon overlay
 - NAIP land-cover (Phase 10 CM_RE addendum) deferred until ~2026-07-25 (3-month stability window)
 
 ### Open questions / blockers
@@ -158,7 +158,7 @@ The frontend repo fetches raw CSVs from the data repo at API runtime. This keeps
 ### Expansion (Phase 9, post-MVP)
 - Tooele City, Stansbury Park, Lake Point, Saratoga Springs, Eagle Mountain, Lehi, Bluffdale, South Jordan, Herriman, American Fork — added one or two per week, each ~1 evening's work
 
-### Future (Phase 10+, see tli-full-spec.md §6)
+### Future (Phase 10+)
 - Claude-vision site plan extraction
 - PMN audio transcription
 - Site plan polygon overlay (georeferencing)
@@ -212,7 +212,6 @@ wasatch-intel/
 ├── docs/
 │   ├── PROJECT_STATE.md               # this file
 │   ├── PROMPT_PLAYBOOK.md             # phase-by-phase prompts for AI agents
-│   ├── tli-full-spec.md               # 110% feature spec
 │   ├── tli-buildout-schedule-v2.md    # phase plan
 │   └── python-to-ts-field-mapping.md  # ETL contract
 ├── src/
@@ -1090,11 +1089,18 @@ Secondary issues surfaced during diagnosis:
 - `0b5e619` — fix: stable callback refs in MapCanvas (camera-reset bug 1+2)
 - `414c49f` — fix: Phase 14-6 Bug 3 — ParcelDetailPanel opens for real tile parcels
 
+### 2026-05-09 — Phase 14 COMPLETE — Claude Code (Sonnet 4.6)
+
+Phase 14 (PMTiles + Tippecanoe vector tile pipeline) COMPLETE. All 6 sub-tasks shipped and verified in browser by user. 947,863 parcels render on `/map` via PMTiles vector tiles at zooms 8–18. Profile switching recolors via baked paint expression (no tile rebuild). ParcelDetailPanel opens on tile parcel click via `tileFeaturesToIntelParcel`. Three bugs found+fixed in 14-6: camera-reset on click and on profile-switch (ref-based callback pattern for `onParcelClick`/`onAgendaClick`), plus drawer never opened for tile parcels (tileFeaturesToIntelParcel builder + null guards on `vac`/`spread`). SD-13 logged: push + deploy verification now required after every phase.
+
+### 2026-05-09 — Phase 15 IN-PROGRESS (decomposition) — Claude Code (Sonnet 4.6)
+
+Phase 15 decomposed into 5 sub-phases (15a–15e). Amendment written and committed to `PROMPT_PLAYBOOK_ADDENDUM.md`. Sub-phase brief added to `PROJECT_DIRECTION.md`. 15a (CRE scraper — CREXI, Land.com, 7-county recorders; build from scratch) dispatched to Manus. 15b–15e (D1 ingest + reverse-geocode, spread calc, UI, off-market targets) queued for CC Sonnet sessions. LoopNet removed from scope. Stale `tli-full-spec.md` references removed from all docs (file never existed in either repo; was a carry-forward from early project setup notes).
+
 ---
 
 ## REFERENCES — supporting docs
 
-- `docs/tli-full-spec.md` — every feature, current and future (the "110% complete" vision)
 - `docs/tli-buildout-schedule-v2.md` — phase-by-phase build plan with effort estimates
 - `docs/python-to-ts-field-mapping.md` — ETL contract from Python CSV columns to TS fields
 - `docs/PROMPT_PLAYBOOK.md` — copy-paste prompts for each phase (the file you came here from, probably)

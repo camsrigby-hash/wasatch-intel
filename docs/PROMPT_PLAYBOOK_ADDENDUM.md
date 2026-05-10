@@ -693,41 +693,140 @@ The bootstrap reads CURRENT STATE which will name the next sub-task.
 
 ---
 
-## Phase 15 — Comps scraper + spread calc going live
+## Phase 15 — CRE Listings Ingest + Spread Calc + Deal Heat
 
-**Tool**: **Manus** (lead) · **Models**: Manus internal · **Est. time**: 3–5 days · **Est. LLM cost**: ~$0 in Anthropic API; Manus pricing applies
+**Tool**: Manus (15a) + Claude Code Sonnet (15b–15e) · **Model**: `/model sonnet` for CC sub-phases ·
+**Est. time**: 6–8 sessions · **Est. LLM cost**: ~$2–4 (CC sub-phases only; Manus billed separately)
 
-Comps scraping is Manus's specialty: long-running, ToS-evasion, weekly cadence, single-purpose. Don't burn CC credits on this.
+Phase 15's value proposition is unlocked only now that scoring (Phase 11), enrichment data (Phase
+13b), and vector tiles (Phase 14) are all live — per SD-4. A listing is now meaningful as a signal
+against the parcel's intrinsic score: spread calc becomes real, Deal Heat badge works, and the
+inverse "matching but unlisted" surface becomes the highest-value owner-operator use case.
 
-### Manus prompt (paste into Manus)
+**LoopNet dropped from scope.** CREXI + Land.com + county recorders only. Revisit Phase 16+ if
+coverage is thin.
+
+### Architecture
+
+| Concern | Decision | Rationale |
+|---|---|---|
+| **Data model** | Two tables: `listings` (active for-sale) + `comps` (sold/closed) | Spread calc needs both separately; conflating them obscures listing status |
+| **Geocoder** | UGRC geocoding API (`api.mapserv.utah.gov/api/v2/geocode`) → point-in-polygon join | Utah-specific; Phase 12 showed Nominatim fails on Utah subdivision names |
+| **Spread baseline** | Median $/acre from comps within 5mi × parcel acreage (current zoning); 10mi for GP zoning | Fast to implement, defensible as ballpark; UGRC `LAND_MKT_VALUE` fallback when comps <3 |
+| **Deal Heat score** | `parcel_score_normalized × listing_recency_factor × agenda_proximity_factor` | Multiplicative so a stale listing on a low-scoring parcel scores low |
+| **Listing layer** | GeoJSON source (not PMTiles) — hundreds of points, not 947k parcels | Small enough for inline; reload nightly after scrape cron |
+| **Off-market query** | D1: scored + vacant parcels NOT IN active listings | Standard SQL anti-join; no new infra needed |
+
+### Sub-phase split
+
+Each sub-phase is one session (15b–15e are CC Sonnet; 15a is Manus).
+
+- **15a** — Scraper + GHA cron (Manus). Build from scratch. **Split option if scope sprawls**:
+  **15a-1**: CRE platforms (CREXI, Land.com — active listings); **15a-2**: County recorders
+  (7-county sold comps — inconsistent web infra, may need per-county adapters). Manus prompt
+  calls out this split explicitly so Manus can decompose if recorder work is large. Output:
+  `tooele-land-intel/data/raw/listings_<source>_<date>.csv` + `comps_<source>_<date>.csv`.
+  Weekly GHA cron (Sundays 06:00 UTC). County recorder = permanent comps fallback.
+
+- **15b** — D1 ingest + reverse-geocode (CC Sonnet). Migration `0005_listings.sql` adding
+  `listings` + `comps` tables. Script geocodes via UGRC API → point-in-polygon join against
+  `tooele-land-intel` CSV polygons (same shapely STRtree pattern as Phase 13b-6b) → writes
+  `parcel_id` FK. Target ≥70% match rate on listings. Logs to `cron_runs`. New GHA secret
+  `UGRC_API_KEY` required (free registration: developer.mapserv.utah.gov). Depends on: 15a.
+
+- **15c** — Spread calc + Deal Heat endpoint (CC Sonnet). Enhance `/api/parcels/:id` to return
+  real `SpreadBlock` (replaces Phase 14-6 null sentinel from `tileFeaturesToIntelParcel`). New
+  endpoint `/api/listings/heat?limit=50` returning Deal Heat ranked parcels. Spread: median
+  $/acre from comps within radius × acres; UGRC `LAND_MKT_VALUE` fallback when comps <3.
+  Depends on: 15b.
+
+- **15d** — UI: map layer + drawer + left rail tab (CC Sonnet). MapLibre `listings-circle`
+  GeoJSON layer (click opens ParcelDetailPanel). ParcelDetailPanel Spread tab populated from
+  real `/api/parcels/:id` — this is the Phase 16 exit ramp noted in Phase 14 completion notes
+  (tileFeaturesToIntelParcel SpreadBlock sentinel replaced with real data). Left rail Listings
+  tab with Deal Heat ranked list, filterable by county/zoning/acres. Depends on: 15c.
+
+- **15e** — Inverse view: off-market targets (CC Sonnet). D1 query: scored + vacant parcels
+  NOT IN active listings. Filter mode in `/map` sidebar or new `/targets` route. CSV export
+  (parcel_id, address, county, acres, vacancy_class, aggregate_score, owner from
+  parcel_records). Depends on: 15b. Can run in parallel with 15d.
+
+### Acceptance (whole phase)
+
+- `listings` + `comps` tables in D1 with ≥70% parcel_id match rate on listings
+- Weekly GHA cron runs; county recorder comps always produce rows
+- `/api/parcels/:id` returns non-null `SpreadBlock` for any listed parcel
+- `/map` renders listing markers; click → ParcelDetailPanel with Spread tab populated
+- Left rail Listings tab renders and filters by county/zoning/acres
+- Off-market targets toggle highlights ≥10 qualifying parcels
+- GHA minutes budget: ≤100 min/mo additional
+- CURRENT STATE → Phase 16; PROJECT_STATE.md + PROJECT_DIRECTION.md updated
+
+### Out of scope
+
+- LoopNet (removed — revisit Phase 16+ if CREXI/Land.com coverage thin)
+- AVM / regression-based valuation (Phase 16+)
+- Listing alerts / push notifications (Phase 17)
+- Full D1 hydration of all parcel fields in ParcelDetailPanel (Phase 16)
+- R2 storage for listing photos
+
+### Kickoff prompt (for sub-phases 15b–15e)
 
 ````
-Wasatch Intel — Phase 15: build a multi-source land comps scraper for Wasatch Front + Tooele Valley.
+cd C:/Users/camsr/code/wasatch-intel, then read docs/CC_BOOTSTRAP.md and begin.
+````
 
-Repo: github.com/camsrigby-hash/wasatch-intel
+### Manus prompt for 15a (paste into Manus)
 
-Goal: weekly scraper that pulls land sale comps from multiple sources, normalizes them into a comps table in the wasatch-intel D1 database, and exposes them via an existing Hono endpoint pattern. The Spread headline calculation in src/components/ParcelDetailPanel.tsx already expects this data shape — see the SpreadBlock interface in src/lib/parcel-intel.ts.
+````
+Wasatch Intel — Phase 15a: build a CRE listings + comps scraper for Wasatch Front + Tooele Valley.
 
-Sources, in priority order:
-1. LoopNet (ToS-aware: residential IP from your runner, no proxies, weekly cadence only — keep volume low)
-2. CREXI (same approach)
-3. Land.com / LandWatch (smaller players, less aggressive bot protection)
-4. Tooele County recorded sales (free open data; permanent fallback)
-5. Other Utah county recorded sales as available
+Repo: github.com/camsrigby-hash/tooele-land-intel
 
-For each comp, extract: address, sale date, sale price, $/sqft, acreage, zoning_class (current at time of sale), source, link.
+Goal: weekly scraper that pulls (1) active land listings from CREXI and Land.com and (2) sold land
+comps from Utah county recorders. Output as CSV files following the existing ingest pattern in
+tooele-land-intel/data/raw/. This feeds Phase 15b which geocodes and loads to D1.
 
-Storage: new D1 table `comps`. Columns: id, address, lat, lng, sale_date, sale_price, price_per_sqft, acres, zoning_class, source, link, scraped_at. Index on (lat, lng) for spatial queries, on (zoning_class, sale_date) for the spread calc.
+SCOPE NOTE — LoopNet is explicitly excluded. Do not scrape LoopNet.
 
-Wire-up: extend the existing Hono /api/parcels/{id} endpoint to enrich each parcel with `comps: { current_zoning: CompRecord[], gp_zoning: CompRecord[] }` populated by spatial query (within 5 miles for current, 10 miles for GP, last 18 months for both).
+SPLIT OPTION — County recorder scraping spans 7 counties of inconsistent web infrastructure
+(Tooele, Salt Lake, Utah, Davis, Weber, Wasatch, Box Elder). If recorder work would significantly
+expand scope beyond CRE platform scraping, split into sub-phases:
+  15a-1: CREXI + Land.com active listings first (ship this, mark 15a-1 DONE)
+  15a-2: County recorders as a follow-on (each county may need its own adapter)
+Assess at the start of your run and decompose explicitly if needed. Document the decision in your
+completion notes.
 
-Schedule: GitHub Actions weekly cron, Sundays 06:00 UTC. Free-tier minutes only.
+Output files:
+- data/raw/listings_crexi_<YYYY-MM-DD>.csv (active for-sale land)
+- data/raw/listings_landcom_<YYYY-MM-DD>.csv (active for-sale land)
+- data/raw/comps_recorder_<county>_<YYYY-MM-DD>.csv (sold land, per county)
 
-Robustness: fallback per source — if LoopNet fails, log and continue. Always succeed with at least county recorded data.
+CSV schema for listings: address, list_price (int, dollars), price_per_acre (real), acres (real),
+zoning_class (text or null), listing_status (active|pending), listing_date (YYYY-MM-DD), source,
+link, scraped_at (ISO 8601)
 
-Acceptance: parcel detail page Spread headline shows real numbers when at least one comp source returns data.
+CSV schema for comps: address, sale_date (YYYY-MM-DD), sale_price (int, dollars), price_per_acre
+(real), acres (real), zoning_class (text or null), source, link, scraped_at (ISO 8601)
 
-On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDENDUM.md adding a Phase 15 PHASE_LOG entry and updating CURRENT STATE to point to Phase 16. Push to main.
+Filter: land only (no residential homes, no commercial buildings). Acreage 0.5–500 acres.
+Utah geography only — Wasatch Front + Tooele Valley (Salt Lake, Utah, Davis, Weber, Tooele,
+Box Elder, Wasatch counties).
+
+GHA workflow: tooele-land-intel/.github/workflows/scrape_listings.yml
+- Schedule: cron '0 6 * * 0' (Sundays 06:00 UTC) + workflow_dispatch
+- Runs scrape_listings.py (CRE platforms) and scrape_comps.py (county recorders)
+- Commits CSVs to tooele-land-intel main branch
+- Logs run summary to stdout (source, row count, errors)
+- Free-tier GHA minutes only (target <60 min/run total)
+
+Robustness: per-source fallback — if CREXI fails, log and continue. County recorder is the
+permanent comps fallback — always ships rows. No proxies. Residential IP from runner. Weekly
+cadence only (low volume, low ToS risk).
+
+On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDENDUM.md appending
+a Phase 15a COMPLETION NOTES block and updating CURRENT STATE to "Phase 15b NOT_STARTED." Push
+both repos to main.
 ````
 
 ---

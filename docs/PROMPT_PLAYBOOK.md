@@ -265,7 +265,7 @@ Python work (in tooele-land-intel/):
      - Pull the city's current zoning layer (use scripts/arcgis.py)
      - Pull the city's General Plan layer if available (Erda + Grantsville
        may not publish their own — see KNOWN GOTCHAS in PROJECT_STATE.md
-       and tli-full-spec.md §2.3 for the partial coverage caveat)
+       for the partial coverage caveat; see KNOWN GOTCHAS in PROJECT_STATE.md)
      - Spatial join: for each parcel, what zoning applies, what GP applies
    - Compute gap_score per parcel:
      - Map zoning codes to "intensity" 1–10 (agricultural=1, dense
@@ -736,7 +736,7 @@ scripts/archive/ subdirectory so it doesn't get re-run accidentally.
 
 # AFTER PHASE 10
 
-The MVP-plus is done. From here, the next batch of work is the "future" features in `tli-full-spec.md` §6 and §7:
+The MVP-plus is done. From here, the next batch of work is the "future" features in `docs/PROMPT_PLAYBOOK_ADDENDUM.md`:
 - Claude-vision site plan extraction
 - PMN audio transcription
 - Site plan polygon overlay (georeferencing)

@@ -43,7 +43,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 13b-7 | Commute corridor scoring (proxy method) | Shipped | May 8 2026 | 98.52% coverage. All rows tagged `commute_corridor_method='proxy'` for future WFRC swap |
 | 13b-8 | Vacancy classification | Shipped | May 8 2026 | UGRC LIR cascade (vacant/partial/developed/unknown) |
 | **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Shipped** | May 9 2026 | All 6 sub-tasks complete. 947k parcels render on map, profile recolor via paint expression, drawer opens on tile parcel click (tileFeaturesToIntelParcel). 3 bugs found+fixed in 14-6 (camera-reset ×2, drawer ×1). See SD-12, SD-13 |
-| 15 | CRE listings ingest + spread calc + Deal Heat | Pending | — | Replit scraper port. Listings = signal type on parcel, not separate silo. Reverse-geocode to UGRC LIR, target 70%+ match |
+| **15** | **CRE listings ingest + spread calc + Deal Heat** | **In-progress** | May 9 2026 | 15a (CREXI+Land.com+recorders) dispatched to Manus; 15b–15e queued for CC Sonnet. LoopNet dropped. Sub-phase decomposition in PROMPT_PLAYBOOK_ADDENDUM.md |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
 | 18 | Site plan PDF vision (Claude vision reads agenda exhibit PDFs) | Pending | — | Structured extraction first (80% value), pixel overlay second |
@@ -171,7 +171,6 @@ This doc covers strategy and direction. For execution detail, see:
 - `docs/CM_RE_INTEGRATION.md` — signal taxonomy + correlation guardrails
 - `docs/MANUS_PATCH_HANDOFF.md` — Manus patch apply procedure (for the rare case when patches happen)
 - `docs/MEMORY_ARCHIVE.md` — historical context that was evicted from Claude memory
-- `docs/tli-full-spec.md §6` — granular feature backlog
 
 ---
 
