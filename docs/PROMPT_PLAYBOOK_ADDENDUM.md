@@ -8,9 +8,12 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-10
 
-**Phase 18b NOT_STARTED — Zoning PDF vision (replace prop_class fallback).**
+**Phase 18b SPLIT — Two parallel active tracks (see SD-15 in PROJECT_DIRECTION.md).**
 
-Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
+- **18b-1 (CURRENT zoning via ArcGIS REST)** — NOT_STARTED. Tool: Manus. Branch: `phase-18b-1-current-zoning`. Read the Phase 18b-1 section below for the kickoff prompt.
+- **18b-2 (FUTURE land use / general plan, georeferenced)** — NOT_STARTED. 18b-2a: Manus REST-FLU concurrent with 18b-1. 18b-2b: opusplan prototype on Erda. 18b-2c: CC Sonnet batch rollout. 18b-2d: CC Sonnet taxonomy + spot-check. Read the Phase 18b-2 section below.
+
+Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
 Phase 14 (vector tiles) and Phase 15a (scraper scaffolding) are COMPLETE. See completion notes below.
 
@@ -1064,6 +1067,220 @@ After Manus handoff: CC Sonnet takes over for D1 update + scoring re-run + tile 
 ````
 
 On completion (CC phase): D1 updated, scoring re-run, PMTiles re-baked. Update PROMPT_PLAYBOOK_ADDENDUM.md, update PROJECT_STATE.md PHASE_LOG, update PROJECT_DIRECTION.md Phase 18b row → Shipped. CURRENT STATE → Phase 16 (or next per user direction). Commit + push. Observe ~2 weeks before Phase 15 resume decision.
+
+> **STATUS NOTE (May 10, 2026):** The above original Phase 18b brief is retained as historical reference. The first Manus attempt produced unanchored hallucinated polygons and was discarded. Phase 18b is now split into 18b-1 (current zoning, REST), 18b-2 (future land use, georeferenced PDF), and 18b-3 (D1 integration). See SD-15 in PROJECT_DIRECTION.md. The sections below supersede the kickoff prompt above.
+
+---
+
+## Phase 18b-1 — Current zoning via ArcGIS REST
+
+**Tool**: Manus · **Model**: n/a (REST JSON parsing, no LLM for extraction) · **Est. LLM cost**: ~$0 · **Branch**: `phase-18b-1-current-zoning` on tooele-land-intel · **Depends on**: Phase 13b-5 complete (prop_class fallback live)
+
+**Goal**: Replace the `prop_class`-based zoning fallback with real *current* zoning classifications sourced from city ArcGIS FeatureServer layers. The 9 cities Manus skipped in the first attempt (their official sources were ArcGIS web apps, not PDFs) are exactly the REST candidates.
+
+**REST candidates** (verify each — a GIS portal is not the same as a public FLU REST layer):
+Erda (ArcGIS webapp), Tooele City (ArcGIS webapp `ea1fc0fb757a454cae04dd1c36403c60`), Saratoga Springs, Eagle Mountain, South Jordan, Herriman, Bluffdale, Draper, Vineyard. Additionally check: Lehi, American Fork, Spanish Fork for current-zoning REST layers (separate from their GP/FLU layers).
+
+**Output**: `tooele-land-intel/data/zoning/current/<city_slug>_zoning.geojson` per city. Schema per Feature: `zone_code`, `zone_description`, `zone_class_normalized`, `jurisdiction`, `source_rest_url`, `extraction_method: 'arcgis_rest'`, `confidence: 'rest_api'`.
+
+**Acceptance**: GeoJSON exists per confirmed city; polygon count plausible vs city area; `zone_class_normalized` populated for all features; `_rest_inventory.md` documents what was checked per city.
+
+### Manus kickoff prompt (18b-1)
+
+````
+Wasatch Intel — Phase 18b-1: Current zoning via ArcGIS REST.
+
+Repo: github.com/camsrigby-hash/tooele-land-intel
+Branch: phase-18b-1-current-zoning (create from main)
+
+Reference: docs/sub-tasks/13b-5_b1_fallback_list.md — enumerates the 13 jurisdictions that need real zoning data (all used prop_class fallback in 13b-5).
+
+Goal: For each of the 13 active jurisdictions, find the city's official ArcGIS FeatureServer or MapServer endpoint that exposes CURRENT ZONING polygons. Query it. Write one GeoJSON FeatureCollection per city to data/zoning/current/<city_slug>_zoning.geojson.
+
+Known REST candidates (cities whose official sources are ArcGIS web apps, not PDFs):
+- Erda: erda.gov/city-codes-and-maps/ (ArcGIS webapp)
+- Tooele City: arcgis.com webapp id ea1fc0fb757a454cae04dd1c36403c60 — inspect backing service URL
+- Saratoga Springs: saratogasprings-ut.gov/210/MappingGIS
+- Eagle Mountain: eaglemountain.gov/government/engineering-mapping/
+- South Jordan: gis.sjc.utah.gov/sjcmaps/rest/services — find the current zoning layer (NOT FUTURE_LAND_USE_15, that's for 18b-2)
+- Herriman: herriman.gov/gis
+- Bluffdale: bluffdale.gov/268/Planning
+- Draper: gis.hlplanning.com/server/rest/services
+- Vineyard: vineyardutah.gov/government/planning.php
+Also check Lehi, American Fork, Spanish Fork, Grantsville for current-zoning REST layers.
+
+Output schema per Feature:
+{ "zone_code": "R-1-21", "zone_description": "Single-Family Residential 21,000 sf", "zone_class_normalized": "Residential-Low", "jurisdiction": "tooele_ut", "source_rest_url": "https://...", "extraction_method": "arcgis_rest", "confidence": "rest_api" }
+
+For each city: write a one-paragraph entry in data/zoning/current/_rest_inventory.md with: URL checked, whether a current-zoning FeatureServer layer was found, the layer name, and any issues. Cities with no REST layer go to the PDF-path note (do not attempt to extract from PDF — that's a separate 18b-2 task).
+
+On completion: commit GeoJSONs + _rest_inventory.md, push to branch, write handoff at /tmp/phase18b_1_manus_handoff.md listing: cities completed, feature counts, cities skipped, final cost.
+````
+
+---
+
+## Phase 18b-2 — Future land use / general plan (georeferenced)
+
+**Tool**: 18b-2a Manus (REST FLU layers, parallel with 18b-1); 18b-2b opusplan (pipeline prototype); 18b-2c CC Sonnet (Anthropic Batch API rollout); 18b-2d CC Sonnet (taxonomy + spot-check) · **Model**: `claude-opus-4-7` (vision) · **Est. LLM cost**: ~$6–8, ceiling $15 · **Depends on**: Phase 13b-5 complete, Phase 14 complete, 18b-2a complete before 18b-2b
+
+**Goal**: Produce per-city GeoJSON of FUTURE land use polygons for the 13 active jurisdictions. Where REST FLU layers exist, use them (18b-2a). Where only the adopted GP PDF exists, use a *georeferenced* vision pipeline that produces "anchored approximation" polygons accurate to ≤100 ft RMSE — NOT free-handed boxes approximated from city geography (the failure mode of the discarded first attempt).
+
+**Why this is the higher-value half of Phase 18b**: The rezone-and-flip thesis depends on the SPREAD between current zoning entitlement (18b-1) and future planned use (18b-2). A parcel zoned R-1-21 today but shown as "future commercial" in the GP is the exact signal Wasatch Intel is built to surface. Quality is non-negotiable — hallucinated polygons actively mislead the scoring engine.
+
+### GP availability inventory (researched 2026-05-09)
+
+| City | REST FLU candidate? | PDF source (if REST fails) | Notes |
+|---|---|---|---|
+| Erda | No | https://erda.gov/wp-content/uploads/2022/08/Erda-General-Plan_2022-06-23.pdf | **Best 18b-2b prototype** — small city, simple geometry, 2022 adopted GP |
+| Grantsville | No | GP doc on grantsvilleut.gov (FLU map is separate exhibit from the zoning maps Manus already found) | |
+| Tooele City | Candidate | ArcGIS webapp `ea1fc0fb757a454cae04dd1c36403c60` ("Zoning and Land Use Map") — verify FLU vs zoning-only | Falls to PDF if only zoning layer found |
+| Lehi | Candidate (high) | lehi-ut.gov/wp-content/uploads/2013/09/General-Plan-Land-Use-Map.pdf + 2022 update | engagelehi.org interactive FLU map = ArcGIS-backed |
+| Saratoga Springs | Candidate (medium) | saratogasprings-ut.gov/196/General-Master-Plans | City uses ArcGIS Server; FLU endpoint unconfirmed |
+| Eagle Mountain | Candidate (high) | eaglemountain.gov/government/engineering-mapping/ | Engage GSBS FLU story map implies live ArcGIS data |
+| South Jordan | **CONFIRMED REST** | — | `gis.sjc.utah.gov/sjcmaps/rest/services/CarteTEST/CGTEST_LANDBASE/FeatureServer` → `FUTURE_LAND_USE_15` |
+| Herriman | Candidate (medium) | herriman.gov/gis | Esri-based; FLU layer presence unconfirmed |
+| Bluffdale | No (likely) | Locate in bluffdale.gov GP doc | Small city; no GIS data surfaced |
+| Draper | Candidate (medium) | gis.hlplanning.com/server (Hales Planning hosts Draper GIS) | Verify for FLU layer |
+| American Fork | Candidate (medium) | americanfork.gov/841/Mapping-GIS | AFGIS exists; GP FLU map is separate from the current-zoning PDF Manus used |
+| Vineyard | No (likely) | Locate in vineyardutah.gov GP doc | Small/new city; no GIS data surfaced |
+| Spanish Fork | Candidate (medium) | spanishfork.gov/departments/public_works/download_map_data.php | ArcGIS story map for FLU update; suvgis.spanishfork.org |
+
+Expect 4–8 cities on PDF path, 5–9 on REST. Manus 18b-2a must verify all "candidate" rows.
+
+### Sub-phases
+
+**18b-2a** — REST FLU extraction (Manus, parallel with 18b-1)
+- Verify each REST candidate; query FeatureServer; write `data/zoning/future/<city>_gp.geojson` per confirmed city.
+- Document all checks in `data/zoning/future/_rest_inventory.md`. Cities without a REST FLU layer go to the PDF path.
+- Branch: `phase-18b-2a-rest-flu`. Session count: 1 Manus session.
+
+**18b-2b** — Pipeline prototype on Erda (opusplan)
+- Build `tooele-land-intel/scripts/gp_pdf_extract.py` end-to-end. Run on Erda (smallest city, 2022 GP, simplest geometry). Use direct (non-batch) Opus API calls during development — faster iteration on control-point prompt tuning and transform math edge cases.
+- Deliverables: working `gp_pdf_extract.py`, `erda_gp.geojson`, `erda_transform_validation.md` (per-control-point residuals + visual spot-check evidence).
+- Acceptance: ≥4 control points found, RMSE ≤100 ft, 5/5 visual spot-checks match source PDF.
+- Branch: `phase-18b-2b-pipeline-prototype`. Session count: 1 opusplan session, possibly 2.
+- **Depends on**: 18b-2a complete (so the PDF city list is finalized).
+
+**18b-2c** — Batch rollout to remaining PDF cities (CC Sonnet)
+- Run `gp_pdf_extract.py` (now in batch mode) against all PDF-path cities. Anthropic Batch API for 50% cost discount.
+- Deliverables: GeoJSON per city; `batch_run_log.json` (batch IDs, costs, RMSE per city, control point counts); per-city entries in `_extraction_log.md`.
+- Cities failing validation (RMSE >100 ft OR <4 control points) go on `failed_cities` list — do not silently drop.
+- Branch: same as 18b-2b or `phase-18b-2c-rollout`. Session count: 1 CC session.
+- **Depends on**: 18b-2b validated.
+
+**18b-2d** — Taxonomy harmonization + quality review (CC Sonnet)
+- Build `data/zoning/future/gp_taxonomy.yaml` mapping per-city GP zone codes to normalized cross-city classes: `future_low_density_residential`, `future_medium_density_residential`, `future_high_density_residential`, `future_commercial_node`, `future_mixed_use`, `future_industrial`, `future_open_space`, `future_agriculture`.
+- Spot-check 5 random parcels per city against source PDF/REST in `_quality_review.md` (parcel ID + expected zone + assigned zone).
+- Document failed cities (`gp_data: not_available`) with reason — do not silently omit.
+- Session count: 1 CC session. Depends on 18b-2c complete.
+
+### Output schema (PDF-path Features)
+
+```json
+{
+  "type": "Feature",
+  "geometry": { "type": "Polygon", "coordinates": [[ ...EPSG:4326... ]] },
+  "properties": {
+    "city_slug": "erda",
+    "city_name": "Erda City",
+    "gp_zone_code": "MDR",
+    "gp_zone_description": "Medium Density Residential",
+    "gp_zone_normalized": "future_medium_density_residential",
+    "jurisdiction": "erda_ut",
+    "source_pdf": "https://erda.gov/.../Erda-General-Plan_2022-06-23.pdf",
+    "source_page_id": "erda_p12",
+    "extraction_method": "anthropic_vision_claude_opus_4_7_georeferenced",
+    "confidence": "anchored_approximation",
+    "transform_residual_ft": 47.2,
+    "n_control_points": 7,
+    "extraction_date": "2026-05-..."
+  }
+}
+```
+
+REST-path Features use the same schema with `confidence: 'rest_api'`, `transform_residual_ft: null`, `n_control_points: null`, and `source_pdf` replaced by `source_rest_url`.
+
+### Method — georeferenced PDF pipeline (8 stages)
+
+1. **Rasterize**: `pdf2image.convert_from_path(pdf, dpi=300, fmt='jpeg')`. Reject pages < 300 KB (low-res scan proxy).
+2. **Control points** (Opus call #1 per page): "Identify 6–10 labeled street intersections. Return `(px_x, px_y, street_a, street_b, confidence)`. Do not guess — if labels are unreadable, say so." Hard reject if < 4 high/medium results.
+3. **Ground-truth lookup**: resolve each `(street_a, street_b, city)` via OSM Nominatim or UGRC roads API (key already in env from Phase 13b). Drop points outside city bounding box or with no match within 200 ft.
+4. **Affine fit**: 6-parameter transform `[lng, lat] = A · [px_x, px_y, 1]ᵀ` via `numpy.linalg.lstsq`.
+5. **Validate**: compute RMSE in feet (haversine). Accept ≤100 ft; flag yellow at 50–100 ft (`confidence: 'anchored_approximation_yellow'`); reject >100 ft (`failed_transform`).
+6. **Polygon extraction** (Opus calls #2…N): zone-by-zone — one call per zone class. "Identify all polygons labeled `<zone_code>`. Return ordered `(px_x, px_y)` vertices. Trace only what you can clearly see." Hard cap: 8 calls per page.
+7. **Project**: apply affine transform to each vertex → EPSG:4326. Drop polygons outside city bounding box + 1-mile buffer.
+8. **Write**: `data/zoning/future/<city_slug>_gp.geojson`. Log per-city RMSE and control point count to `_extraction_log.md`.
+
+**Multi-page**: one transform per page; union features across pages at the end. **No centroid fallback** for cities that fail validation — mark `gp_data: not_available`, log reason, skip.
+
+### Acceptance (whole 18b-2)
+
+1. ≥ 9 of 13 cities have a `_gp.geojson` in `data/zoning/future/`. Remaining cities are explicitly flagged in `_quality_review.md` as `skipped` or `rejected` with reason. (≤ 4 cities may legitimately fail — no usable source or RMSE too high.)
+2. REST cities: `confidence: 'rest_api'`, polygon count plausible vs city area.
+3. PDF cities: every Feature has `transform_residual_ft ≤ 100` and `n_control_points ≥ 4`.
+4. `gp_taxonomy.yaml` normalizes all per-city `gp_zone_code` values into the shared `gp_zone_normalized` set. Taxonomy distinct from current zoning taxonomy (`zoning_normalizer.yaml` from 13b-5).
+5. `_quality_review.md` has 5 parcel spot-checks per delivered city.
+6. Total LLM cost ≤ $15. Checkpoint with user if projection exceeds $15 mid-run.
+7. **Negative test** (verify in 18b-3 after join): 3 R-1 parcels with confirmed "future commercial" GP designation produce a non-zero spread signal — mechanical proof the thesis data flow works.
+
+### Out of scope (deferred to Phase 18b-3)
+
+D1 schema migration (`0006_gp_zoning.sql`), STRtree point-in-polygon join, scoring re-run with `spread_score` dimension, PMTiles re-bake. Keeping 18b-2 scoped to "produce trustworthy GeoJSON" prevents scope creep.
+
+### Manus kickoff prompt (18b-2a)
+
+````
+Wasatch Intel — Phase 18b-2a: Future land use REST FLU extraction.
+
+Repo: github.com/camsrigby-hash/tooele-land-intel
+Branch: phase-18b-2a-rest-flu (create from main)
+
+Goal: For each city below, verify whether a public ArcGIS FeatureServer / MapServer exposes a "future land use" or "general plan" layer (NOT "current zoning" — that is handled by 18b-1 running in parallel). If yes, query the layer, transform features to EPSG:4326, and write to data/zoning/future/<city_slug>_gp.geojson.
+
+Cities to verify (in priority order):
+- South Jordan: gis.sjc.utah.gov/sjcmaps/rest/services/CarteTEST/CGTEST_LANDBASE/FeatureServer — FUTURE_LAND_USE_15 layer (already confirmed; extract it)
+- Lehi: start at engagelehi.org/general-plan-update/places/future-land-use-map (find ArcGIS source URL in page source or network traffic)
+- Eagle Mountain: eaglemountain.gov/government/engineering-mapping/ + Engage GSBS future land use story map
+- Saratoga Springs: saratogasprings-ut.gov/210/MappingGIS
+- Herriman: herriman.gov/gis
+- Draper: gis.hlplanning.com/server/rest/services
+- American Fork: americanfork.gov/841/Mapping-GIS (GP FLU map, NOT the current-zoning PDF)
+- Spanish Fork: suvgis.spanishfork.org + spanishfork.gov/departments/public_works/download_map_data.php
+- Tooele City: arcgis.com webapp ea1fc0fb757a454cae04dd1c36403c60 — check backing services for a distinct future land use layer (not just current zoning)
+
+Output schema per Feature (REQUIRED properties):
+city_slug, city_name, gp_zone_code, gp_zone_description, jurisdiction, source_rest_url,
+extraction_method='arcgis_rest', confidence='rest_api'
+
+For each city: write a one-paragraph entry in data/zoning/future/_rest_inventory.md: what URL was checked, whether a FLU REST layer was found, the layer name/endpoint, and any issues. Cities WITHOUT a FLU REST layer: list at bottom of _rest_inventory.md as "PDF path — CC will handle in 18b-2b/c."
+
+Cost: $0 LLM (REST only). No Anthropic API calls needed for extraction. One optional normalization call at the end if zone code mapping is unclear.
+
+On completion: commit all GeoJSONs + _rest_inventory.md, push to branch, write handoff at /tmp/phase18b_2a_manus_handoff.md with: cities completed, feature counts per city, cities going to PDF path, total cost.
+````
+
+opusplan kickoff prompt (18b-2b), CC Sonnet prompts (18b-2c, 18b-2d), and CC kickoff (18b-3) will be drafted at session start when those sub-phases activate.
+
+### Disposition of `origin/phase-18b-zoning-extraction`
+
+Discarded. The 4 GeoJSONs from the first Manus attempt (grantsville, lehi, american_fork, spanish_fork) are unanchored hallucinations (`confidence: 0.4`, 5-coordinate bounding boxes approximated from city geography with no ground-truth anchor). Extraction log and taxonomy proposal archived in `docs/MEMORY_ARCHIVE.md`. Remote branch deleted.
+
+---
+
+## Phase 18b-3 — 18b integration: D1 + scoring + PMTiles (downstream)
+
+**Tool**: CC Sonnet · **Depends on**: Phase 18b-1 + 18b-2 shipped (GeoJSONs exist for current zoning + future land use)
+
+**Goal**: Hydrate the 18b GeoJSON outputs into D1, compute the rezone-flip spread signal, and re-bake PMTiles so the map reflects real zoning + GP data.
+
+**Scope**:
+1. D1 schema migration `0006_gp_zoning.sql`: add `zoning_class`, `zoning_source`, `gp_zone_code`, `gp_zone_normalized`, `gp_confidence`, `gp_residual_ft` to `parcel_records`.
+2. STRtree point-in-polygon join (same pattern as 13b-6b ACS join): parcel centroid → current zoning polygon (18b-1); parcel centroid → GP polygon (18b-2). Write results to D1.
+3. Scoring re-run: recalculate `zoning_score` with real zone classes; compute `spread_score` = mismatch intensity between `zoning_class_normalized` and `gp_zone_normalized`.
+4. PMTiles re-bake: bake `zoning_class`, `gp_zone_normalized`, `spread_score` into tile features. Trigger `build_parcels_pmtiles.yml workflow_dispatch`.
+5. Verify in production: 10-parcel visual spot-check. Confirm formerly-noisy B1 parcels have shifted score distribution.
+
+**Completion**: update PROMPT_PLAYBOOK_ADDENDUM.md, PROJECT_STATE.md PHASE_LOG, PROJECT_DIRECTION.md rows 18b-1/18b-2/18b-3 → Shipped. CURRENT STATE → Phase 16 (or next per user direction). Observe ~2 weeks before Phase 15 resume decision.
 
 ---
 

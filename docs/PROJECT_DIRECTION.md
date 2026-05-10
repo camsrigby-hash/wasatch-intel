@@ -47,7 +47,10 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
 | 18 | Site plan PDF vision (Claude vision reads agenda exhibit PDFs) | Pending | — | Structured extraction first (80% value), pixel overlay second |
-| **18b** | **Zoning PDF vision (Opus reads city zoning PDFs → GeoJSON)** | **Next** | May 10 2026 | Active. Replaces prop_class fallback from 13b-5 with real zoning. Opus reads city zoning PDFs, produces GeoJSON. ≤$15 one-time. Highest single-action improvement to scoring foundation per SD-14. |
+| **18b** | **Zoning PDF vision — SPLIT into 18b-1 / 18b-2 / 18b-3 (see SD-15)** | **Active** | May 10 2026 | Original single-shot Opus PDF attempt discarded (unanchored hallucinations). Split into REST current-zoning track + georeferenced GP future-land-use track + integration closeout. |
+| 18b-1 | Current zoning via ArcGIS REST | Active | May 10 2026 | Replaces prop_class fallback. Manus queries FeatureServer FLU layers for ~9 REST-candidate cities. Branch: phase-18b-1-current-zoning. |
+| 18b-2 | Future land use / general plan via georeferenced vision | Active | May 10 2026 | Higher-value half of 18b split. Control-point affine transform anchors Opus polygon extraction to real geography. ≤$15 LLM. See SD-15. |
+| 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | Pending | — | After 18b-1 + 18b-2 ship. Adds gp_zone_normalized + spread_score dimension; re-bakes PMTiles. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
 | 21 | PMN audio mp3 transcription pipeline (Whisper or Claude API) | Pending | — | Surfaces what was *said* beyond agenda text |
 
@@ -73,9 +76,14 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 
 ## What's Active Right Now
 
-**Phase 18b ACTIVE (May 10, 2026).** Zoning PDF vision: Opus reads city zoning PDFs for the B1 jurisdictions that used `prop_class` as a fallback in Phase 13b-5. Output is one GeoJSON per jurisdiction in `tooele-land-intel/data/zoning/`. CC then updates D1, re-runs scoring, and re-bakes PMTiles. This is the highest single-action improvement to scoring quality — developed parcels and major-highway parcels are incorrectly surfacing as high-score because `prop_class` is a land-use proxy, not a zoning classification.
+**Phase 18b SPLIT — Two parallel tracks ACTIVE (May 10, 2026).** See SD-15 for full rationale.
 
-**Phase 15 PAUSED (May 10, 2026).** 15a scaffolding shipped but CRE platforms blocked and county recorder output was UGRC assessor fallback. See SD-14 for full rationale and resume-time data source candidates.
+- **Phase 18b-1 (current zoning via ArcGIS REST)**: Manus queries FeatureServer zoning layers for the ~9 cities whose official zoning source is an ArcGIS web app. Replaces prop_class fallback with real zone classifications. Branch: `phase-18b-1-current-zoning`.
+- **Phase 18b-2 (future land use / general plan, georeferenced)**: Higher-value half of the split. Manus 18b-2a verifies REST FLU layers concurrently; opusplan 18b-2b builds and validates the georeferenced PDF pipeline on Erda; CC Sonnet 18b-2c rolls out to remaining PDF cities. Produces `data/zoning/future/<city>_gp.geojson` with control-point-anchored polygons (RMSE ≤100 ft). Branch: `phase-18b-2a-rest-flu` → `phase-18b-2b-pipeline-prototype`.
+
+The spread between 18b-1 (current entitlement) and 18b-2 (future planned use) is the core rezone-flip signal — neither dataset alone is sufficient.
+
+**Phase 15 PAUSED (May 10, 2026).** 15a scaffolding shipped but CRE platforms blocked and county recorder output was UGRC assessor fallback. See SD-14 for full rationale and resume-time data source candidates. Resume after 18b-1 + 18b-2 + ~2 weeks clean-score observation.
 
 ---
 
@@ -184,6 +192,55 @@ Resume-time data source candidates (evaluate when Phase 15 reactivates):
 Manus scripts (scrape_listings.py, scrape_comps.py) and workflow YAML remain in
 tooele-land-intel as reusable scaffolding for resume.
 
+### SD-15 — Phase 18b split: current zoning (18b-1) vs. future land use (18b-2) (May 10, 2026)
+
+Manus's first attempt at Phase 18b (single-shot Opus PDF vision for current zoning) produced
+unanchored hallucinated polygons. Verified against `tooele-land-intel/origin/phase-18b-zoning-extraction`:
+4 of 13 cities (Grantsville, Lehi, American Fork, Spanish Fork) got polygons; all had
+`confidence: 0.4`, `extraction_quality: 'low'`, 5-coordinate bounding boxes approximated from
+"city name + named roads." Sample: American Fork RA-1 polygon = `[[-111.82, 40.405], ...]`, 5 coords.
+The other 9 cities were skipped because their official sources were interactive ArcGIS web apps.
+
+Root cause: Opus vision was fed PDF pages with no georeferencing signal. The model approximated
+coordinates from "known geography" — no ground-truth anchor existed.
+
+Split decision:
+
+- **Phase 18b-1 (CURRENT zoning)** — Extract via ArcGIS REST endpoints. The 9 cities Manus skipped
+  are the REST candidates. Standard FeatureServer query pattern from Phase 13b-5. No LLM calls.
+  Tool: Manus. Output: `data/zoning/current/<city_slug>_zoning.geojson`.
+
+- **Phase 18b-2 (FUTURE land use / general plan)** — Extract via georeferenced vision pipeline:
+  PDF → pdf2image (300 DPI) → Opus identifies labeled street intersections in pixel space →
+  resolve to lat/lng via OSM/UGRC → fit 6-parameter affine transform (numpy.linalg.lstsq) →
+  project polygons drawn in pixel space into EPSG:4326. Reject any city where RMSE > 100 ft.
+  Tool: Manus 18b-2a (REST FLU discovery) + opusplan 18b-2b (pipeline prototype on Erda) +
+  CC Sonnet 18b-2c (batch rollout). Output: `data/zoning/future/<city_slug>_gp.geojson`
+  with `confidence: 'anchored_approximation'`, `transform_residual_ft`, `n_control_points`.
+
+- **Phase 18b-3 (integration)** — After 18b-1 + 18b-2 ship: D1 migration 0006_gp_zoning.sql,
+  STRtree join, scoring re-run with new `spread_score` dimension, PMTiles re-bake. CC Sonnet.
+
+Why the split matters for the rezone-flip thesis: the product surfaces parcels where current
+zoning entitlement (18b-1) diverges from the GP's planned use (18b-2). A parcel zoned R-1-21
+today + "future commercial" in the GP is the exact rezone-flip signal. Both data points are
+required; neither alone is sufficient. Future land use (18b-2) is the higher-value half because
+it is the leading indicator of rezoning pressure. Quality is non-negotiable — hallucinated polygons
+actively mislead the scoring engine and degrade trust in the spread signal.
+
+Cost ceiling: $15 for 18b-2 LLM (estimated actual ~$6–8). Checkpoint if projection exceeds $15.
+
+Acceptance: ≥9 of 13 cities with `_gp.geojson` (≤4 may legitimately fail — no usable PDF source
+or RMSE too high); all failures explicitly documented in `_quality_review.md` with reason.
+
+Disposition of original 18b branch: `origin/phase-18b-zoning-extraction` on tooele-land-intel
+deleted after archiving `_extraction_log.md` + `_taxonomy_proposal.md` to `docs/MEMORY_ARCHIVE.md`.
+The hallucinated GeoJSONs are not mergeable. Extraction log and taxonomy table preserved as research
+evidence — the zone code taxonomy is partially reusable for 18b-2d harmonization work.
+
+Phase 15 sequencing: unchanged from SD-14. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score
+observation.
+
 ---
 
 ## Working Style
@@ -211,6 +268,7 @@ This doc covers strategy and direction. For execution detail, see:
 
 ## Update history (newest first)
 
+- **May 10, 2026** — Phase 18b split into 18b-1 / 18b-2 / 18b-3 (SD-15). Manus first attempt discarded (unanchored hallucinations). 18b-1 = REST current zoning; 18b-2 = georeferenced PDF future land use; 18b-3 = D1 + scoring + tiles integration.
 - **May 10, 2026** — Phase 15 paused (SD-14). Phase 18b activated as next priority (replace prop_class fallback with real zoning via Opus PDF vision).
 - **May 9, 2026** — Phase 14 shipped (vector tile pipeline, MapLibre wiring, click handler, drawer hydration via `tileFeaturesToIntelParcel`). Added SD-13 (push+deploy verification rule). Added Free Tier Limits & Cost Ceiling section. Phase Ledger row 14 → Shipped.
 - **May 9, 2026** — Phase 14-4 fix: added `--remote` to `wrangler r2 object put` in `build_parcels_pmtiles.yml`. SD-10 logged: wrangler 4.86.0+ silently defaults R2 uploads to local Miniflare without `--remote`. Old SD-10 (Phase 14 arch decisions) renumbered to SD-12.
