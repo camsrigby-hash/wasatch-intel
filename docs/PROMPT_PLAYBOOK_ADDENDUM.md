@@ -8,9 +8,95 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-09
 
-**Phase 15 NOT_STARTED — CRE listings ingest + spread calc + Deal Heat.**
+**Phase 15b NOT_STARTED.**
 
-Phase 14 (PMTiles + Tippecanoe vector tile pipeline) is COMPLETE as of 2026-05-09. All 6 sub-tasks shipped and verified in browser. See Phase 14 completion notes below.
+Phase 15a (CRE listings + county comps scraper foundation) is COMPLETE as of 2026-05-09. Phase 14 (PMTiles + Tippecanoe vector tile pipeline) is COMPLETE as of 2026-05-09. All 6 Phase 14 sub-tasks shipped and verified in browser. See Phase 15a and Phase 14 completion notes below.
+
+---
+
+### PHASE 15a COMPLETION NOTES (2026-05-09)
+
+Phase 15a shipped as a split implementation. The CRE platform portion is implemented in `tooele-land-intel/scripts/scrape_listings.py` and writes `data/raw/listings_crexi_<YYYY-MM-DD>.csv` plus `data/raw/listings_landcom_<YYYY-MM-DD>.csv`. LoopNet remains explicitly excluded. The county comps portion is implemented in `tooele-land-intel/scripts/scrape_comps.py` and writes one `data/raw/comps_recorder_<county>_<YYYY-MM-DD>.csv` per county for Tooele, Salt Lake, Utah, Davis, Weber, Wasatch, and Box Elder.
+
+The start-of-run scope assessment decomposed Phase 15a into `15a-1` and `15a-2` because county recorder infrastructure spans seven inconsistent public systems. `15a-1` now contains the active-listing scraper for CREXI and Land.com with per-source failure isolation. `15a-2` now contains the per-county recorder adapter shell plus a transparent assessor/LIR fallback so weekly runs always emit per-county comp rows while county-specific deed/sale-price adapters are hardened later.
+
+The 2026-05-09 local run generated the following CSV outputs: `listings_crexi_2026-05-09.csv` (0 rows; CREXI returned Cloudflare challenge/403), `listings_landcom_2026-05-09.csv` (0 rows; Land.com returned 403), `comps_recorder_tooele_2026-05-09.csv` (25 rows), `comps_recorder_salt_lake_2026-05-09.csv` (25 rows), `comps_recorder_utah_2026-05-09.csv` (21 rows), `comps_recorder_davis_2026-05-09.csv` (23 rows), `comps_recorder_weber_2026-05-09.csv` (25 rows), `comps_recorder_wasatch_2026-05-09.csv` (22 rows), and `comps_recorder_box_elder_2026-05-09.csv` (25 rows). The comp source field is intentionally labelled `ugrc_lir_assessor_fallback:<county>` when rows are generated from assessor/LIR data instead of recorder-verified deed consideration.
+
+Key commit in `tooele-land-intel`: `7a538d5` — `feat: add Phase 15a listings and comps scrapers`.
+
+**SD-7 workflow file carve-out:** the workflow file was prepared locally at `.github/workflows/scrape_listings.yml`, but it was not included in the Manus commit because GitHub App tokens without the `workflow` OAuth scope cannot commit workflow files. CC to commit workflow file. Full workflow YAML follows verbatim:
+
+```yaml
+name: Scrape CRE Listings and County Comps
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scrape-listings-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    name: Weekly CRE listings + county comps scrape
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run CRE platform listing scraper
+        run: |
+          python scripts/scrape_listings.py --out-dir data/raw --max-pages 8
+
+      - name: Run county recorder comps scraper
+        run: |
+          python scripts/scrape_comps.py --out-dir data/raw --raw-dir data/raw --limit-per-county 25
+
+      - name: Print scrape summary
+        run: |
+          set -euo pipefail
+          today="$(date -u +%F)"
+          echo "Scrape summary for ${today}"
+          for file in data/raw/listings_*_${today}.csv data/raw/comps_recorder_*_${today}.csv; do
+            if [ -f "$file" ]; then
+              rows=$(( $(wc -l < "$file") - 1 ))
+              echo "source=$(basename "$file") row_count=${rows} errors=see prior step logs"
+            fi
+          done
+
+      - name: Commit generated CSV outputs
+        run: |
+          set -euo pipefail
+          today="$(date -u +%F)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/raw/listings_*_${today}.csv data/raw/comps_recorder_*_${today}.csv
+          if git diff --cached --quiet; then
+            echo "No scrape output changes to commit."
+            exit 0
+          fi
+          git commit -m "data: weekly listings and comps scrape ${today}"
+          git push origin HEAD:main
+```
 
 ---
 
