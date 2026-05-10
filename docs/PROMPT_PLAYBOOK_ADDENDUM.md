@@ -6,11 +6,13 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-09
+## CURRENT STATE — 2026-05-10
 
-**Phase 15b NOT_STARTED.**
+**Phase 18b NOT_STARTED — Zoning PDF vision (replace prop_class fallback).**
 
-Phase 15a (CRE listings + county comps scraper foundation) is COMPLETE as of 2026-05-09. Phase 14 (PMTiles + Tippecanoe vector tile pipeline) is COMPLETE as of 2026-05-09. All 6 Phase 14 sub-tasks shipped and verified in browser. See Phase 15a and Phase 14 completion notes below.
+Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
+
+Phase 14 (vector tiles) and Phase 15a (scraper scaffolding) are COMPLETE. See completion notes below.
 
 ---
 
@@ -792,6 +794,8 @@ inverse "matching but unlisted" surface becomes the highest-value owner-operator
 **LoopNet dropped from scope.** CREXI + Land.com + county recorders only. Revisit Phase 16+ if
 coverage is thin.
 
+> **STATUS: PAUSED as of May 10, 2026.** Phase 15a scaffolding shipped but CRE platforms returned 0 usable rows (CREXI JS-render, Land.com 403 from GHA IPs, county recorder output was UGRC assessor fallback). Resume after Phase 18b ships + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md for full rationale and resume-time data source candidates.
+
 ### Architecture
 
 | Concern | Decision | Rationale |
@@ -1005,6 +1009,64 @@ On completion: docs/PROMPT_PLAYBOOK_ADDENDUM.md updated, Phase 18 logged, CURREN
 
 ---
 
+## Phase 18b — Zoning PDF vision (replace prop_class fallback)
+
+**Tool**: Manus (PDF retrieval + Opus batch extraction) + Claude Code Sonnet (D1 update + scoring re-run + tile re-bake) · **Model**: `claude-opus-4-7` via Anthropic Batch API (Manus); `/model sonnet` (CC) · **Est. LLM cost**: ≤$15 one-time (Opus batch PDFs, tracked in `cron_runs`) · **Depends on**: Phase 13b-5 complete (prop_class fallback live), Phase 14 complete (PMTiles live)
+
+**Goal**: Replace the `prop_class`-based zoning fallback from Phase 13b-5 with real zoning classifications extracted from official city zoning PDFs. The fallback caused developed parcels and major-highway parcels to surface incorrectly at the top of the score distribution because `prop_class` is a land-use proxy, not a zoning classification.
+
+**Scope**: B1 jurisdictions — those that used the `prop_class` fallback in 13b-5. Read `docs/sub-tasks/13b-5_b1_fallback_list.md` first to enumerate jurisdictions before fetching any PDFs.
+
+**Approach**:
+1. **Manus**: For each B1 jurisdiction, locate the city's official zoning map PDF (city website or UGRC). Download. Submit to Anthropic Batch API with Claude Opus (claude-opus-4-7) vision. Prompt: extract parcel-level zoning classifications as GeoJSON FeatureCollection (one Feature per polygon: `zone_code`, `zone_description`, `jurisdiction`). Output: `tooele-land-intel/data/zoning/<jurisdiction>_zoning.geojson`. Commit + push to tooele-land-intel.
+2. **CC**: STRtree point-in-polygon join (shapely, same pattern as Phase 13b-6b Census ACS join). For each parcel centroid: look up zoning polygon → write `zoning_class` to `parcel_records`. Run scoring re-run for affected parcels. Re-bake PMTiles (trigger build_parcels_pmtiles.yml workflow_dispatch). Verify 10-parcel spot-check in browser (visual check that score distribution has shifted for formerly-noisy B1 jurisdictions).
+
+**Out of scope**: counties without city zoning PDFs (rural unincorporated parcels keep `prop_class` fallback until a future phase provides GIS shapefiles). Phase 15 resume. Any UI changes.
+
+**Cost ceiling**: $15 tracked against Anthropic API usage. If Opus batch cost projection exceeds $15, checkpoint with user before continuing.
+
+**Acceptance**:
+- GeoJSON file exists per B1 jurisdiction in `tooele-land-intel/data/zoning/`
+- 5-parcel spot-check: pick 5 parcels per jurisdiction, verify `zoning_class` matches city zoning map visually
+- D1 `parcel_records.zoning_class` updated for all B1-jurisdiction parcels
+- Scoring re-run complete (zoning_score recalculated for affected rows)
+- PMTiles re-baked and deployed (verify via browser — score color should shift for formerly-noisy parcels)
+- 10-parcel visual verification in production map
+
+### Manus kickoff prompt
+
+````
+Wasatch Intel — Phase 18b: Zoning PDF vision (replace prop_class fallback).
+
+Repo: github.com/camsrigby-hash/tooele-land-intel
+Reference: docs/sub-tasks/13b-5_b1_fallback_list.md — read this first to enumerate which jurisdictions used prop_class fallback and need real zoning data.
+
+Goal: For each B1 jurisdiction, fetch the official city zoning PDF, extract parcel-level zoning classifications using Claude Opus vision (claude-opus-4-7) via Anthropic Batch API, and output a GeoJSON FeatureCollection per jurisdiction.
+
+Output location: tooele-land-intel/data/zoning/<jurisdiction>_zoning.geojson
+GeoJSON schema per Feature: { "zone_code": "R-1", "zone_description": "Single-Family Residential", "jurisdiction": "lehi_ut" }
+
+Anthropic Batch API instructions:
+- Use the Anthropic Python SDK batch endpoint (anthropic.batches.create)
+- Model: claude-opus-4-7
+- Each request: upload PDF page(s) as base64 image, prompt for structured zone polygon extraction
+- Cost ceiling: $15 total. If projected cost exceeds this, checkpoint before continuing.
+- Track batch IDs and costs in a run log committed to tooele-land-intel/data/zoning/batch_run_log.json
+
+STRtree join (for CC handoff): CC will do the spatial join against parcel centroids. Your deliverable is correct GeoJSON per jurisdiction with accurate polygon geometry. Do not attempt the join yourself.
+
+On completion:
+1. Commit all GeoJSON outputs + batch_run_log.json to tooele-land-intel/data/zoning/
+2. Push to origin main
+3. Write a handoff note at /tmp/phase18b_manus_handoff.md listing: jurisdictions completed, row counts, batch IDs, any jurisdictions skipped (no PDF found), final cost
+
+After Manus handoff: CC Sonnet takes over for D1 update + scoring re-run + tile re-bake.
+````
+
+On completion (CC phase): D1 updated, scoring re-run, PMTiles re-baked. Update PROMPT_PLAYBOOK_ADDENDUM.md, update PROJECT_STATE.md PHASE_LOG, update PROJECT_DIRECTION.md Phase 18b row → Shipped. CURRENT STATE → Phase 16 (or next per user direction). Commit + push. Observe ~2 weeks before Phase 15 resume decision.
+
+---
+
 ## Phase 19 — NAIP land cover verification (Tier 2)
 
 **Tool**: **Manus** · **Est. time**: 3–5 days · **Est. LLM cost**: ~$0
@@ -1113,6 +1175,7 @@ On completion: commit a docs update to wasatch-intel/docs/PROMPT_PLAYBOOK_ADDEND
 | 16 | Manus | n/a | Per-county adapters, integration tail |
 | 17 | Claude Code | sonnet | Doc generation + form wiring |
 | 18 | Claude Code | **opus** | Vision quality + prompt precision matter |
+| 18b | Manus + CC | opus (Manus) / sonnet (CC) | Opus batch PDF vision (Manus); D1 update + scoring + tile re-bake (CC) |
 | 19 | Manus | n/a | Python rasterio compute |
 | 20 | Any | sonnet (or hand-edit) | Pure config |
 | 21 | Manus | n/a | Audio processing |

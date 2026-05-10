@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-09
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 14 COMPLETE; Phase 15 decomposed
-**Active phase:** Phase 15 — CRE Listings Ingest + Spread Calc + Deal Heat. 15a dispatched to Manus (CREXI + Land.com + county recorders; build from scratch). 15b–15e queued for CC Sonnet.
+**Last updated:** 2026-05-10
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 15 PAUSED; Phase 18b activated
+**Active phase:** Phase 18b — Zoning PDF vision (Opus reads city zoning PDFs → real zoning GeoJSON → D1 update → scoring re-run → tile re-bake). Replaces prop_class fallback from 13b-5. See SD-14 in PROJECT_DIRECTION.md.
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -1096,6 +1096,14 @@ Phase 14 (PMTiles + Tippecanoe vector tile pipeline) COMPLETE. All 6 sub-tasks s
 ### 2026-05-09 — Phase 15 IN-PROGRESS (decomposition) — Claude Code (Sonnet 4.6)
 
 Phase 15 decomposed into 5 sub-phases (15a–15e). Amendment written and committed to `PROMPT_PLAYBOOK_ADDENDUM.md`. Sub-phase brief added to `PROJECT_DIRECTION.md`. 15a (CRE scraper — CREXI, Land.com, 7-county recorders; build from scratch) dispatched to Manus. 15b–15e (D1 ingest + reverse-geocode, spread calc, UI, off-market targets) queued for CC Sonnet sessions. LoopNet removed from scope. Stale `tli-full-spec.md` references removed from all docs (file never existed in either repo; was a carry-forward from early project setup notes).
+
+### 2026-05-10 — Phase 15 PAUSED — Claude Code (Sonnet 4.6)
+
+Phase 15a scaffolding complete (commits `aa3ca00` wasatch-intel + `00c9869` tooele-land-intel workflow file). GHA run #25617659055: CREXI returned 0 rows (JS-rendered SPA — requests/BeautifulSoup gets empty HTML shell), Land.com returned 403 Forbidden from GHA Azure IPs (CoStar-owned, hard IP-reputation block), county recorder output was `ugrc_lir_assessor_fallback` — not real arm's-length transaction data. Phase 15 paused per SD-14. Manus scripts (`scrape_listings.py`, `scrape_comps.py`) and workflow YAML remain in tooele-land-intel as scaffolding for resume.
+
+### 2026-05-10 — Phase 18b ACTIVE — Claude Code (Sonnet 4.6)
+
+Phase 18b activated as next priority: Opus vision reads city zoning PDFs for B1 jurisdictions (those that used `prop_class` fallback in 13b-5) → GeoJSON per jurisdiction → CC updates D1, re-runs scoring, re-bakes PMTiles. Highest single-action improvement to scoring quality. Cost ceiling $15. SD-14 logged. Four-doc update committed (PROMPT_PLAYBOOK_ADDENDUM.md, PROJECT_DIRECTION.md, PROJECT_STATE.md, Phase 18b brief in addendum).
 
 ---
 

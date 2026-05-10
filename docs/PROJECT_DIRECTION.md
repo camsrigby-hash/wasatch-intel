@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 9, 2026 (Phase 14 shipped; Phase 15 pending)
+**Last updated**: May 10, 2026 (Phase 15 paused; Phase 18b activated)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -43,11 +43,11 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 13b-7 | Commute corridor scoring (proxy method) | Shipped | May 8 2026 | 98.52% coverage. All rows tagged `commute_corridor_method='proxy'` for future WFRC swap |
 | 13b-8 | Vacancy classification | Shipped | May 8 2026 | UGRC LIR cascade (vacant/partial/developed/unknown) |
 | **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Shipped** | May 9 2026 | All 6 sub-tasks complete. 947k parcels render on map, profile recolor via paint expression, drawer opens on tile parcel click (tileFeaturesToIntelParcel). 3 bugs found+fixed in 14-6 (camera-reset ×2, drawer ×1). See SD-12, SD-13 |
-| **15** | **CRE listings ingest + spread calc + Deal Heat** | **In-progress** | May 9 2026 | 15a (CREXI+Land.com+recorders) dispatched to Manus; 15b–15e queued for CC Sonnet. LoopNet dropped. Sub-phase decomposition in PROMPT_PLAYBOOK_ADDENDUM.md |
+| **15** | **CRE listings ingest + spread calc + Deal Heat** | **Paused** | May 10 2026 | 15a scaffolding shipped (commits aa3ca00 + 00c9869). CRE platforms blocked: CREXI JS-render returns 0 rows, Land.com 403 from GHA IPs. County recorder output was UGRC assessor fallback, not real transactions. Paused per SD-14. Resume after Phase 18b ships. |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
 | 18 | Site plan PDF vision (Claude vision reads agenda exhibit PDFs) | Pending | — | Structured extraction first (80% value), pixel overlay second |
-| 18b | Zoning PDF vision (Opus reads city zoning PDFs → GeoJSON) | Pending | — | One-time, $5–15. Replaces prop_class fallback in 13b-5 for B1 jurisdictions |
+| **18b** | **Zoning PDF vision (Opus reads city zoning PDFs → GeoJSON)** | **Next** | May 10 2026 | Active. Replaces prop_class fallback from 13b-5 with real zoning. Opus reads city zoning PDFs, produces GeoJSON. ≤$15 one-time. Highest single-action improvement to scoring foundation per SD-14. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
 | 21 | PMN audio mp3 transcription pipeline (Whisper or Claude API) | Pending | — | Surfaces what was *said* beyond agenda text |
 
@@ -73,9 +73,9 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 
 ## What's Active Right Now
 
-**Phase 14 SHIPPED (May 9, 2026).** 947,863 parcels render on the map as colored vector tiles, profile switching recolors via paint expression, ParcelDetailPanel opens on tile parcel click with baked score data.
+**Phase 18b ACTIVE (May 10, 2026).** Zoning PDF vision: Opus reads city zoning PDFs for the B1 jurisdictions that used `prop_class` as a fallback in Phase 13b-5. Output is one GeoJSON per jurisdiction in `tooele-land-intel/data/zoning/`. CC then updates D1, re-runs scoring, and re-bakes PMTiles. This is the highest single-action improvement to scoring quality — developed parcels and major-highway parcels are incorrectly surfacing as high-score because `prop_class` is a land-use proxy, not a zoning classification.
 
-**User's standing principle (from Phase 10 graduation)**: USE the tool for several weeks before firing the next phase. Phase 13b deferred this principle because data ingestion was a hard prerequisite for any meaningful use. Phase 14 is now shipped — this principle reactivates. Pause before Phase 15. Observe real usage patterns before committing Phase 15 scope.
+**Phase 15 PAUSED (May 10, 2026).** 15a scaffolding shipped but CRE platforms blocked and county recorder output was UGRC assessor fallback. See SD-14 for full rationale and resume-time data source candidates.
 
 ---
 
@@ -149,6 +149,41 @@ Decisions for the PMTiles + Tippecanoe pipeline, confirmed at 14-1 kickoff:
 5. **Sub-task split**: 6 sub-tasks (14-1..14-6) mirroring the 13b decomposition pattern. Each is one CC session.
 6. **Scope reassignment**: the previous "Frontend ↔ API wiring + legacy cleanup" Phase 14 (pre-SD-2) is folded into Phase 16 (pipeline parcel-centric refinement).
 
+### SD-14 — Phase 15 paused; scoring foundation precedes price surface (May 10, 2026)
+
+Phase 15a shipped scraper scaffolding but produced no usable listing data: CREXI returns 0 rows
+(JS-rendered SPA — requests/BeautifulSoup gets empty HTML shell), Land.com returns 403 Forbidden
+from GHA Azure IPs (CoStar-owned, hard IP-reputation block). "County recorder" comps were
+ugrc_lir_assessor_fallback output, not real arm's-length transaction data.
+
+Deeper issue: building a price surface (spread calc, AVM proxy) on top of noisy parcel scoring
+compounds error. 13b-5 used prop_class as a zoning fallback — this puts developed parcels and
+major-highway parcels at the top of the score distribution incorrectly. Phase 18b (Opus reads
+city zoning PDFs → real zoning GeoJSON) is the highest single-action fix to scoring quality.
+
+Decision: pause Phase 15 until (1) Phase 18b ships real zoning data, (2) tool is in clean usage
+for ~2 weeks to verify scores are stable, then reassess Phase 15 resume vs Phase 16 vs Phase 19.
+
+"Comps" repositioned when Phase 15 resumes: listing-match feature → price-surface AVM proxy
+(interpolate $/sqft across parcel surface from comparable sales within radius). Lower sensitivity
+to match rate, coverage gaps, and ToS exposure than HTML scraping. Cleaner foundation required
+first.
+
+Resume-time data source candidates (evaluate when Phase 15 reactivates):
+- License reactivation → Wasatch CMLS / IDX feeds. Structurally cleanest data path; gives sold
+  comps with real transaction prices, not just asking-price proxies. Cost: CE course + reactivation fee.
+- Brokerage-site reconnaissance. Buildout consolidates ~60% of Utah CRE brokerages
+  (Colliers, Cushman & Wakefield, NAI, Mountain West, Marcus & Millichap, others) under one
+  platform pattern. CBRE and JLL have proprietary platforms requiring separate scrapers. Recon
+  task before any scraper build: catalog which platform each brokerage uses, count active
+  listings per site, test which sites return 200 vs 403 from GHA Azure IPs.
+- Apify CREXI actor as paid fallback (~$1.50/1k results, ~$20–80/mo realistic). Transfers ToS
+  exposure to Apify; not eliminated. Lowest-effort path if recon shows brokerage scraping is
+  high-cost.
+
+Manus scripts (scrape_listings.py, scrape_comps.py) and workflow YAML remain in
+tooele-land-intel as reusable scaffolding for resume.
+
 ---
 
 ## Working Style
@@ -176,6 +211,7 @@ This doc covers strategy and direction. For execution detail, see:
 
 ## Update history (newest first)
 
+- **May 10, 2026** — Phase 15 paused (SD-14). Phase 18b activated as next priority (replace prop_class fallback with real zoning via Opus PDF vision).
 - **May 9, 2026** — Phase 14 shipped (vector tile pipeline, MapLibre wiring, click handler, drawer hydration via `tileFeaturesToIntelParcel`). Added SD-13 (push+deploy verification rule). Added Free Tier Limits & Cost Ceiling section. Phase Ledger row 14 → Shipped.
 - **May 9, 2026** — Phase 14-4 fix: added `--remote` to `wrangler r2 object put` in `build_parcels_pmtiles.yml`. SD-10 logged: wrangler 4.86.0+ silently defaults R2 uploads to local Miniflare without `--remote`. Old SD-10 (Phase 14 arch decisions) renumbered to SD-12.
 - **May 8, 2026** — Phase 14-2 shipped: R2 bucket `wasatch-intel-tiles`, `TILES` binding, `/tiles/:filename` Worker route with full HTTP Range support, all smoke tests passed. Worker version `f004e12c`. SD-11 logged: vite-plugin pre-build required before `wrangler deploy`.
