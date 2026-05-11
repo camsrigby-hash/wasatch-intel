@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 10, 2026 (Phase 15 paused; Phase 18b activated)
+**Last updated**: May 11, 2026 (Phase 18b-1 + 18b-2a shipped; 18b-2b active)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -48,8 +48,11 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
 | 18 | Site plan PDF vision (Claude vision reads agenda exhibit PDFs) | Pending | — | Structured extraction first (80% value), pixel overlay second |
 | **18b** | **Zoning PDF vision — SPLIT into 18b-1 / 18b-2 / 18b-3 (see SD-15)** | **Active** | May 10 2026 | Original single-shot Opus PDF attempt discarded (unanchored hallucinations). Split into REST current-zoning track + georeferenced GP future-land-use track + integration closeout. |
-| 18b-1 | Current zoning via ArcGIS REST | Active | May 10 2026 | Replaces prop_class fallback. Manus queries FeatureServer FLU layers for ~9 REST-candidate cities. Branch: phase-18b-1-current-zoning. |
-| 18b-2 | Future land use / general plan via georeferenced vision | Active | May 10 2026 | Higher-value half of 18b split. Control-point affine transform anchors Opus polygon extraction to real geography. ≤$15 LLM. See SD-15. |
+| 18b-1 | Current zoning via ArcGIS REST | **Shipped** | May 11 2026 | 13-city GeoJSONs merged to main. Lehi 41.8% Other/Unknown flagged in _taxonomy_review_needed.md — normalization fix needed before 18b-3 D1 load. |
+| 18b-2a | Future land use REST FLU extraction (Manus) | **Shipped** | May 11 2026 | 6 cities via REST (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). NLS source authority caveat flagged. 7 cities → PDF path (18b-2b/c). |
+| 18b-2b | GP PDF pipeline prototype on Erda (opusplan) | **Active** | May 11 2026 | opusplan builds gp_pdf_extract.py; validates end-to-end on Erda. Branch: phase-18b-2b-pipeline-prototype. |
+| 18b-2c | GP PDF rollout to remaining 7 cities (CC Sonnet) | Pending | — | After 18b-2b validated. Batch API rollout. See data/zoning/future/_18b-2bc_scope.md for city list and source URLs. |
+| 18b-2d | Taxonomy harmonization + quality review (CC Sonnet) | Pending | — | gp_taxonomy.yaml, spot-checks, _quality_review.md. |
 | 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | Pending | — | After 18b-1 + 18b-2 ship. Adds gp_zone_normalized + spread_score dimension; re-bakes PMTiles. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
 | 21 | PMN audio mp3 transcription pipeline (Whisper or Claude API) | Pending | — | Surfaces what was *said* beyond agenda text |
@@ -76,10 +79,11 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 
 ## What's Active Right Now
 
-**Phase 18b SPLIT — Two parallel tracks ACTIVE (May 10, 2026).** See SD-15 for full rationale.
+**Phase 18b-2b ACTIVE (May 11, 2026).** 18b-1 and 18b-2a shipped; prototype pipeline phase now active.
 
-- **Phase 18b-1 (current zoning via ArcGIS REST)**: Manus queries FeatureServer zoning layers for the ~9 cities whose official zoning source is an ArcGIS web app. Replaces prop_class fallback with real zone classifications. Branch: `phase-18b-1-current-zoning`.
-- **Phase 18b-2 (future land use / general plan, georeferenced)**: Higher-value half of the split. Manus 18b-2a verifies REST FLU layers concurrently; opusplan 18b-2b builds and validates the georeferenced PDF pipeline on Erda; CC Sonnet 18b-2c rolls out to remaining PDF cities. Produces `data/zoning/future/<city>_gp.geojson` with control-point-anchored polygons (RMSE ≤100 ft). Branch: `phase-18b-2a-rest-flu` → `phase-18b-2b-pipeline-prototype`.
+- **Phase 18b-1 SHIPPED**: 13-city current zoning GeoJSONs on main. Lehi normalization gap (41.8% Other/Unknown) flagged in `_taxonomy_review_needed.md` — fix before 18b-3 D1 load.
+- **Phase 18b-2a SHIPPED**: 6-city GP FLU GeoJSONs on main (REST path). NLS source authority caveat documented in `_source_authority_caveats.md`. 7 cities on PDF path — see `_18b-2bc_scope.md`.
+- **Phase 18b-2b ACTIVE**: opusplan builds `scripts/gp_pdf_extract.py` and validates georeferenced PDF extraction end-to-end on Erda. Target: ≥4 control points, RMSE ≤100 ft, 5/5 visual spot-checks. Branch: `phase-18b-2b-pipeline-prototype`. See PROMPT_PLAYBOOK_ADDENDUM.md Phase 18b-2 section for kickoff prompt.
 
 The spread between 18b-1 (current entitlement) and 18b-2 (future planned use) is the core rezone-flip signal — neither dataset alone is sufficient.
 

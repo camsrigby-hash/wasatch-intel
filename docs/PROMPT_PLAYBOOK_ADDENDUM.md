@@ -6,12 +6,13 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-10
+## CURRENT STATE — 2026-05-11
 
-**Phase 18b SPLIT — Two parallel active tracks (see SD-15 in PROJECT_DIRECTION.md).**
+**Phase 18b-2b ACTIVE — opusplan prototype on Erda.**
 
-- **18b-1 (CURRENT zoning via ArcGIS REST)** — NOT_STARTED. Tool: Manus. Branch: `phase-18b-1-current-zoning`. Read the Phase 18b-1 section below for the kickoff prompt.
-- **18b-2 (FUTURE land use / general plan, georeferenced)** — NOT_STARTED. 18b-2a: Manus REST-FLU concurrent with 18b-1. 18b-2b: opusplan prototype on Erda. 18b-2c: CC Sonnet batch rollout. 18b-2d: CC Sonnet taxonomy + spot-check. Read the Phase 18b-2 section below.
+- **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
+- **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
+- **18b-2b** — ACTIVE. opusplan builds and validates the georeferenced PDF pipeline on Erda. Read the Phase 18b-2 → Sub-phases → 18b-2b section below for the kickoff prompt. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -1259,7 +1260,140 @@ Cost: $0 LLM (REST only). No Anthropic API calls needed for extraction. One opti
 On completion: commit all GeoJSONs + _rest_inventory.md, push to branch, write handoff at /tmp/phase18b_2a_manus_handoff.md with: cities completed, feature counts per city, cities going to PDF path, total cost.
 ````
 
-opusplan kickoff prompt (18b-2b), CC Sonnet prompts (18b-2c, 18b-2d), and CC kickoff (18b-3) will be drafted at session start when those sub-phases activate.
+### opusplan kickoff prompt (18b-2b) — Erda prototype
+
+````
+Wasatch Intel — Phase 18b-2b: Georeferenced GP FLU extraction pipeline (prototype on Erda).
+
+## Context
+
+Repo: github.com/camsrigby-hash/tooele-land-intel
+Branch: phase-18b-2b-pipeline-prototype (create from main)
+Working dir: tooele-land-intel/
+
+Phase 18b-1 (current zoning, ArcGIS REST) and Phase 18b-2a (GP FLU, ArcGIS REST) are SHIPPED and merged to main. 6 cities have future land use GeoJSONs from REST: South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City. 7 cities need the PDF path — Erda, Grantsville, Bluffdale, Vineyard, Draper, Herriman, Spanish Fork. See data/zoning/future/_18b-2bc_scope.md for the full list and source URLs.
+
+Your task is 18b-2b: build the georeferenced PDF extraction pipeline and validate it end-to-end on Erda. Erda's GP PDF is confirmed at:
+  https://erda.gov/wp-content/uploads/2022/08/Erda-General-Plan_2022-06-23.pdf
+
+## Goal
+
+Produce:
+1. `scripts/gp_pdf_extract.py` — the reusable pipeline (used again in 18b-2c for the other 6 PDF cities)
+2. `data/zoning/future/erda_gp.geojson` — EPSG:4326 GeoJSON of Erda GP FLU polygons
+3. `data/zoning/future/erda_transform_validation.md` — per-control-point residuals + 5 visual spot-checks
+
+## Pipeline specification (implement exactly this 8-stage pipeline)
+
+Stage 1 — PDF rasterization
+  pip install pdf2image pillow anthropic numpy requests shapely
+  pdf2image.convert_from_path(pdf_path, dpi=300, fmt='jpeg')
+  One JPEG per page. Reject pages < 300 KB (likely low-res scan).
+
+Stage 2 — Control point identification (Opus API call #1)
+  Single call per page. Prompt: "This is a city general plan map. Identify 6–10 labeled street intersections. For each, return: px_x, px_y (from top-left), street_a, street_b, confidence (high/medium/low). Only return intersections where you can clearly read BOTH street names. Do not guess."
+  Model: claude-opus-4-7. Pass the JPEG as base64 image_url.
+  Expected output schema (JSON array):
+    [{"px_x": 847, "px_y": 523, "street_a": "Main St", "street_b": "Center St", "conf": "high"}, ...]
+  Hard rejection: if <4 high/medium confidence intersections returned, raise ControlPointError.
+
+Stage 3 — Ground-truth lookup
+  For each (street_a, street_b, city_name) tuple:
+    Query OSM Nominatim: https://nominatim.openstreetmap.org/search?q=<street_a>+and+<street_b>+<city_name>+Utah&format=json&limit=1
+    Or UGRC geocoder if UGRC_API_KEY env var is set (already in env from Phase 13b).
+  Accept intersection if resolved lat/lng falls inside city bounding box ± 0.05°.
+  Drop intersections that can't be resolved or land outside bounds.
+  Require ≥4 surviving intersections after dropping. If fewer, raise ControlPointError.
+
+Stage 4 — Affine transform fit
+  6-parameter affine: [lng, lat] = A * [px_x, px_y, 1]^T
+  Solve via numpy.linalg.lstsq([px_x, px_y, 1] per row, [lng, lat] per row).
+  Returns a 2×3 matrix A.
+
+Stage 5 — Validation (RMSE in feet)
+  Reproject each control point through A → predicted (lng, lat).
+  Residual: haversine distance in feet between predicted and ground-truth.
+  RMSE = sqrt(mean(residuals^2)).
+  Accept: RMSE ≤ 100 ft. Flag yellow: 50–100 ft. Reject: > 100 ft (raise TransformError).
+
+Stage 6 — Polygon extraction (Opus API calls #2..N)
+  Zone-by-zone. One Opus call per major zone class.
+  Prompt: "On this GP map, trace all polygons labeled '<zone_code>' or '<zone_description>'. Return ordered (px_x, px_y) vertex lists. Trace only boundaries you can clearly see. Return an array of polygons, each as an ordered list of [px_x, px_y] points."
+  Hard cap: 8 Opus calls per page (covers typical GP with 6–12 zone classes).
+  To identify zone classes: first read the legend (one additional Opus call with prompt "List all zone codes and their descriptions from the legend of this map. Return as JSON array [{code, description}]"). Use legend entries to drive the per-zone extraction calls.
+
+Stage 7 — Polygon projection
+  Apply A to each (px_x, px_y) vertex → (lng, lat).
+  Validate: every projected point must be inside city bounding box ± 1 mile buffer.
+  Drop polygons with any vertex outside bounds — likely misread vertex.
+
+Stage 8 — GeoJSON output
+  Write data/zoning/future/erda_gp.geojson as a FeatureCollection.
+  Per feature properties (all required):
+    city_slug, city_name, gp_zone_code, gp_zone_description, gp_zone_normalized,
+    jurisdiction, source_pdf, source_page_id, extraction_method, confidence,
+    transform_residual_ft, n_control_points, extraction_date (YYYY-MM-DD)
+  extraction_method = "anthropic_vision_claude_opus_4_7_georeferenced"
+  confidence = "anchored_approximation" (RMSE ≤50 ft) or "anchored_approximation_yellow" (50–100 ft)
+
+## Erda-specific details
+
+Erda city bounding box (approximate): lon -112.36 to -112.22, lat 40.58 to 40.65
+Erda is a small incorporated city east of Tooele City. Population ~6,000. Simple zone geometry expected (3–6 GP zone classes). Few major streets: SR-138, 2000 N, 1200 W area.
+
+## gp_zone_normalized for Erda
+
+Map Erda's GP zone codes to these normalized classes (use best judgment from legend descriptions):
+  future_low_density_residential, future_medium_density_residential, future_high_density_residential,
+  future_commercial_general, future_commercial_neighborhood, future_mixed_use,
+  future_industrial_light, future_industrial_heavy, future_public_institutional,
+  future_open_space, future_agriculture, future_planned_community, future_employment_center
+
+## Validation deliverable: erda_transform_validation.md
+
+Write data/zoning/future/erda_transform_validation.md with:
+1. Table: control point # | street_a | street_b | px_x | px_y | ground_truth_lon | ground_truth_lat | predicted_lon | predicted_lat | residual_ft
+2. RMSE overall
+3. 5 visual spot-checks: for each, note the zone polygon name + the approximate lat/lon of one representative vertex + whether it appears to land in the correct zone per the source PDF (manual judgment)
+
+## Key files to read before starting
+
+- data/zoning/future/_18b-2bc_scope.md — 7 PDF cities list
+- data/zoning/future/_rest_inventory.md — 6 REST cities already extracted (don't re-extract)
+- data/zoning/future/_source_authority_caveats.md — caveats from 18b-2a review
+- data/jurisdictions.yaml — canonical city slugs and bounding boxes (if it exists; otherwise use the bbox above)
+
+## API usage
+
+Use the Anthropic Python SDK directly (not Batch API — this is a prototype for iteration speed).
+Store API key from env: ANTHROPIC_API_KEY.
+Log every API call to a local file (call #, model, input_tokens, output_tokens, cost) for budget tracking.
+Estimated cost for Erda: ~$0.50 (1 control point call + 1 legend call + ~5 zone calls).
+
+## Acceptance criteria
+
+1. scripts/gp_pdf_extract.py exists and runs without error on Erda
+2. data/zoning/future/erda_gp.geojson is a valid GeoJSON FeatureCollection, EPSG:4326
+3. ≥4 control points survived ground-truth lookup
+4. RMSE ≤ 100 ft
+5. 5 visual spot-checks in erda_transform_validation.md — all 5 judgment calls "correct" or "acceptable"
+6. Every Feature has all required properties (see Stage 8 above)
+
+## On completion
+
+Commit: data/zoning/future/erda_gp.geojson, data/zoning/future/erda_transform_validation.md, scripts/gp_pdf_extract.py
+Push to phase-18b-2b-pipeline-prototype.
+Write /tmp/phase18b_2b_opusplan_handoff.md with:
+  - RMSE achieved
+  - Number of control points
+  - Number of features extracted
+  - Zone classes found in Erda
+  - Any PDF quality issues observed
+  - Recommended adjustments for 18b-2c rollout (prompt tuning, threshold changes, etc.)
+  - Which of the 6 remaining PDF cities look most/least tractable (based on what you learned from Erda)
+````
+
+CC Sonnet prompts for 18b-2c (batch rollout) and 18b-2d (taxonomy + spot-check) will be drafted at session start when those sub-phases activate. 18b-3 integration (D1 migration + STRtree join + scoring + PMTiles re-bake) prompt likewise deferred — see Phase 18b-3 section below.
 
 ### Disposition of `origin/phase-18b-zoning-extraction`
 
