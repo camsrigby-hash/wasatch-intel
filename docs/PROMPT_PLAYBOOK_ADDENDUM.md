@@ -6,17 +6,45 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-11
+## CURRENT STATE — 2026-05-14
 
-**Phase 18b-2b ACTIVE — opusplan prototype on Erda.**
+**Phase 18b-2c NEXT — batch rollout to remaining PDF cities (Grantsville, Bluffdale, Draper, Herriman, Spanish Fork).**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
-- **18b-2b** — ACTIVE. opusplan builds and validates the georeferenced PDF pipeline on Erda. Read the Phase 18b-2 → Sub-phases → 18b-2b section below for the kickoff prompt. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
+- **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. **Erda source data limitation**: the Erda 2022 GP FLU map is a regional overview (~4664 ft RMSE, parcel-level extraction impossible). Pipeline mechanics verified (all 8 stages ran); Erda marked `gp_data: regional_map_only` in `_quality_review.md`. Blocker for RMSE ≤ 100 ft acceptance: need (a) a production Anthropic API key (not OAuth token) and (b) a city with a parcel-level FLU map. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
+- **18b-2c** — NOT STARTED. Prerequisites: (1) confirm GP PDF URLs for Grantsville, Bluffdale, Draper, Herriman, Spanish Fork and add to `_18b-2bc_scope.md`; (2) obtain production `sk-ant-api03-...` API key for Opus vision calls; (3) pre-screen each PDF to confirm parcel-level map (not regional overview). Use Anthropic Batch API for 50% cost discount. Grantsville recommended as first city.
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
 Phase 14 (vector tiles) and Phase 15a (scraper scaffolding) are COMPLETE. See completion notes below.
+
+---
+
+### PHASE 18b-2b COMPLETION NOTES (2026-05-14)
+
+**Phase 18b-2b shipped structurally; Erda source data insufficient for parcel-level extraction.**
+
+**What was built**: `scripts/gp_pdf_extract.py` — a complete 8-stage georeferenced GP FLU pipeline. Stages: (1) PyMuPDF rasterization (300 DPI); (2) Claude Opus 4 vision CP identification; (3) OSM Nominatim / UGRC ground-truth lookup; (4) 6-parameter affine transform via numpy lstsq; (5) haversine RMSE validation; (6) legend + zone polygon extraction; (7) polygon projection + bbox filtering; (8) GeoJSON output with full metadata. CLI flags: `--city`, `--pdf`, `--out`, `--dpi`, `--api-key`, `--model`, `--rmse-threshold`, `--manual-cps`, `--map-page`, `--verbose`. Manual control points bypass Stages 2–3 for fallback georeferencing.
+
+**Erda result**: RMSE 4664 ft, 0 features. Root cause: the Erda 2022 GP FLU map is a regional context overview spanning ~11 miles — parcel-level georeferencing is physically impossible from this source. All 8 pipeline stages executed without errors. Erda documented in `data/zoning/future/_quality_review.md` and `erda_transform_validation.md`. Marked `gp_data: regional_map_only`.
+
+**Cost**: $0.3212 (9 Haiku calls; Opus was rate-limited by OAuth token sharing with active CC session — use `sk-ant-api03-...` key for production runs).
+
+**Files committed to `phase-18b-2b-pipeline-prototype`**:
+- `scripts/gp_pdf_extract.py` (reusable; ~1360 lines)
+- `requirements.txt` (added pdf2image, pillow, pymupdf, numpy)
+- `data/zoning/future/erda_gp.geojson` (0-feature FeatureCollection with correct metadata)
+- `data/zoning/future/erda_transform_validation.md` (per-CP residuals + root-cause analysis)
+- `data/zoning/future/erda_api_calls.jsonl` (9 API call records)
+- `data/zoning/future/_quality_review.md` (Erda + 5 pending cities)
+
+**Blockers for 18b-2c**:
+1. Production Anthropic API key (`sk-ant-api03-...`) — OAuth token can't run Opus without rate-limit conflicts
+2. GP PDF URLs for Grantsville, Bluffdale, Draper, Herriman, Spanish Fork — must confirm before running
+3. Pre-screen each PDF: reject regional-overview maps before spending Opus tokens
+
+**Recommended 18b-2c start**: Grantsville (most likely to have a parcel-level FLU map; Water Element confirms GP amended Oct 2025).
 
 ---
 

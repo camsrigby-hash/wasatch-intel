@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 11, 2026 (Phase 18b-1 + 18b-2a shipped; 18b-2b active)
+**Last updated**: May 14, 2026 (Phase 18b-2b shipped; 18b-2c next)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -50,8 +50,8 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | **18b** | **Zoning PDF vision — SPLIT into 18b-1 / 18b-2 / 18b-3 (see SD-15)** | **Active** | May 10 2026 | Original single-shot Opus PDF attempt discarded (unanchored hallucinations). Split into REST current-zoning track + georeferenced GP future-land-use track + integration closeout. |
 | 18b-1 | Current zoning via ArcGIS REST | **Shipped** | May 11 2026 | 13-city GeoJSONs merged to main. Lehi 41.8% Other/Unknown flagged in _taxonomy_review_needed.md — normalization fix needed before 18b-3 D1 load. |
 | 18b-2a | Future land use REST FLU extraction (Manus) | **Shipped** | May 11 2026 | 6 cities via REST (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). NLS source authority caveat flagged. 7 cities → PDF path (18b-2b/c). |
-| 18b-2b | GP PDF pipeline prototype on Erda (opusplan) | **Active** | May 11 2026 | opusplan builds gp_pdf_extract.py; validates end-to-end on Erda. Branch: phase-18b-2b-pipeline-prototype. |
-| 18b-2c | GP PDF rollout to remaining 7 cities (CC Sonnet) | Pending | — | After 18b-2b validated. Batch API rollout. See data/zoning/future/_18b-2bc_scope.md for city list and source URLs. |
+| 18b-2b | GP PDF pipeline prototype on Erda (CC Sonnet) | **Shipped** | May 14 2026 | `scripts/gp_pdf_extract.py` built (8 stages, all CLI flags). Erda result: RMSE 4664 ft, 0 features — source map is regional overview, not parcel-level. Pipeline mechanics verified. Erda marked `gp_data: regional_map_only`. Blocker for 18b-2c: production API key + parcel-level PDF for each city. Branch: `phase-18b-2b-pipeline-prototype`. |
+| 18b-2c | GP PDF rollout to remaining 5 cities (CC Sonnet) | **Next** | — | Prerequisites: confirm PDF URLs (Grantsville, Bluffdale, Draper, Herriman, Spanish Fork); obtain `sk-ant-api03-...` key; pre-screen each PDF map for parcel-level detail. Use Batch API (50% discount). Grantsville recommended first. |
 | 18b-2d | Taxonomy harmonization + quality review (CC Sonnet) | Pending | — | gp_taxonomy.yaml, spot-checks, _quality_review.md. |
 | 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | Pending | — | After 18b-1 + 18b-2 ship. Adds gp_zone_normalized + spread_score dimension; re-bakes PMTiles. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
