@@ -6,14 +6,14 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-14
+## CURRENT STATE — 2026-05-16
 
-**Phase 18b-2c NEXT — batch rollout to remaining PDF cities (Grantsville, Bluffdale, Draper, Herriman, Spanish Fork).**
+**Phase 18b-2c IN PROGRESS — Spanish Fork validation run complete; merge/proceed decision pending.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
-- **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. **Erda source data limitation**: the Erda 2022 GP FLU map is a regional overview (~4664 ft RMSE, parcel-level extraction impossible). Pipeline mechanics verified (all 8 stages ran); Erda marked `gp_data: regional_map_only` in `_quality_review.md`. Blocker for RMSE ≤ 100 ft acceptance: need (a) a production Anthropic API key (not OAuth token) and (b) a city with a parcel-level FLU map. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
-- **18b-2c** — NOT STARTED. Prerequisites: (1) confirm GP PDF URLs for Grantsville, Bluffdale, Draper, Herriman, Spanish Fork and add to `_18b-2bc_scope.md`; (2) obtain production `sk-ant-api03-...` API key for Opus vision calls; (3) pre-screen each PDF to confirm parcel-level map (not regional overview). Use Anthropic Batch API for 50% cost discount. Grantsville recommended as first city.
+- **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
+- **18b-2c** — IN PROGRESS. Spanish Fork validation run complete (May 16 2026). **RMSE 38.6 ft — PASS.** Methodology validated on standard 17×11 in tabloid map. Stage 3 Overpass bug documented (adjacent-city regex matching — fix needed before Grantsville/Bluffdale/Draper runs). Output: `data/zoning/future/spanish_fork.geojson` (14 features, 8/12 zones, `confidence: anchored_approximation`). Total cost: $1.85. Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`. **Merge/proceed decision: chat with user.** Remaining cities: Grantsville, Bluffdale, Draper (Herriman already logged with RMSE 1017 ft / large-format issue).
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -45,6 +45,48 @@ Phase 14 (vector tiles) and Phase 15a (scraper scaffolding) are COMPLETE. See co
 3. Pre-screen each PDF: reject regional-overview maps before spending Opus tokens
 
 **Recommended 18b-2c start**: Grantsville (most likely to have a parcel-level FLU map; Water Element confirms GP amended Oct 2025).
+
+---
+
+### PHASE 18b-2c PHASE_LOG — Spanish Fork validation (2026-05-16)
+
+**Status**: Partial — Spanish Fork validation run complete. Merge/proceed decision pending (chat with user).
+
+**Result summary**:
+- PDF: `GeneralPlan_Letter.pdf` (17×11 in tabloid, single page, 1in≈1300 ft scale)
+- Stage 2 auto CPs: 7 found (probe run); bypassed in final run (Stage 3 Overpass bug)
+- Rotation detected: 0.0° (non-rotated affine forced by collinear manual CPs; map likely ≤20° tilt)
+- RMSE: **38.6 ft** — **PASS** (< 100 ft pipeline threshold; << 300 ft report threshold)
+- Features: 14 (8/12 zones extracted; 8-call cap reached; 13/27 polygons dropped by bbox filter)
+- Centroid offset: 1.51 km from Spanish Fork city center
+- Schema v2 fields: all present (`rotation_angle_deg`, `n_control_points`, `transform_residual_ft`, `gp_zone_normalized`, `future_layer_type`, `source_pdf_url`, etc.)
+- Total cost: $1.85 (3 API runs: auto-CP fail $0.10 + probe $0.94 + final manual-CP $0.81)
+- GeoJSON: `tooele-land-intel/data/zoning/future/spanish_fork.geojson`
+
+**Key finding — methodology validated for standard-size maps**:
+Stage 2 pixel identification is accurate and geometrically consistent on a 17×11 in tabloid map
+(Main St column at px_x=2247, Center St row at px_y=1719 — self-consistent grid structure).
+RMSE 38.6 ft confirms pipeline-v2 can achieve ≤100 ft RMSE on standard-format maps.
+Herriman failure (RMSE 1017 ft on 36×36 in large-format) was format-specific, not methodology failure.
+
+**New bug discovered — Stage 3 Overpass over-broad matching (SD-17)**:
+`Main.*St` regex within the city_bbox + 0.05° buffer matches streets from adjacent cities
+(Spanish Fork + Springville + Mapleton share the same Utah grid naming conventions).
+Overpass returns 278–979 shared nodes whose median is geographically valid (within bbox)
+but not at the intersection. Fix: tighten CITY_BBOX_BUFFER_DEG to 0.02° for dense urban areas,
+OR add per-city Overpass name overrides, OR validate node count < 20 as a quality gate.
+Workaround: `--manual-cps` with Nominatim-geocoded addresses.
+
+**Remaining 18b-2c cities**: Grantsville, Bluffdale, Draper. Herriman already logged (RMSE 1017 ft /
+large-format issue; two-pass zoom approach needed per `_pdf_extraction_log.md`). 
+
+**Files on `phase-18b-2-pipeline-v2`** (tooele-land-intel):
+- `data/zoning/future/spanish_fork.geojson` (14 features, schema v2)
+- `data/zoning/future/spanish_fork_gp.geojson` (pipeline native name — identical)
+- `data/zoning/future/spanish_fork_transform_validation.md`
+- `data/zoning/future/spanish_fork_api_calls.jsonl`
+- `data/zoning/future/_pdf_extraction_log.md` (Spanish Fork entry appended)
+- `data/_pdf_cache/spanish_fork/GeneralPlan_Letter.pdf`
 
 ---
 
