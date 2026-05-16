@@ -77,6 +77,10 @@ but not at the intersection. Fix: tighten CITY_BBOX_BUFFER_DEG to 0.02° for den
 OR add per-city Overpass name overrides, OR validate node count < 20 as a quality gate.
 Workaround: `--manual-cps` with Nominatim-geocoded addresses.
 
+**Vineyard — REST path confirmed (2026-05-16 pre-check)**:
+Vineyard has a live public FeatureServer for Future Land Use: `https://services.arcgis.com/QdlehUncXjEmQYtI/arcgis/rest/services/Vineyard_Future_Land_Use_View/FeatureServer/0`.
+36 features, 12 zone types (University, Regional Commercial, Open Space, Town Center, Public Facility, High Density, Neighborhood Center, Low Density, Medium Density, Residential Mixed Use, Vineyard Commerce Center, Low & Medium Density). Total ≈ 3,024 acres — matches city boundary. **Vineyard is NOT a PDF city. Ingest via REST (same method as 18b-1). Write `vineyard_gp.geojson`.** Inventory updated in `tooele-land-intel/data/zoning/future/_rest_inventory.md` and `_18b-2bc_scope.md`.
+
 **Remaining 18b-2c cities**: Grantsville, Bluffdale, Draper. Herriman already logged (RMSE 1017 ft /
 large-format issue; two-pass zoom approach needed per `_pdf_extraction_log.md`). 
 
