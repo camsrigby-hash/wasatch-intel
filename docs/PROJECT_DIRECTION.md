@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 14, 2026 (Phase 18b-2b shipped; 18b-2c next)
+**Last updated**: May 16, 2026 (Phase 18b-2c in progress; Bluffdale REST confirmed; SD-16 + SD-17 appended)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -245,6 +245,12 @@ evidence — the zone code taxonomy is partially reusable for 18b-2d harmonizati
 Phase 15 sequencing: unchanged from SD-14. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score
 observation.
 
+### SD-16 — Herriman deferred, 18b-2c proceeds without it (May 16, 2026)
+Spanish Fork PDF extraction shipped at RMSE 38.6 ft, validating the pipeline-v2 methodology on standard-size maps. Herriman remained at RMSE 1017 ft due to large-format pixel-uncertainty in Claude vision; shipping at that error would tell users wrong zoning. Decision: defer Herriman (flag analogous to Erda's `regional_map_only`), proceed through remaining roster, then evaluate whether tile-refinement two-pass (~45–60 min CC work, documented in `docs/HERRIMAN_FOLLOWUP.md`) is worth the build vs. eye-test acceptance at 1017 ft. Bad data is worse than missing data.
+
+### SD-17 — REST discovery pattern: owner-enumeration after planning-page check (May 16, 2026)
+18b-2a Manus sweep missed Vineyard's and Grantsville's FeatureServers because it only checked planning pages, not ArcGIS Online owner catalogs. New canonical pre-check sequence for any "PDF-assumed" city: (1) probe planning page for embedded Experience apps → if found, query owner's public AGOL items; (2) even if planning page is PDF-only, search AGOL for org owners matching city name (e.g. `gis2_grantsville`, `Justin_JonesCivil` for Vineyard); (3) only after both come up empty, commit to PDF roster. Reduced 18b-2c PDF batch from ~7 cities to 2 (Bluffdale, Draper) without an Opus call.
+
 ---
 
 ## Working Style
@@ -272,6 +278,7 @@ This doc covers strategy and direction. For execution detail, see:
 
 ## Update history (newest first)
 
+- **May 16, 2026** — SD-16 (Herriman deferral) + SD-17 (REST owner-enumeration pattern) appended after Phase 18b-2c Spanish Fork ship. Bluffdale REST pre-check completed (FeatureServer confirmed, moved off PDF roster; Draper is the sole remaining PDF city).
 - **May 10, 2026** — Phase 18b split into 18b-1 / 18b-2 / 18b-3 (SD-15). Manus first attempt discarded (unanchored hallucinations). 18b-1 = REST current zoning; 18b-2 = georeferenced PDF future land use; 18b-3 = D1 + scoring + tiles integration.
 - **May 10, 2026** — Phase 15 paused (SD-14). Phase 18b activated as next priority (replace prop_class fallback with real zoning via Opus PDF vision).
 - **May 9, 2026** — Phase 14 shipped (vector tile pipeline, MapLibre wiring, click handler, drawer hydration via `tileFeaturesToIntelParcel`). Added SD-13 (push+deploy verification rule). Added Free Tier Limits & Cost Ceiling section. Phase Ledger row 14 → Shipped.

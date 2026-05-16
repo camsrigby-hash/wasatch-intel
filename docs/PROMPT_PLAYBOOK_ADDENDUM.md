@@ -69,7 +69,7 @@ Stage 2 pixel identification is accurate and geometrically consistent on a 17×1
 RMSE 38.6 ft confirms pipeline-v2 can achieve ≤100 ft RMSE on standard-format maps.
 Herriman failure (RMSE 1017 ft on 36×36 in large-format) was format-specific, not methodology failure.
 
-**New bug discovered — Stage 3 Overpass over-broad matching (SD-17)**:
+**New bug discovered — Stage 3 Overpass over-broad matching (SD-18)**:
 `Main.*St` regex within the city_bbox + 0.05° buffer matches streets from adjacent cities
 (Spanish Fork + Springville + Mapleton share the same Utah grid naming conventions).
 Overpass returns 278–979 shared nodes whose median is geographically valid (within bbox)
@@ -84,7 +84,10 @@ Vineyard has a live public FeatureServer for Future Land Use: `https://services.
 **Grantsville — REST path confirmed (2026-05-16 pre-check)**:
 Grantsville has a live public FeatureServer for Future Land Use: `https://services5.arcgis.com/uWdqWzgcb7gCRVuK/arcgis/rest/services/Future_Land_Use_Map/FeatureServer/81`. Owner org: `gis2_grantsville` (AGOL org `uWdqWzgcb7gCRVuK`). 51 features, 9 zone types (Commercial, High Single Family Density Residential, Industrial, Low Density Residential, Medium Density Residential, Mixed Use Density, Municipal/School, Parks & Open Space, Rural Residential 2). Primary field: `Name`. Extent: lon −112.55° to −112.35°, lat 40.59° to 40.72° — full city boundary (≈22,300 acres sampled from 20/51 features). Grade A. **Grantsville is NOT a PDF city. Ingest via REST (same method as 18b-1). Write `grantsville_gp.geojson`.** Inventory updated in `tooele-land-intel/data/zoning/future/_rest_inventory.md` and `_18b-2bc_scope.md`. Discovery path: planning page lists static FLU PDFs but no embedded ArcGIS app; `gis2_grantsville` AGOL service catalog (103 services) contains `Future_Land_Use_Map` FeatureServer.
 
-**Remaining 18b-2c cities**: Bluffdale, Draper. Herriman already logged (RMSE 1017 ft /
+**Bluffdale — REST path confirmed (2026-05-16 pre-check)**:
+Bluffdale has a live public FeatureServer for General Plan Land Use: `https://services3.arcgis.com/ojBMkFlpg5ujUNtB/arcgis/rest/services/LandUse/FeatureServer/0`. Owner org: `apbluffdale` (AGOL org `ojBMkFlpg5ujUNtB`). 94 features, 10 zone types (C-RC Regional Core, R-VLD Very Low Density Residential, R-LD Low Density Residential, R-MF Multi-Family Residential, C Commercial, G Governmental, R-C Cluster Residential, PROS Parks/Recreation/Open Space, MU Mixed-Use, plus Business Park / Neighborhood Commercial in `Type` field). Primary fields: `LandUse` (coded domain, 11 values), `Type` (string), `Acres`. Description: "General plan land use map for the City of Bluffdale current as of January 2022." Last edited January 2025. Extent covers Bluffdale city boundary (~7.7 sq mi). **Bluffdale is NOT a PDF city. Ingest via REST (same method as 18b-1). Write `bluffdale_gp.geojson`.** Inventory updated in `tooele-land-intel/data/zoning/future/_rest_inventory.md` and `_18b-2bc_scope.md`. Discovery path: planning page 404'd; full AGOL org catalog enumeration found `apbluffdale`-owned `LandUse` FeatureServer in same org as transportation items.
+
+**Remaining 18b-2c cities**: Draper only. Herriman already logged (RMSE 1017 ft /
 large-format issue; two-pass zoom approach needed per `_pdf_extraction_log.md`). 
 
 **Files on `phase-18b-2-pipeline-v2`** (tooele-land-intel):
