@@ -8,12 +8,12 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-16
 
-**Phase 18b-2c COMPLETE (pending user merge decision) — tile-refinement pattern implemented; Herriman deferred.**
+**Phase 18b-2c COMPLETE (pending user merge decision) — Herriman GP Amendment re-attempt: Stage 3 degenerate (SD-18 Overpass bug). Herriman deferred.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
-- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). **Stage 2b tile-refinement implemented** (`--tile-refine` flag in `gp_pdf_extract.py`). **Herriman tile-refine attempt: RMSE 1051.2 ft — FAIL (>300 ft gate; baseline was 1017.9 ft).** Option (c): defer Herriman, merge PR #11 without it. PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
+- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Stage 2b tile-refinement implemented. **Herriman GP Amendment re-attempt (May 16 2026): Stage 3 degenerate — FAIL. See PHASE_LOG below.** PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -175,6 +175,44 @@ Additionally, CP0's rough pixel estimate was actually quite good before refineme
 - `data/zoning/future/herriman_api_calls.jsonl` — 21 calls, $1.53
 
 **PR #11 merge**: user's call. Recommend: merge PR #11 as-is (Spanish Fork + REST batch cities), with Herriman deferred. A second PR can ship Herriman if a better pixel-identification approach is found (wider tile, two-stage auto-CP with Stage 3 ground truth verification, or manual pixel re-estimation from a higher-DPI or lower-zoom view).
+
+---
+
+### PHASE 18b-2c PHASE_LOG — Herriman GP Amendment re-attempt (2026-05-16)
+
+**Status**: FAIL — Stage 3 degenerate (SD-18 Overpass bug). Herriman deferred per SD-19.
+
+**Source PDF**: `Herriman_GP_Amendment.pdf` — 98 pages, ~39.5 MB, created 2026-10-09 (October 2013 revision). Downloaded from `https://www.herriman.gov/uploads/files/1621/2025GPAmend.pdf`. Page 34 = Map 7 Future Land Use 2025, footer "Revised — October 7, 2013", page label "3-25". Embedded raster: 5100×3300 px, 8-bit RGB, DCTDecode. PDF page: 792×612 pts, rotation=90 (letter landscape as portrait+rotate). Rasterized at 300 DPI with rotation applied → 2550×3300 px portrait image delivered to Claude vision.
+
+**Currency decision**: 2030 Land Use Map (`LandUse203036x36.pdf`) is the current adopted GP map (July 2022 adoption). The 2013 amendment (FLU horizon year 2025) is superseded. Metadata must be flagged: `"FLU per 2013 GP Amendment — may not reflect post-2013 updates"`.
+
+**Pipeline run** (standard path, no `--tile-refine`, no `--manual-cps`):
+- Stage 2 auto CPs: 6 found (6000W×12600S, 6000W×13400S, Bangerter×13400S, Bangerter×12600S, 6000W×Butterfield, Rosecrest×6000W)
+- Stage 3 resolved: 4/6 (Butterfield and Rosecrest not found by Nominatim+Overpass)
+- **Stage 3 SD-18 degenerate**: Overpass returns median of ALL nodes on 12600 South (342 nodes) regardless of which cross street is queried → "6000W×12600S" and "Bangerter×12600S" both resolve to (40.522301, −111.976548); "6000W×13400S" and "Bangerter×13400S" both resolve to (40.507866, −112.036141). Only 2 unique geographic coordinates for 4 CPs → affine system underdetermined.
+- Stage 4 affine matrix: px_x column ≈ 1e-17 (machine zero) — only py contributes to lon/lat. Detected rotation: −143.7° (artifact of degenerate fit).
+- Stage 5 RMSE: **0.0 ft** — FALSE POSITIVE. Minimum-norm lstsq solution for underdetermined system satisfies all 4 points exactly, but the transform is 1-dimensional (not a valid 2D georeference).
+- Stage 6: 8-call cap reached. Only 1 polygon survived bbox filter (Single Family Residential). Remaining 7 zones returned empty — likely because the degenerate transform projects polygons outside Herriman bbox.
+- **Effective RMSE**: unmeasurable / infinite (transform does not recover E-W spatial position).
+- Features: **1** (unusable — expected ~15+ zones for full Herriman FLU map).
+- Centroid offset: 2.36 km from Herriman city center (single surviving polygon only).
+- Schema v2 fields: all present (in feature properties).
+- **Total cost**: $0.905 (1 CP call + 1 legend call + 8 zone calls, all claude-opus-4-7).
+
+**Pass/fail vs 300 ft RMSE threshold**: **FAIL** (RMSE=0.0 is a false positive from degenerate transform; output has 1 feature and is not usable).
+
+**Root cause — SD-18 Overpass node-count issue for numbered road grids**:
+Herriman's grid uses Utah numbered roads (12600 S, 13400 S) that run east-west across the entire valley. Overpass returns 342 nodes for `12600.*South` within the Herriman bbox+0.05° buffer — all nodes on the same road at different longitudes. The median of 342 such nodes is a single representative point regardless of which cross street (6000 West vs Bangerter Hwy, ~4.5 km apart) is queried. Fix requires either: (a) tighter Overpass buffer (0.01°), (b) node-count quality gate (reject if >20 nodes), or (c) Nominatim direct intersection query bypassing Overpass for numbered-road intersections, (d) `--manual-cps` with geocoded coordinates.
+
+**Secondary issue — image orientation**: PyMuPDF rasterizes the 90°-rotated page with rotation applied → 2550×3300 portrait image. The embedded 5100×3300 landscape map content appears portrait-transposed to Claude. This may also affect CP pixel identification accuracy, but was not the primary failure mode (Stage 3 geography was the bottleneck).
+
+**Files updated on `phase-18b-2-pipeline-v2`** (tooele-land-intel):
+- `data/zoning/future/herriman_gp.geojson` — overwritten with 1-feature degenerate output (RMSE 0.0 annotated as false positive)
+- `data/zoning/future/herriman_api_calls.jsonl` — overwritten with 10 calls, $0.905
+- `data/_pdf_cache/herriman/Herriman_GP_Amendment.pdf` — new (98-page source)
+- `data/_pdf_cache/herriman/herriman_map7_p34.pdf` — new (single-page extract)
+
+**PR #11 / SD-19**: Herriman remains deferred. PR #11 merge is user's call. For Herriman to ship: Stage 3 Overpass node-count quality gate (SD-18) must be implemented, OR `--manual-cps` with correct pixel coordinates for the 5100×3300 rasterized image of page 34 must be provided.
 
 ---
 

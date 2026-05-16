@@ -251,6 +251,12 @@ Spanish Fork PDF extraction shipped at RMSE 38.6 ft, validating the pipeline-v2 
 ### SD-17 — REST discovery pattern: owner-enumeration after planning-page check (May 16, 2026)
 18b-2a Manus sweep missed Vineyard's and Grantsville's FeatureServers because it only checked planning pages, not ArcGIS Online owner catalogs. New canonical pre-check sequence for any "PDF-assumed" city: (1) probe planning page for embedded Experience apps → if found, query owner's public AGOL items; (2) even if planning page is PDF-only, search AGOL for org owners matching city name (e.g. `gis2_grantsville`, `Justin_JonesCivil` for Vineyard); (3) only after both come up empty, commit to PDF roster. Reduced 18b-2c PDF batch from ~7 cities to 2 (Bluffdale, Draper) without an Opus call.
 
+### SD-18 — Stage 3 Overpass node-count quality gate needed (May 16, 2026)
+Documented during Spanish Fork run: `Main.*St` regex within city_bbox + 0.05° buffer matches streets from adjacent cities. Documented more severely during Herriman GP Amendment re-attempt (May 16, 2026): Utah numbered-road grids (12600 S, 13400 S) return 342 shared nodes across the entire road regardless of which cross street is queried → all intersections on the same numbered road resolve to the same median point → degenerate affine transform. Fix options: (a) tighten CITY_BBOX_BUFFER_DEG to 0.01° for dense/grid cities, (b) add quality gate rejecting CPs where Overpass returns >20 nodes, (c) direct Nominatim intersection query bypassing Overpass for numbered-road intersections. Workaround: `--manual-cps`.
+
+### SD-19 — Herriman PDF permanently deferred until Stage 3 fix (May 16, 2026)
+Two extraction attempts on Herriman failed. Attempt 1 (tile-refine, 36×36 poster): RMSE 1051 ft — large-format pixel uncertainty. Attempt 2 (98-page GP Amendment, letter-format page 34): Stage 3 degenerate (SD-18 Overpass bug) → RMSE 0.0 ft false positive, 1 feature, unusable. Decision: Herriman deferred until one of the following: (a) Stage 3 SD-18 node-count fix implemented and tested, OR (b) manual pixel CPs provided for the 5100×3300 image of herriman_map7_p34.pdf (extracted from 98-page GP Amendment). Source PDF cached at `tooele-land-intel/data/_pdf_cache/herriman/`. PR #11 merge is user's call; Herriman will ship as a follow-on PR.
+
 ---
 
 ## Working Style
@@ -278,7 +284,7 @@ This doc covers strategy and direction. For execution detail, see:
 
 ## Update history (newest first)
 
-- **May 16, 2026** — SD-16 (Herriman deferral) + SD-17 (REST owner-enumeration pattern) appended after Phase 18b-2c Spanish Fork ship. Bluffdale REST pre-check completed (FeatureServer confirmed, moved off PDF roster; Draper is the sole remaining PDF city).
+- **May 16, 2026** — SD-18 (Overpass node-count bug) + SD-19 (Herriman permanent deferral) appended after Herriman GP Amendment re-attempt failed with degenerate Stage 3. SD-16 (Herriman deferral) + SD-17 (REST owner-enumeration pattern) appended after Phase 18b-2c Spanish Fork ship. Bluffdale REST pre-check completed (FeatureServer confirmed, moved off PDF roster; Draper is the sole remaining PDF city).
 - **May 10, 2026** — Phase 18b split into 18b-1 / 18b-2 / 18b-3 (SD-15). Manus first attempt discarded (unanchored hallucinations). 18b-1 = REST current zoning; 18b-2 = georeferenced PDF future land use; 18b-3 = D1 + scoring + tiles integration.
 - **May 10, 2026** — Phase 15 paused (SD-14). Phase 18b activated as next priority (replace prop_class fallback with real zoning via Opus PDF vision).
 - **May 9, 2026** — Phase 14 shipped (vector tile pipeline, MapLibre wiring, click handler, drawer hydration via `tileFeaturesToIntelParcel`). Added SD-13 (push+deploy verification rule). Added Free Tier Limits & Cost Ceiling section. Phase Ledger row 14 → Shipped.

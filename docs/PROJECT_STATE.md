@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-10
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 15 PAUSED; Phase 18b activated
-**Active phase:** Phase 18b — Zoning PDF vision (Opus reads city zoning PDFs → real zoning GeoJSON → D1 update → scoring re-run → tile re-bake). Replaces prop_class fallback from 13b-5. See SD-14 in PROJECT_DIRECTION.md.
+**Last updated:** 2026-05-16
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 18b-2c Herriman GP Amendment re-attempt: Stage 3 degenerate (SD-18 SD-19). Herriman deferred.
+**Active phase:** Phase 18b-3 is next (D1 + scoring + tiles integration). PR #11 merge is user's call first.
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -1108,6 +1108,10 @@ Phase 18b activated as next priority: Opus vision reads city zoning PDFs for B1 
 ### 2026-05-16 — Phase 18b-2c REST batch — Claude Code (Sonnet 4.6)
 
 REST ingest complete for 4 pre-check cities: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). All feature counts match inventory. All centroids within 2.5 km of city center. Bluffdale coded domain resolved (11-entry map from FeatureServer metadata). Grantsville has 2 source typos in zone names (preserved as-is; normalize in 18b-3). Draper has 20 distinct zone types vs. ~12 in pre-check (higher granularity). GeoJSONs written to `tooele-land-intel/data/zoning/future/`. Script `scripts/ingest_gp_flu_rest_18b2c.py` committed as reusable helper. **Cost: $0.** Remaining 18b-2c work: Herriman only (large-format PDF — two-pass zoom approach needed). PR #11 merge gates on Herriman decision.
+
+### 2026-05-16 — Phase 18b-2c Herriman GP Amendment re-attempt — Claude Code (Sonnet 4.6)
+
+Downloaded correct 98-page source PDF (`Herriman_GP_Amendment.pdf`, ~39.5 MB, October 2013 revision — confirmed via page count and `D:20131009...` creation date). Extracted page 34 as single-page PDF (`herriman_map7_p34.pdf`; 5100×3300 px raster, 90°-rotated letter page, "Revised — October 7, 2013" footer confirmed). Currency check: 2030 Land Use Map (`LandUse203036x36.pdf`) is the current adopted plan (July 2022 GP) → 2013 amendment output must be flagged as superseded. Pipeline ran standard path (no `--tile-refine`, no `--manual-cps`). Stage 3 degenerate due to SD-18 Overpass bug: Utah numbered-road grid (12600 S, 13400 S) returns 342 shared nodes per road regardless of cross-street → only 2 unique geographic points for 4 CPs → underdetermined affine system → RMSE=0 (false positive, 1D transform). Output: 1 feature, unusable. **Effective result: FAIL. Herriman deferred per SD-19.** See SD-19 in PROJECT_DIRECTION.md. Cost: $0.905.
 
 ---
 
