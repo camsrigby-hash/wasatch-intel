@@ -81,7 +81,10 @@ Workaround: `--manual-cps` with Nominatim-geocoded addresses.
 Vineyard has a live public FeatureServer for Future Land Use: `https://services.arcgis.com/QdlehUncXjEmQYtI/arcgis/rest/services/Vineyard_Future_Land_Use_View/FeatureServer/0`.
 36 features, 12 zone types (University, Regional Commercial, Open Space, Town Center, Public Facility, High Density, Neighborhood Center, Low Density, Medium Density, Residential Mixed Use, Vineyard Commerce Center, Low & Medium Density). Total ≈ 3,024 acres — matches city boundary. **Vineyard is NOT a PDF city. Ingest via REST (same method as 18b-1). Write `vineyard_gp.geojson`.** Inventory updated in `tooele-land-intel/data/zoning/future/_rest_inventory.md` and `_18b-2bc_scope.md`.
 
-**Remaining 18b-2c cities**: Grantsville, Bluffdale, Draper. Herriman already logged (RMSE 1017 ft /
+**Grantsville — REST path confirmed (2026-05-16 pre-check)**:
+Grantsville has a live public FeatureServer for Future Land Use: `https://services5.arcgis.com/uWdqWzgcb7gCRVuK/arcgis/rest/services/Future_Land_Use_Map/FeatureServer/81`. Owner org: `gis2_grantsville` (AGOL org `uWdqWzgcb7gCRVuK`). 51 features, 9 zone types (Commercial, High Single Family Density Residential, Industrial, Low Density Residential, Medium Density Residential, Mixed Use Density, Municipal/School, Parks & Open Space, Rural Residential 2). Primary field: `Name`. Extent: lon −112.55° to −112.35°, lat 40.59° to 40.72° — full city boundary (≈22,300 acres sampled from 20/51 features). Grade A. **Grantsville is NOT a PDF city. Ingest via REST (same method as 18b-1). Write `grantsville_gp.geojson`.** Inventory updated in `tooele-land-intel/data/zoning/future/_rest_inventory.md` and `_18b-2bc_scope.md`. Discovery path: planning page lists static FLU PDFs but no embedded ArcGIS app; `gis2_grantsville` AGOL service catalog (103 services) contains `Future_Land_Use_Map` FeatureServer.
+
+**Remaining 18b-2c cities**: Bluffdale, Draper. Herriman already logged (RMSE 1017 ft /
 large-format issue; two-pass zoom approach needed per `_pdf_extraction_log.md`). 
 
 **Files on `phase-18b-2-pipeline-v2`** (tooele-land-intel):
