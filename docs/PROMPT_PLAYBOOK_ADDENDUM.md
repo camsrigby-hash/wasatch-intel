@@ -8,12 +8,12 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-16
 
-**Phase 18b-2c COMPLETE (pending user merge decision) — Herriman GP Amendment re-attempt: Stage 3 degenerate (SD-18 Overpass bug). Herriman deferred.**
+**Phase 18b-2c COMPLETE (pending user merge decision) — SD-18 quality gate IMPLEMENTED; Herriman still deferred (all auto-CPs are high-node-count arterials, only 1/5 survived gate). PR #11 ships SD-18 fix as pipeline durability work.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
-- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Stage 2b tile-refinement implemented. **Herriman GP Amendment re-attempt (May 16 2026): Stage 3 degenerate — FAIL. See PHASE_LOG below.** PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
+- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Stage 2b tile-refinement implemented. **Herriman: SD-18 gate implemented (May 16 2026), gate correctly blocked 4/5 CPs, but only 1 survived — not enough for georeference. Deferred per SD-19.** PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -212,7 +212,60 @@ Herriman's grid uses Utah numbered roads (12600 S, 13400 S) that run east-west a
 - `data/_pdf_cache/herriman/Herriman_GP_Amendment.pdf` — new (98-page source)
 - `data/_pdf_cache/herriman/herriman_map7_p34.pdf` — new (single-page extract)
 
-**PR #11 / SD-19**: Herriman remains deferred. PR #11 merge is user's call. For Herriman to ship: Stage 3 Overpass node-count quality gate (SD-18) must be implemented, OR `--manual-cps` with correct pixel coordinates for the 5100×3300 rasterized image of page 34 must be provided.
+**PR #11 / SD-19**: Herriman remains deferred. PR #11 merge is user's call. **SD-18 IMPLEMENTED** (May 16 2026, phase-18b-2-pipeline-v2). SD-18 gate correctly blocked 4/5 auto-CPs but only 1 survived; all CPs the model identified on page 34 are long numbered arterials (node_count 187–602 >> threshold 20). For Herriman to ship: `--manual-cps` with precisely geocoded named-street intersections and matching pixel coordinates for the 5100×3300 rasterized image of page 34. See PHASE_LOG below for SD-18 gate re-run details.
+
+---
+
+### PHASE 18b-2c PHASE_LOG — Herriman SD-18 gate re-run (2026-05-16)
+
+**Status**: FAIL — SD-18 gate working correctly, but only 1/5 CPs survived gate (all auto-identified CPs are long arterials). Deferred per SD-19.
+
+**SD-18 gate implementation** (committed to `phase-18b-2-pipeline-v2`, `tooele-land-intel`):
+- `NODE_COUNT_THRESHOLD = 20` — Rule A constant (tunable at top of file)
+- `COLLINEARITY_THRESHOLD_M = 50` — Rule B constant (tunable at top of file)
+- `_overpass_lookup` now returns `(lat, lon, node_count)` 3-tuple
+- `stage3_ground_truth_lookup` applies Rule A (reject overpass_nodes > 20) then Rule B (collinearity pairwise 50m check)
+- Stage 3 diagnostic block logs all CPs with KEEP/REJECT status and reason
+- Abort message if < 3 CPs survive: `"SD-18 quality gates rejected too many CPs; need >=3 unique points for valid 2D georeference. Consider --manual-cps."`
+- `--extra-props` JSON CLI arg added (also accepts file path): merges arbitrary k/v into all output feature properties
+- `stage8_write_geojson` and `run_pipeline` accept `extra_properties: Optional[dict]`
+
+**Pipeline re-run** (standard path, no `--tile-refine`, no `--manual-cps`, page 34 raster):
+- Stage 2 auto CPs: 6 identified, 5 resolved (Butterfield Pkwy not found in OSM)
+- Stage 3 gate stats:
+  - CPs identified (pre-gate): **5**
+  - Rejected Rule A (node_count_exceeded): **4**
+    - `6000 West × 12600 South` — 342 Overpass nodes
+    - `Bangerter Hwy × 13400 South` — 232 nodes
+    - `6400 West × Rosecrest Rd` — 187 nodes
+    - `Mountain View Hwy × Bangerter Hwy` — 602 nodes
+  - Rejected Rule B (collinear_with_other_cp): **0**
+  - CPs surviving: **1** (only `6000 West × 13100 South (Main St)`, 10 nodes — valid)
+- Stage 3 abort: "SD-18 quality gates rejected too many CPs; need >=3 unique points for valid 2D georeference."
+- RMSE: cannot compute (no georeference attempted)
+- Features: 0 (pipeline aborted before Stage 4)
+- Total cost: $0.103 (1 Stage 2 vision call; no Stage 6 calls)
+
+**Root cause confirmed**: Herriman's GP map page 34 uses almost exclusively long numbered arterials (12600 S, 13400 S, 6400 W, Bangerter Hwy, Mountain View Hwy) as reference labels. These all span the entire Salt Lake/Utah County valley — 100s of OSM nodes each. The gate correctly identifies and rejects them. The only surviving CP (`6000 West × 13100 South`) is valid but is the only named-road intersection on the map. 2 more named-street CPs are needed for a valid affine.
+
+**SD-18 fix value**: The gate prevents the degenerate affine false-positive (RMSE=0.0 from prior run) and outputs a clear actionable error. For future cities with numbered-road CPs (e.g. Sandy, Riverton, West Jordan), the gate will block bad CPs and fall back to the `--manual-cps` path with a clear message.
+
+**Centroid offset**: N/A (no output)
+
+**Schema v2 fields + vintage fields**: present on `--extra-props` path (validated on Spanish Fork; Herriman output deferred)
+
+**Path to Herriman GeoJSON**: `--manual-cps` with 3+ named-street intersections. Candidates:
+  - Herriman Pkwy × Rosecrest Rd (~5600 W × 12500 S area)
+  - Herriman Pkwy × Town Center Blvd
+  - Fort Herriman Pkwy × 13400 S area (local name, not the numbered S road)
+  Pixel coordinates must be estimated from the 2550×3300 rasterized image of page 34 (PyMuPDF at 300 DPI with rotation applied).
+
+**Cost**: $0.103 (1 API call)
+
+**Files updated on `phase-18b-2-pipeline-v2`** (tooele-land-intel):
+- `scripts/gp_pdf_extract.py` — SD-18 quality gate (Rule A + Rule B) + `--extra-props` CLI
+- `data/_pdf_cache/herriman/Herriman_GP_Amendment.pdf` — 98-page source (newly downloaded, 37.7 MB)
+- `data/_pdf_cache/herriman/herriman_map7_p34.pdf` — single-page extract (page 34)
 
 ---
 
