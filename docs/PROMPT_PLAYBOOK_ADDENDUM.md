@@ -8,12 +8,12 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-16
 
-**Phase 18b-2c IN PROGRESS — REST batch (Vineyard, Grantsville, Bluffdale, Draper) complete. Only Herriman pending.**
+**Phase 18b-2c COMPLETE (pending user merge decision) — tile-refinement pattern implemented; Herriman deferred.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
-- **18b-2c** — IN PROGRESS. Spanish Fork validation run complete (May 16 2026). **RMSE 38.6 ft — PASS.** REST batch complete (May 16 2026): Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62) — all ingested, centroid-validated, committed to `phase-18b-2-pipeline-v2`. **Remaining: Herriman only** (large-format issue; two-pass zoom approach needed). Merge of PR #11 gates on Herriman decision. Stage 3 Overpass bug documented (SD-18). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
+- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). **Stage 2b tile-refinement implemented** (`--tile-refine` flag in `gp_pdf_extract.py`). **Herriman tile-refine attempt: RMSE 1051.2 ft — FAIL (>300 ft gate; baseline was 1017.9 ft).** Option (c): defer Herriman, merge PR #11 without it. PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -123,9 +123,58 @@ Draper has a live public FeatureServer for GP Land Use: `https://services2.arcgi
 - `data/zoning/future/_pdf_extraction_log.md` (REST entries appended for all 4)
 - `scripts/ingest_gp_flu_rest_18b2c.py` (reusable REST ingest helper)
 
-**Remaining 18b-2c work**: Herriman only. Two-pass zoom approach needed for large-format map (RMSE 1017 ft on single-pass; see Herriman entries in `_pdf_extraction_log.md`). PR #11 merge gates on Herriman decision.
-
 **Cost**: $0 (REST ingest — no LLM calls).
+
+---
+
+### PHASE 18b-2c PHASE_LOG — Herriman tile-refine attempt (2026-05-16)
+
+**Status**: FAIL — RMSE 1051.2 ft >> 300 ft gate. Option (c) activated: defer Herriman.
+
+**What was built — Stage 2b tile-refinement (`--tile-refine` flag)**:
+
+Added `stage2b_tile_refine()` to `scripts/gp_pdf_extract.py`. For each control point:
+1. Crops a 500×500 px tile centered on rough pixel estimate from the Stage 1 rasterized image
+2. Sends tile to Claude vision with focused prompt ("intersection of [street A] and [street B], sub-50-pixel precision")
+3. Parses response and composes tile-relative coords → full-image coords: `full_x = tile_origin_x + refined_tile_x`
+4. Replaces `px_x`/`px_y` in the CP dict; preserves `gt_lat`/`gt_lon` unchanged
+5. Logs both rough and refined coords + per-CP pixel shift
+
+Gated behind `--tile-refine` CLI flag (off by default). Inserted between resolved-CPs construction and Stage 4 affine fit — works for both manual-CP and auto-CP paths. Tile-refine stats included in result JSON and `_transform_validation.md` report.
+
+**Herriman re-run result (4 manual CPs, `--tile-refine`):**
+
+| CP | Label | Rough px | Refined px | Shift (px) | Residual (ft) | Prior residual |
+|---|---|---|---|---|---|---|
+| 0 | 11800S × Anthem Park | (2470, 640) | (2490, 785) | 146.4 | 298.7 | 93.6 |
+| 1 | Main St × Pioneer St | (1960, 1370) | (1940, 1405) | 40.3 | 1550.1 | 1379.8 |
+| 2 | Herriman Pkwy × Rosecrest Rd | (2150, 1620) | (1986, 1692) | 179.1 | 1382.5 | 1481.0 |
+| 3 | Mtn View Corridor × Rosecrest Rd | (3650, 2920) | (3680, 3020) | 104.4 | 131.0 | 194.8 |
+
+- **Stage 2b refinement**: avg shift 117.5px, max shift 179.1px, 4 CPs refined
+- **Detected rotation angle**: -33.3° (consistent with prior -32.7°)
+- **Final RMSE**: 1051.2 ft (vs prior 1017.9 ft baseline — tile refinement made it slightly worse)
+- **Feature count**: 44 (16/16 zones extracted, 1 polygon dropped out-of-bounds)
+- **Total cost**: $1.53 (4 tile-refine + 1 legend + 16 zone extraction calls)
+- **Centroid offset**: 1.55 km from Herriman city center
+- **Schema v2 fields**: all present (`rotation_angle_deg=-33.32`, `transform_residual_ft=1051.2`)
+- **Pass/fail vs 300 ft gate**: **FAIL** (1051.2 ft >> 300 ft)
+
+**Root cause — tile window too small for high-residual CPs**:
+
+At the resized image scale (~3-5 ft/px), a 500px tile has radius ~250px ≈ 750-1250 ft. CP1 (1550 ft residual) and CP2 (1383 ft residual) have true intersection locations ~300-450px away from rough estimates — outside the tile window. Claude saw a 500px crop not centered on the intersection and returned estimates near the tile center, which did not improve (and slightly degraded) the affine fit.
+
+Additionally, CP0's rough pixel estimate was actually quite good before refinement (93.6 ft residual). Tile refinement moved it (shift=146px), degrading it to 298.7 ft — the tile crop included adjacent road features that confused the localization.
+
+**Decision**: Option (c) — defer Herriman. Do not attempt further refinements without explicit user input.
+
+**Files on `phase-18b-2-pipeline-v2`** (tooele-land-intel, commit `c6b4952`):
+- `scripts/gp_pdf_extract.py` — Stage 2b added (201-line net change)
+- `data/zoning/future/herriman_gp.geojson` — updated (44 features, RMSE 1051.2 ft annotated)
+- `data/zoning/future/herriman_transform_validation.md` — includes tile-refinement table
+- `data/zoning/future/herriman_api_calls.jsonl` — 21 calls, $1.53
+
+**PR #11 merge**: user's call. Recommend: merge PR #11 as-is (Spanish Fork + REST batch cities), with Herriman deferred. A second PR can ship Herriman if a better pixel-identification approach is found (wider tile, two-stage auto-CP with Stage 3 ground truth verification, or manual pixel re-estimation from a higher-DPI or lower-zoom view).
 
 ---
 
