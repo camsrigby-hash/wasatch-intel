@@ -1105,6 +1105,10 @@ Phase 15a scaffolding complete (commits `aa3ca00` wasatch-intel + `00c9869` tooe
 
 Phase 18b activated as next priority: Opus vision reads city zoning PDFs for B1 jurisdictions (those that used `prop_class` fallback in 13b-5) → GeoJSON per jurisdiction → CC updates D1, re-runs scoring, re-bakes PMTiles. Highest single-action improvement to scoring quality. Cost ceiling $15. SD-14 logged. Four-doc update committed (PROMPT_PLAYBOOK_ADDENDUM.md, PROJECT_DIRECTION.md, PROJECT_STATE.md, Phase 18b brief in addendum).
 
+### 2026-05-16 — Phase 18b-2c REST batch — Claude Code (Sonnet 4.6)
+
+REST ingest complete for 4 pre-check cities: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). All feature counts match inventory. All centroids within 2.5 km of city center. Bluffdale coded domain resolved (11-entry map from FeatureServer metadata). Grantsville has 2 source typos in zone names (preserved as-is; normalize in 18b-3). Draper has 20 distinct zone types vs. ~12 in pre-check (higher granularity). GeoJSONs written to `tooele-land-intel/data/zoning/future/`. Script `scripts/ingest_gp_flu_rest_18b2c.py` committed as reusable helper. **Cost: $0.** Remaining 18b-2c work: Herriman only (large-format PDF — two-pass zoom approach needed). PR #11 merge gates on Herriman decision.
+
 ---
 
 ## REFERENCES — supporting docs

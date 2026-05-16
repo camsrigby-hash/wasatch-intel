@@ -8,12 +8,12 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-16
 
-**Phase 18b-2c IN PROGRESS — Spanish Fork validation run complete; merge/proceed decision pending.**
+**Phase 18b-2c IN PROGRESS — REST batch (Vineyard, Grantsville, Bluffdale, Draper) complete. Only Herriman pending.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
-- **18b-2c** — IN PROGRESS. Spanish Fork validation run complete (May 16 2026). **RMSE 38.6 ft — PASS.** All 4 REST pre-check cities resolved: Vineyard ✓, Grantsville ✓, Bluffdale ✓, Draper ✓ — all moved to REST ingest path. Remaining PDF city: Spanish Fork (ingested), Herriman (large-format issue). Stage 3 Overpass bug documented (SD-18). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`. **Pending: REST ingest runs for Vineyard, Grantsville, Bluffdale, Draper (write 4 GeoJSONs).**
+- **18b-2c** — IN PROGRESS. Spanish Fork validation run complete (May 16 2026). **RMSE 38.6 ft — PASS.** REST batch complete (May 16 2026): Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62) — all ingested, centroid-validated, committed to `phase-18b-2-pipeline-v2`. **Remaining: Herriman only** (large-format issue; two-pass zoom approach needed). Merge of PR #11 gates on Herriman decision. Stage 3 Overpass bug documented (SD-18). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -99,6 +99,33 @@ Draper has a live public FeatureServer for GP Land Use: `https://services2.arcgi
 - `data/zoning/future/spanish_fork_api_calls.jsonl`
 - `data/zoning/future/_pdf_extraction_log.md` (Spanish Fork entry appended)
 - `data/_pdf_cache/spanish_fork/GeneralPlan_Letter.pdf`
+
+---
+
+### PHASE 18b-2c PHASE_LOG — REST batch (2026-05-16)
+
+**Status**: Partial — REST batch complete. Herriman pending.
+
+**Result summary**:
+
+| City | Features | Centroid dist | Zone types | Notes |
+|---|---|---|---|---|
+| Vineyard | 36 | 0.14 km | 12 | Clean data, all label strings |
+| Grantsville | 51 | 0.27 km | 9 | 2 zone names have source typos ("Rsidential", "Residentail") — normalize in 18b-3 |
+| Bluffdale | 94 | 0.54 km | 12 (+1 null) | Coded domain resolved (11 entries); 1 feature with null LandUse code |
+| Draper | 62 | 2.45 km | 20 | More granular than pre-check inventory (20 vs ~12); all PASS |
+
+**Files added to `phase-18b-2-pipeline-v2`** (tooele-land-intel):
+- `data/zoning/future/vineyard_gp.geojson` (36 features, schema v2)
+- `data/zoning/future/grantsville_gp.geojson` (51 features, schema v2)
+- `data/zoning/future/bluffdale_gp.geojson` (94 features, schema v2)
+- `data/zoning/future/draper_gp.geojson` (62 features, schema v2)
+- `data/zoning/future/_pdf_extraction_log.md` (REST entries appended for all 4)
+- `scripts/ingest_gp_flu_rest_18b2c.py` (reusable REST ingest helper)
+
+**Remaining 18b-2c work**: Herriman only. Two-pass zoom approach needed for large-format map (RMSE 1017 ft on single-pass; see Herriman entries in `_pdf_extraction_log.md`). PR #11 merge gates on Herriman decision.
+
+**Cost**: $0 (REST ingest — no LLM calls).
 
 ---
 
