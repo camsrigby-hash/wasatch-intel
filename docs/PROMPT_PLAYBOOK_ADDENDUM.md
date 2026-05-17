@@ -8,12 +8,12 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-16
 
-**Phase 18b-2c COMPLETE (pending user merge decision) — SD-18 quality gate IMPLEMENTED; Herriman still deferred (all auto-CPs are high-node-count arterials, only 1/5 survived gate). PR #11 ships SD-18 fix as pipeline durability work.**
+**Phase 18b-2c COMPLETE (pending user merge decision) — Herriman BLOCKED on manual CPs (SD-19 still open). Stage 2 named-street bias implemented (2026-05-16); 2/6 CPs survive gate but need 3. Manual pixel coords required from Cam. PR #11 merge is user's call.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
-- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Stage 2b tile-refinement implemented. **Herriman: SD-18 gate implemented (May 16 2026), gate correctly blocked 4/5 CPs, but only 1 survived — not enough for georeference. Deferred per SD-19.** PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
+- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Stage 2b tile-refinement implemented. **Herriman: Stage 2 named-street bias run (May 16 2026) — 2/6 CPs survived SD-18 gate (Rosecrest Rd×Mountain View Hwy + Main St×Pioneer St via intersection-node), but need ≥3. Auto-path exhausted. Awaiting manual pixel coords from Cam for 3-CP manual-CPs fallback.** PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -368,6 +368,43 @@ Pixel coordinates must be estimated from the 2550×3300 rasterized image of page
 **Next step for Herriman**: `--manual-cps` with 3+ named-street (non-numbered) intersections on the 2030 Land Use Map (`LandUse203036x36.pdf`). The 2013 GP Amendment (previously attempted) is superseded — the 2030 map is the current adopted plan. Named-street CP candidates: Herriman Pkwy × Rosecrest Rd, Herriman Pkwy × Town Center Blvd, Fort Herriman Pkwy × 13400 S area. This is the next Herriman prompt's job, not this session's.
 
 **Cost**: $0 (Sonnet planning only, no LLM calls for this sweep).
+
+---
+
+### PHASE 18b-2c PHASE_LOG — Herriman Stage 2 named-street bias run (2026-05-16)
+
+**Status**: FAIL — 2/6 CPs survived SD-18 gate; need ≥3. Auto-path exhausted. Manual CPs required.
+
+**Changes shipped** (commit `bbfac48` on `tooele-land-intel/phase-18b-2-pipeline-v2`):
+- `CONTROL_POINT_PROMPT`: added STREET SELECTION PRIORITY block (strongly prefer named local streets over numbered arterials)
+- `_build_stage2_prompt(city_cfg)`: injects city-specific preferred-streets hint when `stage2_preferred_streets` set
+- `CITY_CONFIGS["herriman"]`: populated `stage2_preferred_streets` with 9 streets (Rosecrest Rd, Main St, Pioneer St, Herriman Pkwy, Fort Herriman Pkwy, Aylesbury Dr, Copeland Dr, Anthem Park Blvd, Butterfield Pkwy)
+- `stage2_identify_control_points`: accepts `city_cfg` kwarg; call site updated
+
+**Stage 2 result (new bias active)**:
+| CP | Street A | Street B | Survived | Reason |
+|---|---|---|---|---|
+| 0 | Butterfield Pkwy | 6400 West | NO | Rule A: 288 nodes (legacy-median) |
+| 1 | Rosecrest Rd | Mountain View Hwy | YES | intersection-node, 2 nodes → (40.489253, -111.999458) |
+| 2 | Main St | Pioneer St | YES | intersection-node, 1 node → (40.514167, -112.033051) |
+| 3 | Bangerter Hwy | 13400 South | NO | Rule A: 232 nodes (legacy-median) |
+| 4 | Pioneer St | 12600 South | NO | Rule A: 342 nodes (legacy-median) |
+| 5 | Bangerter Hwy | 11800 South | NO | Rule A: 222 nodes (legacy-median) |
+
+**Improvement vs prior run**: 2 intersection-node CPs (vs 1 prior run). Model correctly picked up named-street intersections, but the map still shows too few pure named×named crossings at readable scale; model fills the balance with named×numbered combinations that fail Rule A.
+
+**Root cause confirmed**: The Herriman 36×36-inch map is scaled for print at ~1:24000. At 300 DPI / 2550 px height, each pixel ≈ 7.6 ft. Named streets are labeled but their intersections often appear as faint hairlines. The model sees the dominant numbered grid roads more clearly and defaults to them even with the bias instruction.
+
+**Cost this run**: $0.1094 (1 Opus call, Stage 2 only — Stage 3 aborted after gate).
+
+**Manual CPs path** (next step — waiting on Cam):
+- Raster: `data/_pdf_cache/herriman/_raster_tmp/_page_000.jpg` — **3300×2550 px**
+- Need pixel (x,y) for 3 intersections. OSM coords already confirmed:
+  * Herriman Pkwy × Rosecrest Rd: lat 40.49836, lon -112.02445
+  * Main St × Pioneer St: lat 40.51417, lon -112.03305
+  * Fort Herriman Pkwy × 13400 South: lat 40.50787, lon -112.01025
+- Once Cam provides pixel coords → write `data/zoning/future/herriman_manual_cps.json`
+- Re-run: `py -3 scripts/gp_pdf_extract.py --city herriman --pdf data/_pdf_cache/herriman/herriman_map7_p34.pdf --manual-cps data/zoning/future/herriman_manual_cps.json --map-page 0 --rmse-threshold 300 --extra-props data/_pdf_cache/herriman/_extra_props.json`
 
 ---
 
