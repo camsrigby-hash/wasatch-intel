@@ -269,6 +269,78 @@ Herriman's grid uses Utah numbered roads (12600 S, 13400 S) that run east-west a
 
 ---
 
+### PHASE 18b-2c PHASE_LOG — Herriman Stage 3 intersection-node refactor (2026-05-16)
+
+**Status**: IMPLEMENTED — intersection-node query refactor shipped to `phase-18b-2-pipeline-v2`. Herriman still deferred (SD-19); RMSE N/A (pipeline aborts Stage 3 every run due to Map 7 CP content). SD-18 gate remains active as defense-in-depth.
+
+**What was built — `_overpass_intersection_lookup` (SD-18 proper fix)**:
+
+Added `_overpass_intersection_lookup(street_a, street_b, city_lat, city_lon, radius_m=8000)` to `scripts/gp_pdf_extract.py`. Uses Overpass QL named sets to find only nodes belonging to BOTH named ways (the actual intersection) rather than taking the median of all nodes on one way:
+
+```
+[out:json][timeout:30];
+way["name"~"sa_re",i]["highway"](around:8000,LAT,LON)->.a;
+node(w.a)->.na;
+way["name"~"sb_re",i]["highway"](around:8000,LAT,LON)->.b;
+node(w.b)->.nb;
+node.na.nb;
+out;
+```
+
+Key improvements over prior `_overpass_lookup`:
+- `around:RADIUS,LAT,LON` replaces bbox search — centers on city centroid, covers city without bleeding into adjacent cities
+- Named sets (`.a`, `.na`, `.b`, `.nb`) correctly implement set intersection — `node.na.nb` is nodes in BOTH ways, not nodes of the second way only
+- Returns node closest to city centroid when multiple intersection nodes returned (overpasses, frontage roads)
+- Regex improved to match both abbreviated and full cardinal directions (`S(outh)?`, `W(est)?`, etc.)
+- Parenthetical aliases stripped from CP labels before regex generation
+
+`stage3_ground_truth_lookup` updated to try `_overpass_intersection_lookup` first, fall back to legacy `_overpass_lookup` per-CP only on None result. CPs using fallback are marked `intersection_lookup_failed=True` in the resolved CP dict and labeled `[legacy-median]` in diagnostics. SD-18 gate runs on all CPs regardless of lookup method.
+
+**Direct test of intersection lookup for Herriman named-street pairs:**
+
+| Street pair | Intersection query result |
+|---|---|
+| Rosecrest Rd × Mountain View Hwy | **PASS** → (40.48925, -111.99946), n=2 |
+| Herriman Pkwy × Rosecrest Rd | **PASS** → (40.49836, -112.02445), n=1 |
+| Main St × Pioneer St | **PASS** → (40.51417, -112.03305), n=1 |
+| Fort Herriman Pkwy × 13400 South | **PASS** → (40.50787, -112.01025), n=2 |
+| Herriman Pkwy × Town Center Blvd | None (not in OSM) |
+
+**Three full pipeline runs on herriman_map7_p34.pdf (standard path, no --manual-cps):**
+
+| Run | Stage 2 CPs identified | Via intersection | Via legacy (fallback) | Surviving SD-18 gate | RMSE |
+|---|---|---|---|---|---|
+| 1 | 5 (6000W×12600S, 6000W×13100S, Bangerter×13400S, 6400W×Butterfield, Rosecrest×MtnView) | 1 (Rosecrest×MtnView, n=2) | 4 | **2** (Rosecrest×MtnView + 6000W×13100S(10 nodes)) | N/A (aborted, need 3) |
+| 2 | 6 (6000W×12600S, 6000W×13100S, 13400S×Bangerter, 6400W×Butterfield, Rosecrest×6400W, MtnView×Bangerter) | 0 | 6 | **1** (6000W×13100S(10 nodes)) | N/A |
+| 3 | 7 (13100S×6000W, 13100S×Bangerter, 12600S×Bangerter, 13400S×Bangerter, Butterfield×6000W, Rosecrest×Bangerter, MtnView×Bangerter) | 0 | 5 | **0** | N/A |
+
+**Total cost (3 runs)**: $0.313 (3 Stage 2 API calls × ~$0.104 each; Stage 3 Overpass queries free; no Stage 6–8 calls)
+
+**Root cause of continued failure — Map 7 CP composition**:
+Stage 2 (Claude vision) consistently identifies the visually prominent numbered arterials (12600 S, 13400 S, 6000 W, Bangerter Hwy) on Map 7 page 34 as the primary landmarks. These arterials:
+1. Are long valley-spanning roads → Overpass returns 100s of nodes for the second way even on the legacy path
+2. Do not reliably have shared OSM intersection nodes at their crossings (divided highways, OSM data gaps)
+The intersection query correctly returns None for these (not the same as failing — correctly detecting there is no shared node).
+
+The named streets that DO have intersection nodes (Herriman Pkwy, Rosecrest Rd, Main St, Pioneer St, Fort Herriman Pkwy) appear as secondary labels on Map 7 and Stage 2 identifies them less reliably, typically as part of a pairing with one of the dominant arterials (e.g., Rosecrest × Bangerter → no intersection node because Bangerter's topology doesn't share nodes).
+
+**Path to Herriman success**: `--manual-cps` with 3 of the following intersection coordinates:
+- Herriman Pkwy × Rosecrest Rd: gt=(40.49836, -112.02445)
+- Main St × Pioneer St: gt=(40.51417, -112.03305)
+- Fort Herriman Pkwy × 13400 South: gt=(40.50787, -112.01025)
+- Rosecrest Rd × Mountain View Hwy: gt=(40.48925, -111.99946)
+Pixel coordinates must be estimated from the 2550×3300 rasterized image of page 34.
+
+**Schema / output**: N/A — pipeline aborted Stage 3; no GeoJSON written.
+
+**SD-18 note (updated)**: The intersection-node query is the proper SD-18 fix. The node-count rejection gate (Rule A, >20 nodes) remains as defense-in-depth — if the intersection query somehow returns a spurious high-count result, Rule A still fires. The gate correctly serves as a quality floor for the legacy-median fallback path.
+
+**Files committed to `phase-18b-2-pipeline-v2`** (tooele-land-intel):
+- `scripts/gp_pdf_extract.py` — `_overpass_intersection_lookup` added, `stage3_ground_truth_lookup` refactored with fallback + diagnostics, `OVERPASS_INTERSECTION_RADIUS_M=8000` constant
+- `data/_pdf_cache/herriman/_extra_props.json` — `flu_currency_note` updated to reference Herriman Enterprise GIS
+
+---
+
 ### PHASE 18b-2c PHASE_LOG — Herriman REST re-sweep (2026-05-16)
 
 **Status**: NEGATIVE — no public REST GP FLU endpoint found. PDF path confirmed.
