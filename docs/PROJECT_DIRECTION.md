@@ -282,8 +282,16 @@ This doc covers strategy and direction. For execution detail, see:
 
 ---
 
+## Future Opportunities
+
+### Herriman internal FLU2022 layer (discovered May 16, 2026)
+Herriman's GP Future Land Use data exists as a public-facing field `FLU2022` on their internal Enterprise GIS MapServer at `arcgis.herriman.org/arcgis/rest/services/Land_Use/MapServer/1`. The layer is firewall-blocked from external IPs and not exposed via Herriman's public AGOL org. If a Herriman City planning contact becomes available through broker network or GRAMA records request, a one-time GeoJSON export of this layer would flip Herriman from PDF-extraction to REST-grade coverage matching Vineyard/Grantsville/Bluffdale/Draper. Worth a polite email to Herriman planning: "I'm a local land broker building a market intelligence tool — would it be possible to get a one-time export of the current FLU layer in GeoJSON or shapefile format?" Land use data is public record under Utah GRAMA.
+
+---
+
 ## Update history (newest first)
 
+- **May 16, 2026 (later still)** — Future Opportunities section added; Herriman internal FLU2022 lead documented.
 - **May 16, 2026** — SD-18 (Overpass node-count bug) + SD-19 (Herriman permanent deferral) appended after Herriman GP Amendment re-attempt failed with degenerate Stage 3. SD-16 (Herriman deferral) + SD-17 (REST owner-enumeration pattern) appended after Phase 18b-2c Spanish Fork ship. Bluffdale REST pre-check completed (FeatureServer confirmed, moved off PDF roster; Draper is the sole remaining PDF city).
 - **May 10, 2026** — Phase 18b split into 18b-1 / 18b-2 / 18b-3 (SD-15). Manus first attempt discarded (unanchored hallucinations). 18b-1 = REST current zoning; 18b-2 = georeferenced PDF future land use; 18b-3 = D1 + scoring + tiles integration.
 - **May 10, 2026** — Phase 15 paused (SD-14). Phase 18b activated as next priority (replace prop_class fallback with real zoning via Opus PDF vision).

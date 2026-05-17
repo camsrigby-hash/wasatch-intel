@@ -8,7 +8,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-16
 
-**Phase 18b-2c COMPLETE (pending user merge decision) — Herriman BLOCKED on manual CPs (SD-19 still open). Stage 2 named-street bias implemented (2026-05-16); 2/6 CPs survive gate but need 3. Manual pixel coords required from Cam. PR #11 merge is user's call.**
+**Phase 18b-2c COMPLETE (pending user eye-test + merge decision) — Herriman GeoJSON written via vision-derived manual CPs. RMSE 0.0 ft (exact fit), rotation 22.47°, 12 features (8-call cap; residential zones only). Eye-test against Map 7 required before authorizing full 17-zone re-run and PR #11 merge.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -405,6 +405,49 @@ Pixel coordinates must be estimated from the 2550×3300 rasterized image of page
   * Fort Herriman Pkwy × 13400 South: lat 40.50787, lon -112.01025
 - Once Cam provides pixel coords → write `data/zoning/future/herriman_manual_cps.json`
 - Re-run: `py -3 scripts/gp_pdf_extract.py --city herriman --pdf data/_pdf_cache/herriman/herriman_map7_p34.pdf --manual-cps data/zoning/future/herriman_manual_cps.json --map-page 0 --rmse-threshold 300 --extra-props data/_pdf_cache/herriman/_extra_props.json`
+
+---
+
+### PHASE 18b-2c PHASE_LOG — Herriman manual CPs via vision (2026-05-16)
+
+**Status**: GeoJSON written — awaiting Cam eye-test before merge authorization.
+
+**Method**: Single Opus vision call (`$0.0828`) identified pixel coords from `_page_000.jpg` (3300×2550 px). Pipeline re-run with `--manual-cps`. Total cost this session: $0.0828 vision + $0.8117 pipeline = **$0.8945**.
+
+**Vision-derived pixel coords** (from `_vision_cp_lookup.py`, Opus 4.7):
+| Intersection | px_x | px_y | OSM lat | OSM lon |
+|---|---|---|---|---|
+| Main St × Pioneer St | 1640 | 890 | 40.51417 | -112.03305 |
+| Fort Herriman Pkwy × 13400 South | 1860 | 1170 | 40.50787 | -112.01025 |
+| Herriman Pkwy × Rosecrest Rd | 1640 | 1395 | 40.49836 | -112.02445 |
+
+Y-order validates: Main (north, y=890) < Fort Herriman (mid, y=1170) < Herriman Pkwy (south, y=1395) ✓. Fort Herriman is easternmost (lon -112.010, x=1860) ✓.
+
+**Pipeline result**:
+- RMSE: **0.0 ft** (exact fit — 3 CPs, no over-determination; affine math is exact, not an independent quality signal)
+- Rotation detected: **22.47°** (map not perfectly north-up — consistent with Herriman's diagonal Oquirrh foothills orientation)
+- CPs identified: 3 / surviving: 3 (all manual — bypass Stages 2–3)
+- Features: **12** (8 zones hit 8-call cap; only residential zones processed; Commercial/Industrial/Public/Open Space not extracted)
+- Zone classes: `future_low_density_residential` (8), `future_medium_density_residential` (2), `future_high_density_residential` (2)
+- Total zones in legend: 17; extracted: 8 (Hillside/Rural Res, Agricultural Res, Low Density Res, Single Family Res, Medium Density Res, High Density Res, Mixed Use, Mixed Use–Towne Center)
+- Polygons extracted pre-filter: 29; survived bbox filter: 12 (17 dropped — 59% drop rate, worth eye-test)
+- Feature centroid: (40.498, -112.001) — 7,723 ft (1.46 mi) from estimated city center (40.514, -112.020); Herriman's bbox runs lon -112.08 to -111.97 so centroid is in the eastern portion of city
+- Schema v2 fields: all present ✓
+- 4 vintage fields: all present ✓ (`flu_plan_vintage`, `flu_currency_note`, `source_pdf_page`, `source_pdf_filename`)
+- Affine matrix: `lon = 8.196e-5·px_x + 1.703e-5·px_y - 112.183; lat = 1.121e-5·px_x - 3.131e-5·px_y + 40.524`
+
+**Key caveats for eye-test**:
+1. RMSE 0.0 ft is exact-fit artifact (3 CPs = 3 unknowns = zero residual). No independent validation until Cam overlays on Map 7.
+2. 8-call cap hit after zone 8 of 17 — 9 zone types not extracted. If eye-test passes, re-run with `--max-zone-calls 17` to get complete coverage (~$1.50 more).
+3. 59% polygon drop rate (17/29 outside bbox) suggests some extracted polygons may be mis-georeferenced, OR the map shows area extending beyond the Herriman bbox boundary.
+
+**Files committed** (on `tooele-land-intel/phase-18b-2-pipeline-v2`):
+- `data/zoning/future/herriman_gp.geojson` (12 features, schema v2 + 4 vintage fields)
+- `data/zoning/future/herriman_manual_cps.json` (3 CPs from vision call)
+- `data/zoning/future/herriman_transform_validation.md` (updated)
+- `data/zoning/future/herriman_api_calls.jsonl` (updated)
+
+**Next**: Cam eye-tests `herriman_gp.geojson` against Map 7 in GP Amendment PDF. If spatial placement looks right → authorize `--max-zone-calls 17` re-run to complete all zones → then merge PR #11.
 
 ---
 
