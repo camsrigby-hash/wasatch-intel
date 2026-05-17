@@ -269,6 +269,36 @@ Herriman's grid uses Utah numbered roads (12600 S, 13400 S) that run east-west a
 
 ---
 
+### PHASE 18b-2c PHASE_LOG — Herriman REST re-sweep (2026-05-16)
+
+**Status**: NEGATIVE — no public REST GP FLU endpoint found. PDF path confirmed.
+
+**Pattern applied**: SD-17 owner-enumeration (same pattern that found Vineyard, Grantsville, Bluffdale, Draper).
+
+**Sweep results**:
+
+| Source | Finding |
+|---|---|
+| `herriman.gov/planning`, `herriman.gov/gis` | Two ArcGIS environments: Enterprise (`arcgis.herriman.org`) + AGOL (`herriman.maps.arcgis.com`, org `XBmqwOHlPh25M7aJ`) |
+| Enterprise MapServer | `arcgis.herriman.org/arcgis/rest/services/Land_Use/MapServer/1` — GP FLU layer, field `FLU2022` — **confirmed via Google index but firewall-blocked from all external IPs** (socket close on all direct REST fetches) |
+| AGOL org `XBmqwOHlPh25M7aJ` (94 Feature Services, 109 total) | No GP FLU service. Owners `HCPublicWorks` (24 services) + `sbrown@herriman.org` — all utilities, zoning, roads, trails. Zero match for: Land_Use / FLU / Future / GeneralPlan / GP. |
+| AGOL AGOL-hosted Herriman FeatureServer (`services2.arcgis.com/XBmqwOHlPh25M7aJ/ArcGIS/rest/services/Herriman/FeatureServer`) | 52 layers — utilities, storm drain, zoning (layer 51), subdivisions, trails — no FLU layer |
+| AGOL search: `herriman future land use` | 2 draft Web Maps (owner `ffkrarchitects`) — **private/restricted** (403) |
+| Utah AGRC / NLS LandUseService | No Herriman coverage |
+| Hub sites (herriman.hub.arcgis.com, mapportal-herriman.hub.arcgis.com) | Enterprise portal confirmed (`arcgis.herriman.org/portal`); no public Hub site |
+
+**Owners enumerated**: `herriman`, `herriman_city`, `herriman_gis`, `gis_herriman`, `ap_herriman`, `apherriman`, `gis2_herriman`, `hgis`, `HCPublicWorks`, `sbrown@herriman.org`, `ffkrarchitects` — none yield public GP FLU.
+
+**Key finding**: Herriman runs ArcGIS Enterprise 11.3 and keeps GP FLU on the Enterprise MapServer (`FLU2022` field), which is not publicly accessible from external IPs. This is structurally different from the other cities (Grantsville/Bluffdale/Draper/Vineyard used AGOL-hosted FeatureServers). The Enterprise server also has no AGOL-mirrored public copy.
+
+**Verdict**: `Herriman → PDF path confirmed (REST re-sweep negative, 2026-05-16)`.
+
+**Next step for Herriman**: `--manual-cps` with 3+ named-street (non-numbered) intersections on the 2030 Land Use Map (`LandUse203036x36.pdf`). The 2013 GP Amendment (previously attempted) is superseded — the 2030 map is the current adopted plan. Named-street CP candidates: Herriman Pkwy × Rosecrest Rd, Herriman Pkwy × Town Center Blvd, Fort Herriman Pkwy × 13400 S area. This is the next Herriman prompt's job, not this session's.
+
+**Cost**: $0 (Sonnet planning only, no LLM calls for this sweep).
+
+---
+
 ### PHASE 15a COMPLETION NOTES (2026-05-09)
 
 Phase 15a shipped as a split implementation. The CRE platform portion is implemented in `tooele-land-intel/scripts/scrape_listings.py` and writes `data/raw/listings_crexi_<YYYY-MM-DD>.csv` plus `data/raw/listings_landcom_<YYYY-MM-DD>.csv`. LoopNet remains explicitly excluded. The county comps portion is implemented in `tooele-land-intel/scripts/scrape_comps.py` and writes one `data/raw/comps_recorder_<county>_<YYYY-MM-DD>.csv` per county for Tooele, Salt Lake, Utah, Davis, Weber, Wasatch, and Box Elder.
