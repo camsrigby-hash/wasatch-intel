@@ -52,7 +52,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 18b-2a | Future land use REST FLU extraction (Manus) | **Shipped** | May 11 2026 | 6 cities via REST (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). NLS source authority caveat flagged. 7 cities → PDF path (18b-2b/c). |
 | 18b-2b | GP PDF pipeline prototype on Erda (CC Sonnet) | **Shipped** | May 14 2026 | `scripts/gp_pdf_extract.py` built (8 stages, all CLI flags). Erda result: RMSE 4664 ft, 0 features — source map is regional overview, not parcel-level. Pipeline mechanics verified. Erda marked `gp_data: regional_map_only`. Blocker for 18b-2c: production API key + parcel-level PDF for each city. Branch: `phase-18b-2b-pipeline-prototype`. |
 | 18b-2c | GP PDF vector-tracing rollout (Spanish Fork + REST batch) | **Shipped** | May 16 2026 | Spanish Fork RMSE 38.6 ft (14 features). REST batch: Vineyard, Grantsville, Bluffdale, Draper. Herriman vector-tracing failed eye-test → moved to 18b-2d per SD-20. PR #11 open, merge user's call. |
-| 18b-2d | Raster-overlay zoning extraction (CC Opus, supersedes vector tracing) | **Active** | May 18 2026 | New `scripts/gp_raster_sample_extract.py`. Herriman: 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6s. Eye-test pending. Erda + all future PDF cities on this path per SD-20. |
+| 18b-2d | Raster-overlay zoning extraction (CC Opus, supersedes vector tracing) | **Shipped** | May 18 2026 | Herriman 18b-2d-2 (Cam-KMZ): 28,195 parcels sampled, Herriman-only MUT 7.4%, South Jordan 78% (Olympia Hills — correct). bbox+whitelist fix. SD-21. PR #11 merged. |
 | 18b-2e | Taxonomy harmonization + quality review (CC Sonnet) | Pending | — | gp_taxonomy.yaml, spot-checks, _quality_review.md. (Renumbered from 18b-2d.) |
 | 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | Pending | — | After 18b-1 + 18b-2 ship. Adds gp_zone_normalized + spread_score dimension; re-bakes PMTiles. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
@@ -263,6 +263,14 @@ Two extraction attempts on Herriman failed. Attempt 1 (tile-refine, 36×36 poste
 ### SD-20 — Raster-overlay extraction supersedes vector tracing for PDF cities (May 18, 2026)
 Phase 18b-2c shipped 5 of 6 PDF cities via vector polygon tracing (Stage 2 vision identifies polygon boundaries, Stage 3 georeferences via control points, Stage 4–6 traces each polygon). Eye-test on Herriman (the one remaining city) revealed the approach is fundamentally fragile for satellite-basemap PDFs: polygons miss large areas (8-call cap), tracing accuracy depends on vision identifying boundary pixels precisely, and the validation signal (RMSE) is misleading when CP count equals affine unknowns. New approach (Phase 18b-2d): georeference the entire PDF raster, then sample pixel colors at parcel centroids and look up zone labels via a Claude-vision-extracted legend mapping. This produces per-parcel zone labels directly (which is what Wasatch Intel needs for scoring) and captures all zones automatically. Spanish Fork stays on 18b-2c (works as shipped, no refactor). Herriman + Erda + all future PDF cities go through 18b-2d. First 18b-2d run (Herriman, May 18 2026): 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6 s. Pipeline: `tooele-land-intel/scripts/gp_raster_sample_extract.py`. Branch: `phase-18b-2d-raster-sample`.
 
+### SD-21 — Cam-KMZ georeferencing for satellite-underlay PDF maps (May 18, 2026)
+For PDF zoning/GP maps that use a satellite-basemap underlay (Herriman Map 7 style), algorithmic georeferencing via 3 vision-picked control points produces too much misregistration for downstream color sampling. Phase 18b-2d failed for Herriman on this — RMSE >1000 ft, Mixed Use Towne Center over-assigned at 26.5%.
+**Canonical workflow for such cities**: Cam manually overlays the source PDF as a Google Earth Pro GroundOverlay using local geography knowledge (named roads, city boundary, landmarks), exports KMZ at ~99% confidence. CC extracts the georeferenced raster from the KMZ and runs the existing 18b-2d color-sampling pipeline against it.
+**Pipeline addition**: For cities whose FLU/GP map extends past city limits into planning area, CITY_CONFIGS must include a `parcel_city_whitelist` (not single-city filter) and a `bbox` matching the KMZ LatLonBox. Output features carry `flu_source_jurisdiction` to disambiguate when multiple cities' FLU maps overlap the same parcels.
+**Cam-time per city**: ~15 minutes. Reusable for any future city whose GP map has satellite underlay, low-contrast colors, or rotation that defeats algorithmic CP-picking. Spanish Fork-style flat-color maps stay on fully-automated 18b-2d.
+**Reference implementation**: `tooele-land-intel/scripts/herriman_cam_ingest.py`.
+**Future flag**: bbox-too-tight pattern likely exists for other cities in CITY_CONFIGS. Audit before reusing Cam-KMZ workflow on next city.
+
 ---
 
 ## Working Style
@@ -297,6 +305,7 @@ Herriman's GP Future Land Use data exists as a public-facing field `FLU2022` on 
 
 ## Update history (newest first)
 
+- **May 18, 2026** — 18b-2d-2 (Herriman Cam-KMZ) SHIPPED. SD-21 appended (canonical Cam-KMZ workflow for satellite-underlay maps). Phase Ledger 18b-2d → Shipped. PR #11 merged (18b-2c + 18b-2d-2). herriman_gp.kmz / .geojson / _parcel_table.csv on main in tooele-land-intel.
 - **May 18, 2026** — SD-20 logged. Phase 18b-2d (raster-overlay extraction) supersedes 18b-2c PDF pipeline for satellite-basemap cities. Herriman re-extracted under new approach: 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6 s. Phase Ledger updated: 18b-2c → Shipped (Spanish Fork + REST batch); 18b-2d added → Active (raster-overlay); old 18b-2d (taxonomy) renumbered to 18b-2e. SD-19 marked superseded by SD-20.
 - **May 16, 2026 (later still)** — Future Opportunities section added; Herriman internal FLU2022 lead documented.
 - **May 16, 2026** — SD-18 (Overpass node-count bug) + SD-19 (Herriman permanent deferral) appended after Herriman GP Amendment re-attempt failed with degenerate Stage 3. SD-16 (Herriman deferral) + SD-17 (REST owner-enumeration pattern) appended after Phase 18b-2c Spanish Fork ship. Bluffdale REST pre-check completed (FeatureServer confirmed, moved off PDF roster; Draper is the sole remaining PDF city).

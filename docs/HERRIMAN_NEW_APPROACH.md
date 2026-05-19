@@ -1,6 +1,8 @@
 # Herriman 18b-2d-2 — Cam-KMZ + Sampling Approach
 
-**Status**: New approach, ready to build. Replaces failed 18b-2d algorithmic georeferencing.
+**STATUS: SHIPPED May 18 2026.** Herriman 18b-2d-2 complete via bbox+multi-city whitelist fix. 28,195 parcels sampled across Herriman/South Jordan/Bluffdale/Unincorporated SLC. Herriman-only MUT 7.4% (vs prior 8.8%), South Jordan 78% MUT reflects Olympia town center. See PROJECT_DIRECTION.md SD-21 for the canonical Cam-KMZ workflow.
+
+**Status**: ~~New approach, ready to build.~~ SHIPPED. Replaces failed 18b-2d algorithmic georeferencing.
 **Date**: May 18, 2026
 **Owner**: Cam Rigby
 **Cross-references**: `HERRIMAN_FOLLOWUP.md` + `PROJECT_DIRECTION.md` (SD-19, SD-20)
