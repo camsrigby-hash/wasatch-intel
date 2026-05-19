@@ -30,6 +30,7 @@ KMZ contents (already inspected):
 - `doc.kml` — `GroundOverlay` with corner coordinates: N 40.5421°, S 40.4425°, E -111.9241°, W -112.0941°
 - `files/herriman zoning map.png` — 1096×857 PNG, ~42 ft per pixel
 - Alignment confidence per Cam: 99%
+- Map 7 has 16 zone categories (NOT 17). Verified May 18 2026 via Cam's annotated Legend.png.
 
 The KMZ needs to be placed at `tooele-land-intel/data/_pdf_cache/herriman/Herriman_Zoning.kmz` before CC runs the build. (See companion CC prompt for the move step.)
 
@@ -64,7 +65,7 @@ The KMZ needs to be placed at `tooele-land-intel/data/_pdf_cache/herriman/Herrim
 
 - The full Map 7 image including the legend is on `Herriman_GP_Amendment.pdf` page 34. The KMZ contains the map portion only (no legend).
 - If `data/zoning/future/legends/herriman_legend.json` already exists from the prior 18b-2d run, reuse it as the starting point but validate quality
-- If quality is suspect (the prior run produced 16 categories vs 17 in the source — one zone was dropped), re-run legend extraction once with a tighter prompt that emphasizes color swatch RGB precision and instructs vision to enumerate ALL 17 categories explicitly
+- If quality is suspect, re-run legend extraction once with a tighter prompt that emphasizes color swatch RGB precision and instructs vision to enumerate all 16 categories explicitly. The prior run produced 16 categories; this matches Map 7's actual count (verified May 18 2026)
 - Output: `{zone_label: [r, g, b]}` mapping, cached at the same path
 
 ### Stage 3 — Per-parcel sampling
@@ -109,7 +110,7 @@ For PDF maps with satellite-basemap underlay (Herriman Map 7 style), algorithmic
 
 ## Open questions (none blocking — just to surface)
 
-1. The 18b-2d run produced a 16-category legend; Map 7 has 17. Which zone was dropped? Worth checking before sampling, but if Cam-KMZ georeferencing fixes the variance problem, this might fall out naturally.
+1. ~~The 18b-2d run produced a 16-category legend; Map 7 has 17. Which zone was dropped?~~ **Resolved May 18 2026**: Map 7 has 16 categories. The prior run's count was correct. Verified via Cam's annotated Legend.png.
 2. Polygon-grouped folders in the eye-test KMZ — keep the current folder structure or simplify?
 3. How does this workflow integrate into Phase 18b-3 D1 load? Same schema, should slot in normally, but worth confirming.
 
