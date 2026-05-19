@@ -6,14 +6,15 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-16
+## CURRENT STATE — 2026-05-18
 
-**Phase 18b-2c COMPLETE (pending user eye-test + merge decision) — Herriman GeoJSON written via vision-derived manual CPs. RMSE 0.0 ft (exact fit), rotation 22.47°, 12 features (8-call cap; residential zones only). Eye-test against Map 7 required before authorizing full 17-zone re-run and PR #11 merge.**
+**Phase 18b-2d-2 COMPLETE — Herriman re-extracted with Cam-KMZ georef. 16,219/16,408 parcels (98.8%) sampled. Mixed Use Towne Center dropped from 26.5% → 8.8% (confirming the prior run's red flag was a georef offset artifact). 16-category legend re-extracted from `legend_source.png` via Claude vision. All 4 vintage flags present. Handoff to Cam for Stage 5 eye-test in Google Earth Pro. Branch: `phase-18b-2d-raster-sample` on `tooele-land-intel`.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
-- **18b-2c** — SHIPPED (May 16 2026) — minus Herriman. Spanish Fork RMSE 38.6 ft. REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Stage 2b tile-refinement implemented. **Herriman: Stage 2 named-street bias run (May 16 2026) — 2/6 CPs survived SD-18 gate (Rosecrest Rd×Mountain View Hwy + Main St×Pioneer St via intersection-node), but need ≥3. Auto-path exhausted. Awaiting manual pixel coords from Cam for 3-CP manual-CPs fallback.** PR #11 merge is **user's call** (do not auto-merge). Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
+- **18b-2c** — SHIPPED (May 16 2026) — Spanish Fork RMSE 38.6 ft (14 features) + REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Vector-tracing approach is the shipped 18b-2c pipeline; do NOT refactor it. Herriman previously vector-traced (12 features, 8-call cap) — eye-test exposed fundamental fragility of vector tracing on satellite-basemap PDFs. **Herriman moved to 18b-2d (raster-overlay) per SD-20.** PR #11 (18b-2c, Spanish Fork + REST batch) merge remains user's call. Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
+- **18b-2d** — ACTIVE (May 18 2026). New `scripts/gp_raster_sample_extract.py` — per-parcel LAB color sampling pipeline. Prior 18b-2d-1 run (algorithmic georef, 3 manual CPs, RMSE 0.0 exact-fit): 26.5% Mixed Use Towne Center red flag → confirmed georef offset. **18b-2d-2 (Cam-KMZ)**: Cam manually georeferenced Map 7 in Google Earth Pro → exported `Herriman_Zoning.kmz`. CC extracted GeoTIFF, re-ran legend via Claude vision (16 categories), sampled 16,219/16,408 parcels (98.8%), Mixed Use Towne Center now 8.8%. Scripts: `herriman_cam_ingest.py` (new 4-stage pipeline) + `herriman_geojson_to_kmz.py`. Branch: `phase-18b-2d-raster-sample`. **AWAITING Cam Stage 5 eye-test (Google Earth Pro). PR not yet opened.**
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -405,6 +406,115 @@ Pixel coordinates must be estimated from the 2550×3300 rasterized image of page
   * Fort Herriman Pkwy × 13400 South: lat 40.50787, lon -112.01025
 - Once Cam provides pixel coords → write `data/zoning/future/herriman_manual_cps.json`
 - Re-run: `py -3 scripts/gp_pdf_extract.py --city herriman --pdf data/_pdf_cache/herriman/herriman_map7_p34.pdf --manual-cps data/zoning/future/herriman_manual_cps.json --map-page 0 --rmse-threshold 300 --extra-props data/_pdf_cache/herriman/_extra_props.json`
+
+---
+
+### PHASE 18b-2d PHASE_LOG — Herriman raster-sample extraction (2026-05-18)
+
+**Status**: SHIPPED to `phase-18b-2d-raster-sample` (tooele-land-intel) — awaiting Cam eye-test before PR open.
+
+**Architecture (per SD-20)**:
+New `scripts/gp_raster_sample_extract.py` replaces vector polygon tracing with raster-overlay sampling.
+Per-parcel zone labels are derived by projecting each parcel centroid into the georeferenced map raster, sampling a 5×5 pixel window, and nearest-matching the mean LAB color against a vision-extracted legend palette. Output is **the deliverable the scoring engine needs** (per-parcel zone column) — not a set of zone polygons that then have to be spatially joined.
+
+Spanish Fork stays on 18b-2c's `gp_pdf_extract.py` (works as shipped, no refactor). Herriman + Erda + all future PDF cities go through 18b-2d.
+
+**Pipeline**:
+1. **Stage 1 — Rasterize**: reuse `gpe.stage1_rasterize` (PyMuPDF / pdf2image, 300 DPI, 5MB Anthropic-API resize cap).
+2. **Stage 2 — Georeference (hybrid CPs)**: if `--manual-cps` provided → skip auto; else `gpe.stage2_identify_control_points` + `gpe.stage3_ground_truth_lookup` (SD-18 gate). Then `gpe.stage4_fit_affine` + `gpe.stage5_validate`. Write GeoTIFF via rasterio (EPSG:4326).
+3. **Stage 3 — Legend (2 vision calls, cached)**: call 1 finds legend bbox (with image-dimension hint + out-of-bounds rescale guard for models that reason in the embedded-raster scale); call 2 reads color↔label pairs from the cropped region. Cached at `data/zoning/future/legends/{city}_legend.json` — re-runs are $0.
+4. **Stage 4 — Per-parcel sampling**: stream `data/raw/parcels_<county>.csv(.gz)` filtered to city bbox; centroid → pixel via inverse affine → 5×5 LAB window → nearest legend swatch by Euclidean distance; if distance > 35.0 (white/road pixel), retry with `shapely.representative_point()`; if still over threshold, mark `extraction_method=unknown`.
+5. **Stage 5 — Outputs**: per-parcel CSV (`{city}_gp_parcel_table.csv`, the canonical D1 join column) + per-parcel GeoJSON (`{city}_gp.geojson`, schema v2 + 4 vintage fields + 4 new fields: `extraction_method`, `color_match_confidence`, `lab_distance`, `source_legend`).
+
+**Herriman run result (May 18 2026)**:
+- Source: `data/_pdf_cache/herriman/herriman_map7_p34.pdf` (page-34 extract of `Herriman_GP_Amendment.pdf`).
+- CPs: 3 manual (Main St × Pioneer St; Fort Herriman Pkwy × 13400 South; Herriman Pkwy × Rosecrest Rd), reused from b259925. RMSE 0.0 ft (3 CPs = 3 unknowns; exact fit, not an independent quality signal). Rotation: 22.47°.
+- Legend: **16 swatches** extracted by vision (one short of the 17 in the addendum — vision merged or skipped one; eye-test will reveal which). Cached at `data/zoning/future/legends/herriman_legend.json`. Labels include zone-name OCR typos (`Commericial`, `Utiliites`) preserved verbatim from the map; D1 load will normalize these.
+- Parcels: 41,064 in Herriman bbox (from 394,610 Salt Lake County rows). UGRC `MunicipalBoundaries` REST endpoint returned 400 — fell back to `--restrict-parcel-city Herriman` filter (parcel_city column already in CSV). **16,408 parcels post-filter.**
+- Coverage: **16,331 sampled (99.5%) / 77 unknown (0.5%)**. Extraction method breakdown: 16,308 centroid / 23 interior_point / 77 unknown.
+- Zone distribution (top 5): Hillside/Rural Residential 35.4%, Mixed Use-Towne Center 26.5%, Open Space 8.7%, Low Density Residential 7.9%, Single Family Residential 5.0%. Tracks Herriman's known land-use shape (large rural west, dense Towne Center along Mountain View Corridor, Camp Williams "Military Operation" 3.6% to the south).
+- Total cost: **$0.2221** (3 vision calls: 2× legend_bbox at $0.0774 + $0.0788 — first call returned out-of-bounds coords prior to the rescale guard fix; legend_read $0.0659). Far below $5 cap. Re-run with cached legend: $0.0000.
+- Runtime: 12.6 s.
+
+**Files committed to `phase-18b-2d-raster-sample`** (tooele-land-intel):
+- `scripts/gp_raster_sample_extract.py` (new, ~700 lines)
+- `requirements.txt` — added scikit-image, python-dotenv, rasterio (already present)
+- `data/zoning/future/herriman_gp.geojson` (16,408 features, schema v2 + raster-sample fields)
+- `data/zoning/future/herriman_gp_parcel_table.csv` (canonical per-parcel zone column for D1)
+- `data/zoning/future/herriman_api_calls.jsonl` (3 calls, $0.2221)
+- `data/zoning/future/legends/herriman_legend.json` (16 swatches)
+- `data/_pdf_cache/herriman/herriman_georef.tif` (georeferenced raster, 2550×3300, EPSG:4326)
+
+**Key caveats for eye-test**:
+1. RMSE 0.0 ft is exact-fit artifact (3 CPs = 3 unknowns); validation rests on the rotation (22.47°) matching the map's actual Oquirrh foothills tilt and the zone distribution looking spatially plausible when overlaid in QGIS / on the map. The GeoTIFF can be dropped into QGIS for direct visual verification.
+2. Legend has 16 vs expected 17 zones. Eye-test on the legend JSON should identify which is missing (likely a sub-residential category collapsed visually).
+3. Two OCR typos preserved verbatim (`Commericial`, `Utiliites`) — D1 normalizer (Phase 18b-3) will canonicalize.
+4. Adjacent-city parcels (Riverton, South Jordan, Bluffdale) whose centroids fall in the Herriman bbox were excluded via `--restrict-parcel-city Herriman` because UGRC `MunicipalBoundaries` returned HTTP 400. If a proper polygon filter is needed later, the cleanest source is UGRC `SLCo_Municipal_Boundaries` (currently empty layer set — likely needs a different parent service URL).
+
+**Architecture deviations from spec**:
+- **Stage 3 legend-bbox prompt** got an image-dimension hint + an out-of-bounds rescale guard. The first Opus call returned bbox in the embedded-raster coord space (~5100 wide) instead of the resized JPG (~3300 wide), causing a crash. Defensive rescaling now handles this — preserves the spec's two-call structure.
+- **UGRC city boundary** unavailable (`MunicipalBoundaries/FeatureServer/0` returns 400; `SLCo_Municipal_Boundaries` has no queryable layer). Per spec, fallback is GeoTIFF bbox — but `parcel_city` is already in the CSV and is a strictly cleaner filter for the Salt Lake County case. Added `--restrict-parcel-city` flag; bbox fallback still wired for cases where the column is absent or noisy.
+- **Per-parcel features written even for `extraction_method=unknown`** (77 rows). Spec called for `sampled_zone=null` in this case; the GeoJSON honors that. CSV row preserves the closest legend match in the `lab_distance` column for diagnostics.
+
+**Next step**: Cam eye-tests `herriman_gp.geojson` (per-parcel polygons colored by `sampled_zone`) against Map 7 in GP Amendment PDF or `herriman_georef.tif` overlaid in QGIS. If spatial placement looks right → open PR off `phase-18b-2d-raster-sample` and decide on PR #11 (18b-2c, Spanish Fork+REST) merge ordering. If displaced → re-derive manual CPs from a wider intersection set and re-run (re-run cost: $0 if legend still valid).
+
+---
+
+### PHASE 18b-2d PHASE_LOG — Herriman 18b-2d-2 Cam-KMZ extraction (2026-05-18)
+
+**Status**: COMPLETE — committed to `phase-18b-2d-raster-sample`, pushed. Awaiting Cam Stage 5 eye-test in Google Earth Pro.
+
+**What changed from 18b-2d-1**:
+The 18b-2d-1 run used 3 manual control points + an algorithmic affine transform with RMSE 0.0 ft (exact fit, not an independent quality signal). Eye-test revealed 26.5% Mixed Use Towne Center — physically implausible; red flag confirmed as georef offset artifact from Map 7's satellite-basemap underlay making pixel-level color sampling noisy.
+
+Cam's fix: manually overlay Map 7 in Google Earth Pro using local geography knowledge (Mountain View Corridor, Bangerter Hwy, city boundary, named streets), export as `Herriman_Zoning.kmz`. ~99% alignment confidence (human with local knowledge >> 3 vision-picked CPs + affine). New pipeline `herriman_cam_ingest.py` extracts the GeoTIFF from the KMZ and feeds it to the existing LAB sampling engine.
+
+**New script**: `scripts/herriman_cam_ingest.py` (4-stage, ~300 lines):
+- Stage 1: KMZ → GeoTIFF via `zipfile` + `rasterio`. Validates LatLonBox (N=40.5421, S=40.4425, E=−111.9241, W=−112.0941) against spec. Writes `herriman_cam_georef.tif` (1096×857 px, EPSG:4326).
+- Stage 2: Claude vision on `legend_source.png` (Cam's high-quality legend crop). 16-category enumerated prompt with explicit swatch RGB instruction. 1 API call, cached to `herriman_legend.json`.
+- Stage 3: Per-parcel sampling via `gp_raster_sample_extract.stage4_sample_parcels` + `stage5_write_outputs`. Parcel CSV lookup redirected to main repo via `grse.REPO_ROOT` patch. Filter: `parcel_city == 'Herriman'`.
+- Stage 4: GeoJSON → KMZ via simplekml (same as prior `herriman_geojson_to_kmz.py`).
+
+**Results**:
+| Metric | 18b-2d-1 (algorithmic georef) | 18b-2d-2 (Cam-KMZ) |
+|---|---|---|
+| Mixed Use Towne Center | 26.5% | **8.8%** |
+| Hillside/Rural Residential | 35.4% | 17.2% |
+| High Density Residential | — | 15.2% |
+| Parcels sampled | 16,331 (99.5%) | 16,219 (98.8%) |
+| Unknown parcels | 77 (0.5%) | 189 (1.2%) |
+| API cost | $0.22 | < $0.10 (1 legend call) |
+| Runtime | 12.6 s | 27 s |
+
+Mixed Use Towne Center dropping from 26.5% → 8.8% confirms the prior run's georef offset was the root cause of the distribution anomaly.
+
+**Legend re-extraction**:
+Prior legend had 16 categories but the prior addendum mistakenly noted 17. Spec corrected: 16 is the authoritative count. Claude vision re-extracted from `legend_source.png` (Cam's Desktop PNG of the Map 7 legend). All 16 categories returned with clean RGB values. `herriman_legend.json` overwritten.
+
+**Vintage flags** (all 4 present in GeoJSON feature properties):
+- `flu_plan_vintage = "2013_amendment_2025_horizon"`
+- `flu_currency_note = "may not reflect post-2013 updates; FLU2022 exists on Herriman internal Enterprise GIS but is not publicly accessible"`
+- `source_pdf_page = 34`
+- `source_pdf_filename = "Herriman_GP_Amendment.pdf"`
+
+**Files committed to `phase-18b-2d-raster-sample`** (tooele-land-intel, commit `98ea928`):
+- `scripts/herriman_cam_ingest.py` (new 4-stage Cam-KMZ pipeline)
+- `scripts/herriman_geojson_to_kmz.py` (existing, now tracked)
+- `data/_pdf_cache/herriman/legend_source.png` (Cam's legend crop, source for re-extraction)
+- `data/zoning/future/herriman_gp.geojson` (16,408 features, overwritten, schema v2 + vintage flags)
+- `data/zoning/future/herriman_gp_parcel_table.csv` (per-parcel zone column, overwritten)
+- `data/zoning/future/legends/herriman_legend.json` (16 entries, overwritten)
+- `data/zoning/future/_pdf_extraction_log.md` (18b-2d-2 entry appended)
+
+**Gitignored outputs** (in main repo, not committed):
+- `data/_pdf_cache/herriman/herriman_cam_georef.tif` (1096×857 GeoTIFF, Cam-KMZ georef)
+- `data/zoning/future/herriman_gp.kmz` (8.1 MB, 16,622 placemarks — for GEP eye-test)
+
+**SD-21 candidate** (per `HERRIMAN_NEW_APPROACH.md`): If eye-test passes, log to `PROJECT_DIRECTION.md`: "For PDF maps with satellite-basemap underlay, Cam manually overlays as Google Earth Pro GroundOverlay → exports KMZ → CC extracts GeoTIFF and runs LAB sampling. Cam-time: ~15 min/city. Spanish Fork-style flat-color maps stay on fully-automated 18b-2d."
+
+**Next step**: Cam opens both `herriman_gp.kmz` (per-parcel colored parcels) AND `Herriman_Zoning.kmz` (source overlay) in Google Earth Pro. Toggle layers, spot-check 10 parcels across different zones.
+- **PASS** → open PR off `phase-18b-2d-raster-sample`; decide merge order vs PR #11 (18b-2c); log SD-21 to `PROJECT_DIRECTION.md`.
+- **FAIL** → diagnose (color mapping vs alignment); iterate one stage.
 
 ---
 
