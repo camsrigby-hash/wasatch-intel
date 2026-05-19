@@ -8,13 +8,13 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-18
 
-**Phase 18b-2d-2 COMPLETE — Herriman re-extracted with Cam-KMZ georef. 16,219/16,408 parcels (98.8%) sampled. Mixed Use Towne Center dropped from 26.5% → 8.8% (confirming the prior run's red flag was a georef offset artifact). 16-category legend re-extracted from `legend_source.png` via Claude vision. All 4 vintage flags present. Handoff to Cam for Stage 5 eye-test in Google Earth Pro. Branch: `phase-18b-2d-raster-sample` on `tooele-land-intel`.**
+**Phase 18b-2d-2 bbox+whitelist fix SHIPPED — 28,195 parcels sampled across Herriman planning area (Herriman 19,321 / South Jordan 4,160 / Bluffdale 4,199 / blank/Camp Williams 711). Herriman-only Mixed Use Towne Center 7.4% (confirming georef accuracy). Overall MUT 24.6% — expected: South Jordan parcels are Olympia Hills planned development, correctly designated Towne Center on Map 7. Multi-city `parcel_city_whitelist` added; bbox widened to match KMZ LatLonBox exactly. Awaiting Cam re-eye-test in Google Earth Pro. Branch: `phase-18b-2d-raster-sample` on `tooele-land-intel`, commit `dc9ce1b`.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
 - **18b-2c** — SHIPPED (May 16 2026) — Spanish Fork RMSE 38.6 ft (14 features) + REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Vector-tracing approach is the shipped 18b-2c pipeline; do NOT refactor it. Herriman previously vector-traced (12 features, 8-call cap) — eye-test exposed fundamental fragility of vector tracing on satellite-basemap PDFs. **Herriman moved to 18b-2d (raster-overlay) per SD-20.** PR #11 (18b-2c, Spanish Fork + REST batch) merge remains user's call. Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
-- **18b-2d** — ACTIVE (May 18 2026). New `scripts/gp_raster_sample_extract.py` — per-parcel LAB color sampling pipeline. Prior 18b-2d-1 run (algorithmic georef, 3 manual CPs, RMSE 0.0 exact-fit): 26.5% Mixed Use Towne Center red flag → confirmed georef offset. **18b-2d-2 (Cam-KMZ)**: Cam manually georeferenced Map 7 in Google Earth Pro → exported `Herriman_Zoning.kmz`. CC extracted GeoTIFF, re-ran legend via Claude vision (16 categories), sampled 16,219/16,408 parcels (98.8%), Mixed Use Towne Center now 8.8%. Scripts: `herriman_cam_ingest.py` (new 4-stage pipeline) + `herriman_geojson_to_kmz.py`. Branch: `phase-18b-2d-raster-sample`. **AWAITING Cam Stage 5 eye-test (Google Earth Pro). PR not yet opened.**
+- **18b-2d** — ACTIVE (May 18 2026). New `scripts/gp_raster_sample_extract.py` — per-parcel LAB color sampling pipeline. Prior 18b-2d-1 run (algorithmic georef, 3 manual CPs, RMSE 0.0 exact-fit): 26.5% Mixed Use Towne Center red flag → confirmed georef offset. **18b-2d-2 (Cam-KMZ)**: Cam manually georeferenced Map 7 in Google Earth Pro → exported `Herriman_Zoning.kmz`. CC extracted GeoTIFF, re-ran legend via Claude vision (16 categories). **bbox+whitelist fix** (commit `dc9ce1b`): bbox widened to KMZ LatLonBox; multi-city whitelist added (Herriman + South Jordan + Bluffdale + blank); 28,195 parcels sampled. Herriman-only MUT 7.4%; overall 24.6% (Olympia Hills South Jordan parcels are 78% MUT — geographically correct). Scripts: `herriman_cam_ingest.py` (4-stage pipeline) + `gp_raster_sample_extract.py`. Branch: `phase-18b-2d-raster-sample`. **AWAITING Cam re-eye-test (Google Earth Pro). PR not yet opened.**
 
 Phase 15 is PAUSED. Phase 15a scaffolding shipped but produced no usable listing data: CREXI returns 0 rows (JS-rendered SPA), Land.com 403 from GHA Azure IPs, county recorder output was UGRC assessor fallback. Resume after 18b-1 + 18b-2 ship + ~2 weeks clean-score observation. See SD-14 in PROJECT_DIRECTION.md.
 
@@ -515,6 +515,53 @@ Prior legend had 16 categories but the prior addendum mistakenly noted 17. Spec 
 **Next step**: Cam opens both `herriman_gp.kmz` (per-parcel colored parcels) AND `Herriman_Zoning.kmz` (source overlay) in Google Earth Pro. Toggle layers, spot-check 10 parcels across different zones.
 - **PASS** → open PR off `phase-18b-2d-raster-sample`; decide merge order vs PR #11 (18b-2c); log SD-21 to `PROJECT_DIRECTION.md`.
 - **FAIL** → diagnose (color mapping vs alignment); iterate one stage.
+
+---
+
+### PHASE 18b-2d PHASE_LOG — Herriman bbox+whitelist fix (2026-05-18)
+
+**Status**: SHIPPED — commit `dc9ce1b` on `phase-18b-2d-raster-sample`. Awaiting Cam re-eye-test.
+
+**What changed from 18b-2d-2 initial run**:
+Cam's initial eye-test revealed "uncoded" parcels in the southern fringe and near Olympia Hills. Diagnostic confirmed two root causes:
+1. Pipeline bbox (`lat_min=40.47`) was tighter than the KMZ LatLonBox (`S=40.4425`), excluding 5,623 Herriman parcels in the southern fringe.
+2. `parcel_city == 'Herriman'` filter excluded all South Jordan / Bluffdale parcels that fall inside Herriman's FLU planning area (the Olympia Hills development area is South Jordan jurisdiction per UGRC LIR but within Herriman's Map 7 coverage).
+
+**Fix**:
+- Herriman `bbox` in `gp_pdf_extract.py` `CITY_CONFIGS` widened to match KMZ LatLonBox exactly: `{lon_min: -112.0941, lat_min: 40.4425, lon_max: -111.9241, lat_max: 40.5421}`.
+- `parcel_city_whitelist` added: `["Herriman", "South Jordan", "Bluffdale", "Unincorporated Salt Lake County"]`.
+- `herriman_cam_ingest.py` Stage 3 updated: reads `whitelist` from `CITY_CFG`; includes blank/null `parcel_city` rows (Camp Williams federal land).
+- `flu_source_jurisdiction="Herriman"` injected into all features (needed because output now includes non-Herriman parcels).
+- `--skip-georef` flag added so Stage 3–4 re-run skips KMZ→GeoTIFF (Stage 1) and legend vision (Stage 2) when GeoTIFF already exists.
+
+**Results — before vs after**:
+
+| Metric | Initial (Herriman-only) | bbox+whitelist fix |
+|---|---|---|
+| Total sampled | 16,219 | **28,195** |
+| Herriman parcels | 16,219 | 19,321 (68%) |
+| South Jordan parcels | — | 4,160 (15%) |
+| Bluffdale parcels | — | 4,199 (15%) |
+| Blank/Camp Williams | — | 711 (2%) |
+| Unknown parcels | 189 (1.2%) | 196 (0.7%) |
+| Herriman MUT | 8.8% | **7.4%** |
+| Overall MUT | 8.8% | 24.6% |
+
+**MUT interpretation**: Overall 24.6% is not a georef artifact — South Jordan parcels are 78% Mixed Use Towne Center because they are in the Olympia Hills master-planned development area that Map 7 correctly designates as Towne Center. Herriman-only MUT of 7.4% is the relevant accuracy signal, and it confirms Cam's georef is good.
+
+**Files updated on `phase-18b-2d-raster-sample`** (tooele-land-intel, commit `dc9ce1b`):
+- `scripts/herriman_cam_ingest.py` — Stage 3 whitelist filter, `flu_source_jurisdiction` prop, `--skip-georef` flag
+- `scripts/gp_pdf_extract.py` — Herriman `CITY_CONFIGS` bbox widened + `parcel_city_whitelist` added
+- `data/zoning/future/herriman_gp.geojson` — overwritten (28,391 features, includes multi-city parcels)
+- `data/zoning/future/herriman_gp_parcel_table.csv` — overwritten (includes `parcel_city` column for city breakdown)
+- `data/zoning/future/_pdf_extraction_log.md` — bbox+whitelist sub-entry appended
+
+**Gitignored outputs** (in main repo, not committed):
+- `data/zoning/future/herriman_gp.kmz` — re-generated for re-eye-test (28,391 placemarks)
+
+**Next step**: Cam re-eye-tests both KMZ files in Google Earth Pro. Check that southern fringe parcels now show zones and that Olympia Hills parcels are coded Towne Center (geographically correct per Map 7).
+- **PASS** → open PR off `phase-18b-2d-raster-sample`; log SD-21 to `PROJECT_DIRECTION.md`; decide merge order vs PR #11.
+- **FAIL** → diagnose which of the multi-city parcel sets is the issue (color vs alignment).
 
 ---
 

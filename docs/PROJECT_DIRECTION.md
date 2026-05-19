@@ -51,8 +51,9 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 18b-1 | Current zoning via ArcGIS REST | **Shipped** | May 11 2026 | 13-city GeoJSONs merged to main. Lehi 41.8% Other/Unknown flagged in _taxonomy_review_needed.md — normalization fix needed before 18b-3 D1 load. |
 | 18b-2a | Future land use REST FLU extraction (Manus) | **Shipped** | May 11 2026 | 6 cities via REST (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). NLS source authority caveat flagged. 7 cities → PDF path (18b-2b/c). |
 | 18b-2b | GP PDF pipeline prototype on Erda (CC Sonnet) | **Shipped** | May 14 2026 | `scripts/gp_pdf_extract.py` built (8 stages, all CLI flags). Erda result: RMSE 4664 ft, 0 features — source map is regional overview, not parcel-level. Pipeline mechanics verified. Erda marked `gp_data: regional_map_only`. Blocker for 18b-2c: production API key + parcel-level PDF for each city. Branch: `phase-18b-2b-pipeline-prototype`. |
-| 18b-2c | GP PDF rollout to remaining 5 cities (CC Sonnet) | **Next** | — | Prerequisites: confirm PDF URLs (Grantsville, Bluffdale, Draper, Herriman, Spanish Fork); obtain `sk-ant-api03-...` key; pre-screen each PDF map for parcel-level detail. Use Batch API (50% discount). Grantsville recommended first. |
-| 18b-2d | Taxonomy harmonization + quality review (CC Sonnet) | Pending | — | gp_taxonomy.yaml, spot-checks, _quality_review.md. |
+| 18b-2c | GP PDF vector-tracing rollout (Spanish Fork + REST batch) | **Shipped** | May 16 2026 | Spanish Fork RMSE 38.6 ft (14 features). REST batch: Vineyard, Grantsville, Bluffdale, Draper. Herriman vector-tracing failed eye-test → moved to 18b-2d per SD-20. PR #11 open, merge user's call. |
+| 18b-2d | Raster-overlay zoning extraction (CC Opus, supersedes vector tracing) | **Active** | May 18 2026 | New `scripts/gp_raster_sample_extract.py`. Herriman: 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6s. Eye-test pending. Erda + all future PDF cities on this path per SD-20. |
+| 18b-2e | Taxonomy harmonization + quality review (CC Sonnet) | Pending | — | gp_taxonomy.yaml, spot-checks, _quality_review.md. (Renumbered from 18b-2d.) |
 | 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | Pending | — | After 18b-1 + 18b-2 ship. Adds gp_zone_normalized + spread_score dimension; re-bakes PMTiles. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
 | 21 | PMN audio mp3 transcription pipeline (Whisper or Claude API) | Pending | — | Surfaces what was *said* beyond agenda text |
@@ -257,6 +258,11 @@ Documented during Spanish Fork run: `Main.*St` regex within city_bbox + 0.05° b
 ### SD-19 — Herriman PDF permanently deferred until Stage 3 fix (May 16, 2026)
 Two extraction attempts on Herriman failed. Attempt 1 (tile-refine, 36×36 poster): RMSE 1051 ft — large-format pixel uncertainty. Attempt 2 (98-page GP Amendment, letter-format page 34): Stage 3 degenerate (SD-18 Overpass bug) → RMSE 0.0 ft false positive, 1 feature, unusable. Decision: Herriman deferred until one of the following: (a) Stage 3 SD-18 node-count fix implemented and tested, OR (b) manual pixel CPs provided for the 5100×3300 image of herriman_map7_p34.pdf (extracted from 98-page GP Amendment). Source PDF cached at `tooele-land-intel/data/_pdf_cache/herriman/`. PR #11 merge is user's call; Herriman will ship as a follow-on PR.
 
+**Update (May 18, 2026)**: SD-19 superseded by SD-20. Herriman re-extracted under 18b-2d raster-overlay pipeline, not 18b-2c vector tracing.
+
+### SD-20 — Raster-overlay extraction supersedes vector tracing for PDF cities (May 18, 2026)
+Phase 18b-2c shipped 5 of 6 PDF cities via vector polygon tracing (Stage 2 vision identifies polygon boundaries, Stage 3 georeferences via control points, Stage 4–6 traces each polygon). Eye-test on Herriman (the one remaining city) revealed the approach is fundamentally fragile for satellite-basemap PDFs: polygons miss large areas (8-call cap), tracing accuracy depends on vision identifying boundary pixels precisely, and the validation signal (RMSE) is misleading when CP count equals affine unknowns. New approach (Phase 18b-2d): georeference the entire PDF raster, then sample pixel colors at parcel centroids and look up zone labels via a Claude-vision-extracted legend mapping. This produces per-parcel zone labels directly (which is what Wasatch Intel needs for scoring) and captures all zones automatically. Spanish Fork stays on 18b-2c (works as shipped, no refactor). Herriman + Erda + all future PDF cities go through 18b-2d. First 18b-2d run (Herriman, May 18 2026): 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6 s. Pipeline: `tooele-land-intel/scripts/gp_raster_sample_extract.py`. Branch: `phase-18b-2d-raster-sample`.
+
 ---
 
 ## Working Style
@@ -291,6 +297,7 @@ Herriman's GP Future Land Use data exists as a public-facing field `FLU2022` on 
 
 ## Update history (newest first)
 
+- **May 18, 2026** — SD-20 logged. Phase 18b-2d (raster-overlay extraction) supersedes 18b-2c PDF pipeline for satellite-basemap cities. Herriman re-extracted under new approach: 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6 s. Phase Ledger updated: 18b-2c → Shipped (Spanish Fork + REST batch); 18b-2d added → Active (raster-overlay); old 18b-2d (taxonomy) renumbered to 18b-2e. SD-19 marked superseded by SD-20.
 - **May 16, 2026 (later still)** — Future Opportunities section added; Herriman internal FLU2022 lead documented.
 - **May 16, 2026** — SD-18 (Overpass node-count bug) + SD-19 (Herriman permanent deferral) appended after Herriman GP Amendment re-attempt failed with degenerate Stage 3. SD-16 (Herriman deferral) + SD-17 (REST owner-enumeration pattern) appended after Phase 18b-2c Spanish Fork ship. Bluffdale REST pre-check completed (FeatureServer confirmed, moved off PDF roster; Draper is the sole remaining PDF city).
 - **May 10, 2026** — Phase 18b split into 18b-1 / 18b-2 / 18b-3 (SD-15). Manus first attempt discarded (unanchored hallucinations). 18b-1 = REST current zoning; 18b-2 = georeferenced PDF future land use; 18b-3 = D1 + scoring + tiles integration.
