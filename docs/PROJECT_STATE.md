@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-16
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 18b-2c Herriman GP Amendment re-attempt: Stage 3 degenerate (SD-18 SD-19). Herriman deferred.
-**Active phase:** Phase 18b-3 is next (D1 + scoring + tiles integration). PR #11 merge is user's call first.
+**Last updated:** 2026-05-22
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 18b-3: D1 migration 0008, per-parcel GP/FLU join (227k zone_current + 193k zone_future), /api/parcel/:apn augmented. PR #9 merged.
+**Active phase:** Phase 18b-2e (taxonomy harmonization) is next.
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)

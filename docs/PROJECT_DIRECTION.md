@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 16, 2026 (Phase 18b-2c in progress; Bluffdale REST confirmed; SD-16 + SD-17 appended)
+**Last updated**: May 22, 2026 (Phase 18b-3 shipped; SD-22 appended)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -54,7 +54,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 18b-2c | GP PDF vector-tracing rollout (Spanish Fork + REST batch) | **Shipped** | May 16 2026 | Spanish Fork RMSE 38.6 ft (14 features). REST batch: Vineyard, Grantsville, Bluffdale, Draper. Herriman vector-tracing failed eye-test → moved to 18b-2d per SD-20. PR #11 open, merge user's call. |
 | 18b-2d | Raster-overlay zoning extraction (CC Opus, supersedes vector tracing) | **Shipped** | May 18 2026 | Herriman 18b-2d-2 (Cam-KMZ): 28,195 parcels sampled, Herriman-only MUT 7.4%, South Jordan 78% (Olympia Hills — correct). bbox+whitelist fix. SD-21. PR #11 merged. |
 | 18b-2e | Taxonomy harmonization + quality review (CC Sonnet) | Pending | — | gp_taxonomy.yaml, spot-checks, _quality_review.md. (Renumbered from 18b-2d.) |
-| 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | Pending | — | After 18b-1 + 18b-2 ship. Adds gp_zone_normalized + spread_score dimension; re-bakes PMTiles. |
+| 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | **Shipped** | May 22 2026 | Migration 0008 (7 cols). 227k zone_current + 193k zone_future loaded. /api/parcel/:apn augmented. PMTiles re-bake and spread_score deferred to 18b-2e + Phase 16. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
 | 21 | PMN audio mp3 transcription pipeline (Whisper or Claude API) | Pending | — | Surfaces what was *said* beyond agenda text |
 
@@ -262,6 +262,13 @@ Two extraction attempts on Herriman failed. Attempt 1 (tile-refine, 36×36 poste
 
 ### SD-20 — Raster-overlay extraction supersedes vector tracing for PDF cities (May 18, 2026)
 Phase 18b-2c shipped 5 of 6 PDF cities via vector polygon tracing (Stage 2 vision identifies polygon boundaries, Stage 3 georeferences via control points, Stage 4–6 traces each polygon). Eye-test on Herriman (the one remaining city) revealed the approach is fundamentally fragile for satellite-basemap PDFs: polygons miss large areas (8-call cap), tracing accuracy depends on vision identifying boundary pixels precisely, and the validation signal (RMSE) is misleading when CP count equals affine unknowns. New approach (Phase 18b-2d): georeference the entire PDF raster, then sample pixel colors at parcel centroids and look up zone labels via a Claude-vision-extracted legend mapping. This produces per-parcel zone labels directly (which is what Wasatch Intel needs for scoring) and captures all zones automatically. Spanish Fork stays on 18b-2c (works as shipped, no refactor). Herriman + Erda + all future PDF cities go through 18b-2d. First 18b-2d run (Herriman, May 18 2026): 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6 s. Pipeline: `tooele-land-intel/scripts/gp_raster_sample_extract.py`. Branch: `phase-18b-2d-raster-sample`.
+
+### SD-22 — Release upload required for new county parcel files (May 22, 2026)
+The `large-parcels` GH Release on `tooele-land-intel` is the canonical source for parcel CSV files >5 MB used by GHA workflows. When a new county parcel CSV is produced (scrape or update), it MUST be uploaded to the release before any D1 loader workflow references it:
+```
+gh release upload large-parcels <file.csv.gz> -R camsrigby-hash/tooele-land-intel --clobber
+```
+Discovered in 18b-3 pre-flight: `parcels_utah.csv.gz` (70 MB) and `parcels_tooele.csv.gz` (5.5 MB) were locally available in `data/raw/` (gitignored) but absent from the release — the load_zoning_to_d1.yml pre-flight step caught the gap and blocked execution. Added both files to the release before proceeding. All future GHA workflows that need county parcel files should check the release manifest first.
 
 ### SD-21 — Cam-KMZ georeferencing for satellite-underlay PDF maps (May 18, 2026)
 For PDF zoning/GP maps that use a satellite-basemap underlay (Herriman Map 7 style), algorithmic georeferencing via 3 vision-picked control points produces too much misregistration for downstream color sampling. Phase 18b-2d failed for Herriman on this — RMSE >1000 ft, Mixed Use Towne Center over-assigned at 26.5%.

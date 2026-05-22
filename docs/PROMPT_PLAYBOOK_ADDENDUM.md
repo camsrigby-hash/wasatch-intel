@@ -6,9 +6,16 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-18
+## CURRENT STATE — 2026-05-22
 
-**18b-2d-2 SHIPPED (May 18 2026). Herriman Cam-KMZ complete: 28,195 parcels sampled, Herriman-only MUT 7.4%, South Jordan 78% MUT (Olympia Hills — correct). SD-21 formalized. PR #11 merged (18b-2c + 18b-2d-2). herriman_gp.kmz/.geojson/_parcel_table.csv on main in tooele-land-intel. Next phase: 18b-3 (D1 load of GP/FLU per-parcel data) or revisit Phase 14 vector tile pipeline per PROJECT_DIRECTION.md order.**
+**18b-3 SHIPPED (May 22 2026). D1 migration 0008 applied (7 new columns on parcel_records). Per-parcel GP/FLU join complete: 227,245 zone_current + 193,407 zone_future across Salt Lake / Utah / Tooele counties. /api/parcel/:apn augmented with D1 zoning fields. PR #9 merged to wasatch-intel/main. Next phase: 18b-2e (taxonomy harmonization) OR Phase 14 PMTiles re-bake with new zoning columns — per PROJECT_DIRECTION.md, 18b-2e is next (gp_taxonomy.yaml, spot-checks, quality review).**
+
+- **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — normalization deferred to 18b-2e; loaded raw with `flu_currency_note='lehi_zone_current_normalization_gap'`.
+- **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
+- **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
+- **18b-2c** — SHIPPED (May 16 2026) — Spanish Fork RMSE 38.6 ft (14 features) + REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Vector-tracing approach is the shipped 18b-2c pipeline; do NOT refactor it. Herriman previously vector-traced (12 features, 8-call cap) — eye-test exposed fundamental fragility of vector tracing on satellite-basemap PDFs. **Herriman moved to 18b-2d (raster-overlay) per SD-20.** PR #11 (18b-2c + 18b-2d-2) MERGED May 18 2026. Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
+- **18b-2d** — SHIPPED (May 18 2026). New `scripts/gp_raster_sample_extract.py` — per-parcel LAB color sampling pipeline. **18b-2d-2 (Cam-KMZ)**: Cam manually georeferenced Map 7 → `Herriman_Zoning.kmz`. CC extracted GeoTIFF, ran legend via Claude vision (16 categories). bbox+whitelist fix: 28,195 parcels sampled. Herriman-only MUT 7.4%; South Jordan 78% MUT (Olympia Hills — geographically correct). Scripts: `herriman_cam_ingest.py` + `gp_raster_sample_extract.py`. Canonical workflow documented in SD-21. Files on `tooele-land-intel/main`.
+- **18b-3** — SHIPPED (May 22 2026). See PHASE 18b-3 COMPLETION NOTES below.
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -2221,3 +2228,63 @@ The 14,000 without income are geographic non-matches (centroids outside census b
 **salt_lake GHA job failure**: The `parcel_enrichment_log` step hit repeated D1 lock contention (`Currently processing a long-running import`) from concurrent county jobs. The `median_income` UPDATE step completed ✓ before the log step started. All 385,283 matched salt_lake rows have correct median_income. Only the enrichment_log metadata rows for salt_lake are partially missing. Optional fix: re-trigger the workflow with `county=salt_lake` to repopulate the enrichment_log; no median_income re-work needed.
 
 **Verdict: 13b-6b COMPLETE.** 98.5% coverage exceeds practical utility threshold for scoring. CURRENT STATE updated.
+
+---
+
+### PHASE 18b-3 COMPLETION NOTES (2026-05-22)
+
+**Status**: SHIPPED. D1 GP/FLU per-parcel join complete.
+
+**What was built**:
+
+1. **Migration `wasatch-intel/migrations/0008_gp_flu_zoning.sql`** — 7 new columns on `parcel_records`:
+   - `zone_current TEXT` — raw zone_code from 18b-1 current zoning GeoJSON
+   - `zone_current_source TEXT` — extraction_method ("arcgis_rest" for all 13 cities)
+   - `zone_future TEXT` — gp_zone_code (REST/PDF cities) or sampled_zone (Herriman CSV)
+   - `zone_future_source TEXT` — "REST", "PDF_vision", "PDF_raster_Cam_KMZ"
+   - `flu_source_jurisdiction TEXT` — set for Herriman CSV parcels in SJ/Bluffdale
+   - `flu_plan_vintage TEXT` — reserved, NULL (populated in 18b-2e)
+   - `flu_currency_note TEXT` — NLS caveat + Lehi normalization gap flags
+   - 2 indexes: `idx_pr_zone_current`, `idx_pr_zone_future`
+
+2. **`wasatch-intel/scripts/load_zoning_to_d1.py`** — Python spatial join pipeline:
+   - Reads 3 county parcel CSVs (pre-computed centroids: centroid_lng/lat)
+   - Current zoning: STRtree over 3,843 polygons (13 cities)
+   - Future GP/FLU: STRtree over 2,045 polygons (11 cities) + Herriman direct CSV join (28,172 rows)
+   - Skips all-NULL parcels (migration already defaulted columns to NULL)
+   - Emits 500-row UPDATE SQL chunks
+
+3. **`wasatch-intel/.github/workflows/load_zoning_to_d1.yml`** — GHA workflow:
+   - Pre-flight downloads all 3 county CSVs from `large-parcels` release; aborts on missing county
+   - `dry_run` mode builds and uploads SQL artifact without D1 writes
+   - SD-6 retry (15/30/60), SD-9 global wrangler, SD-13 verify step
+
+4. **`src/server/entry.ts`** augmented — `/api/parcel/:apn` GET merges D1 zone fields into response
+
+**Pre-flight fix**: Uploaded `parcels_utah.csv.gz` (70 MB) and `parcels_tooele.csv.gz` (5.5 MB) to the `camsrigby-hash/tooele-land-intel large-parcels` GitHub Release. `parcels_salt_lake.csv.gz` was already there.
+
+**Load results** (GHA run `26271890736`, dry_run=false):
+
+| County | Parcels processed | zone_current | zone_future |
+|---|---|---|---|
+| Salt Lake | 394,610 | 70,939 | 59,683 |
+| Utah | 327,655 | 127,524 | 108,793 |
+| Tooele | 45,618 | 28,782 | 24,931 |
+| **Total** | **767,883** | **227,245 (29.6%)** | **193,407 (25.2%)** |
+| SQL chunks | — | 462 | — |
+
+Coverage notes:
+- 29.6% zone_current / 25.2% zone_future of 3-county total is expected — covered cities are a subset of all county parcels
+- Herriman parcel table covers 19,321 Herriman + 4,160 South Jordan (Olympia Hills) + 4,199 Bluffdale + 711 empty = 28,391 parcels total; `flu_source_jurisdiction` set for non-Herriman parcel_city values
+- Spanish Fork GP: 14 polygon features → partial city coverage (many unmatched parcels correctly get NULL zone_future)
+- Erda: zone_future=NULL, no flu_currency_note set (regional_map_only was documented in quality_review but not flagged in D1 since zone_future is already NULL)
+- Lehi: `flu_currency_note='lehi_zone_current_normalization_gap;NLS_source_authority_unverified'` for parcels with zone data
+- Eagle Mountain / Saratoga Springs: `flu_currency_note='NLS_source_authority_unverified'`
+
+**Tooele City multi-zone comma codes**: First token stored in zone_future (e.g. "MR-25, MR-16" → "MR-25"). Full harmonization deferred to 18b-2e taxonomy pass.
+
+**Cost**: $0 — pure data joins + D1 writes, no LLM calls.
+
+**PR**: [#9](https://github.com/camsrigby-hash/wasatch-intel/pull/9) merged to main.
+
+**What's next**: Phase 18b-2e — taxonomy harmonization (gp_taxonomy.yaml, spot-checks, _quality_review.md update). Then PMTiles re-bake to add zone_current/zone_future as tile attributes.
