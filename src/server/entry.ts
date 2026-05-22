@@ -323,7 +323,23 @@ export default {
         try {
           const detail = await loadParcelDetail(apn);
           if (!detail) return err404(`Parcel not found: ${apn}`);
-          return ok(detail, { source: "gap_layer.geojson+items_geocoded.csv", freshness: "live", count: 1, fetchedAt: new Date().toISOString() });
+          // Augment with D1 GP/FLU zoning fields (Phase 18b-3)
+          let zoningFields: Record<string, unknown> = {};
+          if (env.DB) {
+            const zRow = await env.DB
+              .prepare(
+                "SELECT zone_current, zone_current_source, zone_future, zone_future_source, " +
+                "flu_source_jurisdiction, flu_plan_vintage, flu_currency_note " +
+                "FROM parcel_records WHERE id = ? LIMIT 1"
+              )
+              .bind(apn)
+              .first<Record<string, unknown>>();
+            if (zRow) zoningFields = zRow;
+          }
+          return ok(
+            { ...detail, ...zoningFields },
+            { source: "gap_layer.geojson+d1:parcel_records", freshness: "live", count: 1, fetchedAt: new Date().toISOString() },
+          );
         } catch { return err500(); }
       }
 
