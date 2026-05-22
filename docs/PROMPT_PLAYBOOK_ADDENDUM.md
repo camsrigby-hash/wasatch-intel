@@ -2263,15 +2263,19 @@ The 14,000 without income are geographic non-matches (centroids outside census b
 
 **Pre-flight fix**: Uploaded `parcels_utah.csv.gz` (70 MB) and `parcels_tooele.csv.gz` (5.5 MB) to the `camsrigby-hash/tooele-land-intel large-parcels` GitHub Release. `parcels_salt_lake.csv.gz` was already there.
 
-**Load results** (GHA run `26271890736`, dry_run=false):
+**Load results** (GHA run `26271890736`, dry_run=false, 14m 10s, 0 failed chunks):
 
-| County | Parcels processed | zone_current | zone_future |
+| County | Parcels in CSV | zone_current (CSV) | zone_future (CSV) |
 |---|---|---|---|
 | Salt Lake | 394,610 | 70,939 | 59,683 |
 | Utah | 327,655 | 127,524 | 108,793 |
 | Tooele | 45,618 | 28,782 | 24,931 |
-| **Total** | **767,883** | **227,245 (29.6%)** | **193,407 (25.2%)** |
-| SQL chunks | — | 462 | — |
+| **Total (CSV)** | **767,883** | **227,245** | **193,407** |
+
+**D1 verified counts** (post-load query across all 947,863 parcel_records):
+- `has_current`: **202,913** (21.4% of all parcels) — ~24k fewer than CSV output because some parcel IDs in the updated CSVs don't exist in D1 (D1 was loaded from Phase 13b-2 snapshot; UPDATE silently skips missing rows)
+- `has_future`: **173,165** (18.3% of all parcels)
+- SQL chunks: 462
 
 Coverage notes:
 - 29.6% zone_current / 25.2% zone_future of 3-county total is expected — covered cities are a subset of all county parcels
