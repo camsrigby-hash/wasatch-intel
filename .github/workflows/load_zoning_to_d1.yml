@@ -1,0 +1,160 @@
+name: Load GP/FLU zoning to D1 (Phase 18b-3)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Generate SQL chunks without executing D1 writes"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  load-zoning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - name: Checkout wasatch-intel
+        uses: actions/checkout@v4
+
+      - name: Checkout tooele-land-intel (main)
+        uses: actions/checkout@v4
+        with:
+          repository: camsrigby-hash/tooele-land-intel
+          ref: main
+          path: tooele-land-intel
+          token: ${{ secrets.TOOELE_LAND_INTEL_PAT || github.token }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps
+        run: pip install shapely
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # SD-9: global wrangler install required for multi-statement D1 file execute
+      - name: Install wrangler (global)
+        run: npm install -g wrangler
+
+      # Pre-flight: download parcel CSVs from large-parcels release (all 3 counties required)
+      - name: Pre-flight — download parcel CSVs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/parcels
+          REPO="camsrigby-hash/tooele-land-intel"
+          FAILED=0
+          for COUNTY in salt_lake utah tooele; do
+            echo "Downloading parcels_${COUNTY}.csv.gz ..."
+            if gh release download large-parcels \
+                -p "parcels_${COUNTY}.csv.gz" \
+                -R "$REPO" \
+                -D /tmp/parcels/ --clobber 2>/dev/null; then
+              gunzip -f "/tmp/parcels/parcels_${COUNTY}.csv.gz"
+              ROWS=$(wc -l < "/tmp/parcels/parcels_${COUNTY}.csv")
+              echo "  OK: ${ROWS} lines (including header)"
+            else
+              echo "  ERROR: failed to download parcels_${COUNTY}.csv.gz from large-parcels release"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+          if [ "$FAILED" -gt 0 ]; then
+            echo "Pre-flight FAILED: $FAILED county parcel file(s) missing from release."
+            echo "Run: gh release upload large-parcels <file> -R camsrigby-hash/tooele-land-intel"
+            exit 1
+          fi
+          echo "Pre-flight PASSED: all 3 county parcel files downloaded."
+
+      - name: Build UPDATE SQL chunks
+        env:
+          TOOELE_LAND_INTEL_DIR: ${{ github.workspace }}/tooele-land-intel
+          PARCEL_DIR: /tmp/parcels
+          OUT_DIR: /tmp/zoning_sql_chunks
+        run: python3 scripts/load_zoning_to_d1.py
+
+      - name: Upload SQL chunks artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoning-sql-chunks
+          path: /tmp/zoning_sql_chunks/
+          retention-days: 7
+
+      - name: Execute D1 UPDATE chunks
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          FAILED=0
+          PROCESSED=0
+          START_TIME=$(date +%s%3N)
+          for SQL_FILE in $(ls /tmp/zoning_sql_chunks/chunk_*.sql | sort); do
+            echo "→ ${SQL_FILE}"
+            SUCCESS=false
+            for delay in 0 15 30 60; do
+              if [ "$delay" -gt 0 ]; then
+                echo "  Retry in ${delay}s..."
+                sleep "$delay"
+              fi
+              if wrangler d1 execute wasatch-intel-db --remote --file "$SQL_FILE" 2>&1; then
+                SUCCESS=true
+                break
+              fi
+            done
+            if [ "$SUCCESS" != "true" ]; then
+              echo "  FAILED: ${SQL_FILE}"
+              FAILED=$((FAILED + 1))
+            fi
+            PROCESSED=$((PROCESSED + 1))
+          done
+          END_TIME=$(date +%s%3N)
+          DURATION_MS=$((END_TIME - START_TIME))
+          echo "DURATION_MS=${DURATION_MS}" >> "$GITHUB_ENV"
+          echo "FAILED_CHUNKS=${FAILED}" >> "$GITHUB_ENV"
+          echo "PROCESSED_CHUNKS=${PROCESSED}" >> "$GITHUB_ENV"
+          if [ "$FAILED" -gt 0 ]; then
+            echo "ERROR: $FAILED chunk(s) failed after retries"
+            exit 1
+          fi
+          echo "Load complete: ${PROCESSED} chunks executed in $((DURATION_MS / 1000))s"
+
+      - name: Verify D1 counts
+        if: ${{ inputs.dry_run != true }}
+        run: |
+          wrangler d1 execute wasatch-intel-db --remote --command \
+            "SELECT COUNT(*) as total, \
+                    SUM(CASE WHEN zone_current IS NOT NULL THEN 1 ELSE 0 END) as has_current, \
+                    SUM(CASE WHEN zone_future IS NOT NULL THEN 1 ELSE 0 END) as has_future \
+             FROM parcel_records;" 2>&1
+
+      - name: Write cron_runs summary
+        if: ${{ inputs.dry_run != true && always() }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          NOTES="Phase 18b-3: loaded zone_current+zone_future. Chunks: ${PROCESSED_CHUNKS:-0}; failed: ${FAILED_CHUNKS:-0}. zone_current=${ZONE_CURRENT_COUNT:-0} zone_future=${ZONE_FUTURE_COUNT:-0}"
+          SAFE_NOTES="${NOTES//\'/\'\'}"
+          wrangler d1 execute wasatch-intel-db --remote --command \
+            "INSERT INTO cron_runs (workflow_name, ran_at, status, duration_ms, items_processed, notes)
+             VALUES ('load_zoning_to_d1', CURRENT_TIMESTAMP, '${STATUS}', ${DURATION_MS:-0}, ${TOTAL_PARCELS:-0}, '${SAFE_NOTES}');"
+
+      - name: Upload failed SQL artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-zoning-sql
+          path: /tmp/zoning_sql_chunks/
+          retention-days: 3
