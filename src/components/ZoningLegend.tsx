@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { ZONING_BUCKETS, NO_DATA_COLOR } from "@/lib/zoning-mock";
+import { ZONING_BUCKETS, NO_DATA_COLOR } from "@/lib/zoning";
 import { cn } from "@/lib/utils";
 
 interface Props {

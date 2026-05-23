@@ -4,12 +4,12 @@ import { X, AlertCircle } from "lucide-react";
 import {
   BUCKET_BY_ID,
   NO_DATA_COLOR,
-  type MockParcel,
+  type Parcel,
   type ZoningView,
-} from "@/lib/zoning-mock";
+} from "@/lib/zoning";
 
 interface Props {
-  parcel: MockParcel;
+  parcel: Parcel;
   view: ZoningView;
   onClose: () => void;
 }
