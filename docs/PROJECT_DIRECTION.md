@@ -279,6 +279,20 @@ For PDF zoning/GP maps that use a satellite-basemap underlay (Herriman Map 7 sty
 **Reference implementation**: `tooele-land-intel/scripts/herriman_cam_ingest.py`.
 **Future flag**: bbox-too-tight pattern likely exists for other cities in CITY_CONFIGS. Audit before reusing Cam-KMZ workflow on next city.
 
+### SD-23 — D1 migration tracking must use `wrangler d1 migrations apply` (May 23, 2026)
+**Rule**: All future D1 schema migrations MUST be applied via `wrangler d1 migrations apply` rather than `wrangler d1 execute --file`. The `migrations apply` command updates the `d1_migrations` tracking table; the `execute --file` path does not. If untracked migrations later collide with a tracked migration run, wrangler attempts to re-apply earlier migrations and hits duplicate-column errors.
+
+**Recovery pattern** (if migration tracking is out of sync): Query `d1_migrations` to find which migration numbers are tracked, then insert missing rows:
+```
+wrangler d1 execute wasatch-intel-db --remote \
+  --command="INSERT OR IGNORE INTO d1_migrations (name, applied_at) VALUES ('NNNN_filename.sql', 'YYYY-MM-DD HH:MM:SS');"
+```
+Do this for each untracked migration that is already applied to the schema, then re-run `migrations apply` — it will only apply the genuinely new migration.
+
+**Reference incident**: Phase 18b-2e load, May 23 2026. Migrations 0007 and 0008 were applied via `execute --file` in phases 13b and 18b-3 respectively. When migration 0009 workflow ran `migrations apply`, wrangler tried to re-apply 0007 from scratch and hit `duplicate column name: commute_corridor_method`. Fixed by injecting tracking rows for 0007 and 0008 before re-running the workflow.
+
+**Going forward**: All `d1-migrate-*.yml` GHA workflows must use `wrangler d1 migrations apply --remote`, never `wrangler d1 execute --file` for schema changes.
+
 ---
 
 ## Working Style
