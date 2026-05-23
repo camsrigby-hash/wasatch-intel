@@ -1,7 +1,7 @@
 # Wasatch Intel — Project Direction
 
 **Owner**: Cameron Rigby (camsrigby-hash). Land broker + developer, Wasatch Front + Tooele Valley, Utah.
-**Last updated**: May 22, 2026 (Phase 18b-3 shipped; SD-22 appended)
+**Last updated**: May 23, 2026 (Phase 18b-2e shipped)
 **Purpose**: Canonical reference for what each phase is, why, and in what order. Read this BEFORE answering any question about "what comes next" or "what is Phase X." Replaces volatile memory entries about phase strategy.
 
 ---
@@ -53,7 +53,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 18b-2b | GP PDF pipeline prototype on Erda (CC Sonnet) | **Shipped** | May 14 2026 | `scripts/gp_pdf_extract.py` built (8 stages, all CLI flags). Erda result: RMSE 4664 ft, 0 features — source map is regional overview, not parcel-level. Pipeline mechanics verified. Erda marked `gp_data: regional_map_only`. Blocker for 18b-2c: production API key + parcel-level PDF for each city. Branch: `phase-18b-2b-pipeline-prototype`. |
 | 18b-2c | GP PDF vector-tracing rollout (Spanish Fork + REST batch) | **Shipped** | May 16 2026 | Spanish Fork RMSE 38.6 ft (14 features). REST batch: Vineyard, Grantsville, Bluffdale, Draper. Herriman vector-tracing failed eye-test → moved to 18b-2d per SD-20. PR #11 open, merge user's call. |
 | 18b-2d | Raster-overlay zoning extraction (CC Opus, supersedes vector tracing) | **Shipped** | May 18 2026 | Herriman 18b-2d-2 (Cam-KMZ): 28,195 parcels sampled, Herriman-only MUT 7.4%, South Jordan 78% (Olympia Hills — correct). bbox+whitelist fix. SD-21. PR #11 merged. |
-| 18b-2e | Taxonomy harmonization + quality review (CC Sonnet) | Pending | — | gp_taxonomy.yaml, spot-checks, _quality_review.md. (Renumbered from 18b-2d.) |
+| 18b-2e | Taxonomy harmonization + quality review (CC Sonnet) | **Shipped** | May 23 2026 | gp_taxonomy.yaml (5 current + 12 future city rule-sets). Migration 0009 (zone_current_normalized, zone_future_normalized, zone_future_secondary). Lehi 0% / Grantsville 5.3% / Spanish Fork 0% / Saratoga Springs 0% Other/Unknown after fix. Eagle Mountain '17.25' deferred (ordinance decode pending). NLS caveat accepted permanently. |
 | 18b-3 | 18b integration: D1 migration + STRtree join + scoring + PMTiles | **Shipped** | May 22 2026 | Migration 0008 (7 cols). 227k zone_current + 193k zone_future loaded. /api/parcel/:apn augmented. PMTiles re-bake and spread_score deferred to 18b-2e + Phase 16. |
 | 19 | NAIP land-cover analyzer | Pending | Re-eval ~Jul 25 2026 | 3-month stability before re-eval |
 | 21 | PMN audio mp3 transcription pipeline (Whisper or Claude API) | Pending | — | Surfaces what was *said* beyond agenda text |
@@ -80,11 +80,12 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 
 ## What's Active Right Now
 
-**Phase 18b-2b ACTIVE (May 11, 2026).** 18b-1 and 18b-2a shipped; prototype pipeline phase now active.
+**Phase 18b-2e SHIPPED (May 23, 2026).** Taxonomy harmonization complete. Next: apply migration 0009 + re-run zoning load, then Phase 14 PMTiles re-bake.
 
-- **Phase 18b-1 SHIPPED**: 13-city current zoning GeoJSONs on main. Lehi normalization gap (41.8% Other/Unknown) flagged in `_taxonomy_review_needed.md` — fix before 18b-3 D1 load.
-- **Phase 18b-2a SHIPPED**: 6-city GP FLU GeoJSONs on main (REST path). NLS source authority caveat documented in `_source_authority_caveats.md`. 7 cities on PDF path — see `_18b-2bc_scope.md`.
-- **Phase 18b-2b ACTIVE**: opusplan builds `scripts/gp_pdf_extract.py` and validates georeferenced PDF extraction end-to-end on Erda. Target: ≥4 control points, RMSE ≤100 ft, 5/5 visual spot-checks. Branch: `phase-18b-2b-pipeline-prototype`. See PROMPT_PLAYBOOK_ADDENDUM.md Phase 18b-2 section for kickoff prompt.
+- **18b-1 through 18b-3 and 18b-2e** — all SHIPPED. 13-city current zoning + 12-city future GP/FLU in D1. Normalization columns (zone_current_normalized, zone_future_normalized) ready for PMTiles bake.
+- **Migration 0009** — written; apply via GHA `d1-migrate-phase18b2e.yml` workflow_dispatch.
+- **load_zoning_to_d1.yml** — re-run after migration to populate normalized columns in D1.
+- **Phase 14 PMTiles re-bake** — after D1 re-load, re-bake `parcels.pmtiles` to include zone_current_normalized/zone_future_normalized as tile attributes for color overlay.
 
 The spread between 18b-1 (current entitlement) and 18b-2 (future planned use) is the core rezone-flip signal — neither dataset alone is sufficient.
 

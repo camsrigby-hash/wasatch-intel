@@ -1,0 +1,43 @@
+name: D1 migrate — Phase 18b-2e (taxonomy harmonization columns)
+# Applies migrations/0009_taxonomy_harmonization.sql via wrangler d1 migrations apply.
+# Adds zone_current_normalized, zone_future_normalized, zone_future_secondary to parcel_records.
+# Safe to re-run: wrangler tracks applied migrations in D1_MIGRATIONS table.
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install wrangler (global)
+        run: npm install -g wrangler
+
+      - name: Apply migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: wrangler d1 migrations apply wasatch-intel-db --remote
+
+      - name: Verify new columns
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "=== New columns present ==="
+          wrangler d1 execute wasatch-intel-db --remote \
+            --command="SELECT name FROM pragma_table_info('parcel_records') WHERE name IN ('zone_current_normalized','zone_future_normalized','zone_future_secondary');"
+
+          echo "=== Indexes present ==="
+          wrangler d1 execute wasatch-intel-db --remote \
+            --command="SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_pr_zone_current_norm','idx_pr_zone_future_norm');"
