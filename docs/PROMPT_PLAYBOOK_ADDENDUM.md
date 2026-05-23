@@ -6,15 +6,16 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-22
+## CURRENT STATE — 2026-05-23
 
-**18b-3 SHIPPED (May 22 2026). D1 migration 0008 applied (7 new columns on parcel_records). Per-parcel GP/FLU join complete: 227,245 zone_current + 193,407 zone_future across Salt Lake / Utah / Tooele counties. /api/parcel/:apn augmented with D1 zoning fields. PR #9 merged to wasatch-intel/main. Next phase: 18b-2e (taxonomy harmonization) OR Phase 14 PMTiles re-bake with new zoning columns — per PROJECT_DIRECTION.md, 18b-2e is next (gp_taxonomy.yaml, spot-checks, quality review).**
+**18b-2e SHIPPED (May 23 2026). Taxonomy harmonization complete. gp_taxonomy.yaml created (5 current + 12 future city rule-sets). Migration 0009 adds zone_current_normalized, zone_future_normalized, zone_future_secondary to parcel_records. load_zoning_to_d1.py updated with normalization pass. Lehi: 41.8% → 0% Other/Unknown. Grantsville: 47.4% → 5.3%. Spanish Fork: 36.9% → 0%. Saratoga Springs: 15.8% → 0%. Eagle Mountain: 17.xx ordinance codes partially mapped; '17' and '17.25' deferred (flu_currency_note='eagle_mountain_ordinance_decode_pending'). NLS source authority accepted permanently (documented in quality review). Next: apply migration 0009 via d1-migrate-phase18b2e.yml, re-run load_zoning_to_d1.yml, then Phase 14 PMTiles re-bake to include zone_current_normalized/zone_future_normalized as tile attributes.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — normalization deferred to 18b-2e; loaded raw with `flu_currency_note='lehi_zone_current_normalization_gap'`.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
 - **18b-2c** — SHIPPED (May 16 2026) — Spanish Fork RMSE 38.6 ft (14 features) + REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Vector-tracing approach is the shipped 18b-2c pipeline; do NOT refactor it. Herriman previously vector-traced (12 features, 8-call cap) — eye-test exposed fundamental fragility of vector tracing on satellite-basemap PDFs. **Herriman moved to 18b-2d (raster-overlay) per SD-20.** PR #11 (18b-2c + 18b-2d-2) MERGED May 18 2026. Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
 - **18b-2d** — SHIPPED (May 18 2026). New `scripts/gp_raster_sample_extract.py` — per-parcel LAB color sampling pipeline. **18b-2d-2 (Cam-KMZ)**: Cam manually georeferenced Map 7 → `Herriman_Zoning.kmz`. CC extracted GeoTIFF, ran legend via Claude vision (16 categories). bbox+whitelist fix: 28,195 parcels sampled. Herriman-only MUT 7.4%; South Jordan 78% MUT (Olympia Hills — geographically correct). Scripts: `herriman_cam_ingest.py` + `gp_raster_sample_extract.py`. Canonical workflow documented in SD-21. Files on `tooele-land-intel/main`.
+- **18b-2e** — SHIPPED (May 23 2026). See PHASE 18b-2e COMPLETION NOTES below.
 - **18b-3** — SHIPPED (May 22 2026). See PHASE 18b-3 COMPLETION NOTES below.
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
@@ -2228,6 +2229,45 @@ The 14,000 without income are geographic non-matches (centroids outside census b
 **salt_lake GHA job failure**: The `parcel_enrichment_log` step hit repeated D1 lock contention (`Currently processing a long-running import`) from concurrent county jobs. The `median_income` UPDATE step completed ✓ before the log step started. All 385,283 matched salt_lake rows have correct median_income. Only the enrichment_log metadata rows for salt_lake are partially missing. Optional fix: re-trigger the workflow with `county=salt_lake` to repopulate the enrichment_log; no median_income re-work needed.
 
 **Verdict: 13b-6b COMPLETE.** 98.5% coverage exceeds practical utility threshold for scoring. CURRENT STATE updated.
+
+---
+
+### PHASE 18b-2e COMPLETION NOTES (2026-05-23)
+
+**Status**: SHIPPED. Taxonomy harmonization complete. Migration 0009 ready to apply. Re-load ready to run.
+
+**What was built**:
+
+1. **`tooele-land-intel/data/zoning/gp_taxonomy.yaml`** — NEW. Per-jurisdiction normalization authority file. 5 current city rule-sets + 12 future city rule-sets. Standard 15-class vocabulary. Eagle Mountain ambiguous codes ('17', '17.25') left as `Other/Unknown` with `flu_currency_note='eagle_mountain_ordinance_decode_pending'` flag (Cam action item: decode via Eagle Mountain Title 17 ordinance at https://library.municode.com/ut/eagle_mountain/codes/code_of_ordinances).
+
+2. **`wasatch-intel/migrations/0009_taxonomy_harmonization.sql`** — NEW. Adds `zone_current_normalized TEXT`, `zone_future_normalized TEXT`, `zone_future_secondary TEXT` + 2 indexes to `parcel_records`. Apply via: `wrangler d1 migrations apply wasatch-intel-db --remote` or GHA workflow `d1-migrate-phase18b2e.yml`.
+
+3. **`wasatch-intel/scripts/load_zoning_to_d1.py`** — Updated. Adds taxonomy normalization pass (reads `gp_taxonomy.yaml` at startup), computes `zone_current_normalized` and `zone_future_normalized` during spatial join, splits Tooele City comma-separated codes into `zone_future` (primary) + `zone_future_secondary` (remaining tokens), adds per-code `flu_currency_note` for Eagle Mountain ambiguous codes. Removes `lehi_zone_current_normalization_gap` note (gap now fixed). Adds `pyyaml` to GHA pip install step.
+
+4. **`tooele-land-intel/data/zoning_normalizer.yaml`** — Updated. Adds Lehi codes (TH-5, C-I, T-M, H/I, R-1-8, R-1-22, R-1-Flex, RA-1, R-2.5, PC, PUD), Spanish Fork codes (P-F, A-E), Grantsville residential codes (MD, MG, MG-EX) to the scoring normalizer. Improves `score_parcel_zoning.py` coverage for future re-scoring runs.
+
+5. **`tooele-land-intel/data/zoning/_quality_review.md`** — NEW. Full audit trail: per-jurisdiction Other/Unknown before/after, NLS caveat decisions (accepted permanently), Eagle Mountain ordinance decode action item, Tooele City multi-zone architecture decision, Grantsville typo normalization. Includes per-jurisdiction summary table for future zoning overlay feature baseline.
+
+6. **`wasatch-intel/.github/workflows/d1-migrate-phase18b2e.yml`** — NEW. Applies migration 0009 and verifies new columns.
+
+**Before/after Other/Unknown rates (current zoning GeoJSONs)**:
+
+| City | Before | After |
+|---|---|---|
+| Lehi | 41.8% (215/514) | 0% ✅ |
+| Grantsville | 47.4% (9/19) | 5.3% (1/19 — UNKNOWN literal) |
+| Spanish Fork | 36.9% (75/203) | 0% ✅ |
+| Saratoga Springs | 15.8% (58/368) | 0% ✅ |
+| Eagle Mountain | 18.9% (263/1392) | 17.0% (236/1392 — '17.25' deferred) |
+
+**NLS source authority decisions**: All three NLS-sourced GP layers (Lehi, Eagle Mountain, Saratoga Springs) accepted permanently with `flu_currency_note='NLS_source_authority_unverified'`. Cam action items documented in `_quality_review.md`.
+
+**Cost**: $0 (zero LLM calls — pure data normalization and Python/YAML edits).
+
+**What's next**:
+1. `d1-migrate-phase18b2e.yml` workflow_dispatch → applies migration 0009
+2. `load_zoning_to_d1.yml` workflow_dispatch (dry_run=true then live) → re-populates D1 with normalized columns
+3. Phase 14 PMTiles re-bake → include `zone_current_normalized` + `zone_future_normalized` as tile paint attributes
 
 ---
 

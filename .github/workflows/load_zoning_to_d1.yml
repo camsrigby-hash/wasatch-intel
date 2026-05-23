@@ -42,7 +42,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python deps
-        run: pip install shapely
+        run: pip install shapely pyyaml
 
       - name: Set up Node
         uses: actions/setup-node@v4

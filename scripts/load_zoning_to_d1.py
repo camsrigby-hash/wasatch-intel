@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Phase 18b-3: per-parcel zoning + GP/FLU join -> D1 UPDATE SQL chunks
+Phase 18b-3 / 18b-2e: per-parcel zoning + GP/FLU join -> D1 UPDATE SQL chunks
 
 Reads:
   $PARCEL_DIR/parcels_{salt_lake,utah,tooele}.csv   (centroid_lng/lat + parcel_id)
   $TOOELE_LAND_INTEL_DIR/data/zoning/current/*_ut_zoning.geojson
   $TOOELE_LAND_INTEL_DIR/data/zoning/future/*_gp.geojson
   $TOOELE_LAND_INTEL_DIR/data/zoning/future/herriman_gp_parcel_table.csv
+  $TOOELE_LAND_INTEL_DIR/data/zoning/gp_taxonomy.yaml  (18b-2e normalization)
 
 Writes:
   $OUT_DIR/chunk_NNNN.sql   (500-row UPDATE batches, D1-ready)
@@ -22,6 +23,11 @@ try:
 except ImportError:
     sys.exit("ERROR: shapely not installed. pip install shapely")
 
+try:
+    import yaml
+except ImportError:
+    sys.exit("ERROR: pyyaml not installed. pip install pyyaml")
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 TOOELE_DIR = pathlib.Path(os.environ.get("TOOELE_LAND_INTEL_DIR", ""))
 if not TOOELE_DIR.exists():
@@ -31,8 +37,9 @@ PARCEL_DIR = pathlib.Path(os.environ.get("PARCEL_DIR", "/tmp/parcels"))
 OUT_DIR    = pathlib.Path(os.environ.get("OUT_DIR",    "/tmp/zoning_sql_chunks"))
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-CURRENT_DIR = TOOELE_DIR / "data" / "zoning" / "current"
-FUTURE_DIR  = TOOELE_DIR / "data" / "zoning" / "future"
+CURRENT_DIR  = TOOELE_DIR / "data" / "zoning" / "current"
+FUTURE_DIR   = TOOELE_DIR / "data" / "zoning" / "future"
+TAXONOMY_FILE = TOOELE_DIR / "data" / "zoning" / "gp_taxonomy.yaml"
 
 CHUNK_SIZE = 500
 COUNTY_FILES = ["salt_lake", "utah", "tooele"]
@@ -52,8 +59,14 @@ FUTURE_GP_META = {
     "vineyard_gp":         ("REST",       None),
 }
 
-CURRENT_CITY_NOTES = {
-    "lehi": "lehi_zone_current_normalization_gap",
+# Lehi normalization gap is FIXED in 18b-2e via gp_taxonomy.yaml — note removed.
+# Eagle Mountain ordinance-section codes ('17', '17.25') flagged per-code below.
+CURRENT_CITY_NOTES: dict[str, str] = {}
+
+# Per zone-code notes added to flu_currency_note when that raw code is matched.
+CURRENT_CODE_NOTES: dict[tuple, str] = {
+    ("eagle_mountain", "17"):    "eagle_mountain_ordinance_decode_pending",
+    ("eagle_mountain", "17.25"): "eagle_mountain_ordinance_decode_pending",
 }
 
 
@@ -66,12 +79,65 @@ def _q(v):
 
 
 def _open_csv(path: pathlib.Path):
-    """Open a plain or gzipped CSV, return (file_obj, close_fn)."""
     if path.suffix == ".gz":
-        fh = gzip.open(path, "rt", encoding="utf-8")
-    else:
-        fh = open(path, encoding="utf-8")
-    return fh
+        return gzip.open(path, "rt", encoding="utf-8")
+    return open(path, encoding="utf-8")
+
+
+# ── Taxonomy loading ──────────────────────────────────────────────────────────
+def load_taxonomy() -> tuple[dict, dict]:
+    """Load gp_taxonomy.yaml; return (current_rules, future_rules)."""
+    if not TAXONOMY_FILE.exists():
+        print(f"  WARN: gp_taxonomy.yaml not found at {TAXONOMY_FILE}", flush=True)
+        return {}, {}
+    with open(TAXONOMY_FILE, encoding="utf-8") as f:
+        taxonomy = yaml.safe_load(f) or {}
+    current = taxonomy.get("current_zoning", {})
+    future  = taxonomy.get("future_zoning",  {})
+    print(
+        f"  Taxonomy loaded: {len(current)} current city rule-sets, "
+        f"{len(future)} future city rule-sets",
+        flush=True,
+    )
+    return current, future
+
+
+def normalize_current(city_slug: str, zone_code: str,
+                      geojson_norm: str, current_rules: dict) -> str | None:
+    """
+    Compute zone_current_normalized for a parcel.
+
+    Strategy: use the GeoJSON's zone_class_normalized when it is meaningful
+    (not null, not 'Other/Unknown'). Fall back to gp_taxonomy.yaml for gaps.
+    Returns None if still unmapped (stored as SQL NULL).
+    """
+    existing = (geojson_norm or "").strip()
+    if existing and existing != "Other/Unknown":
+        return existing
+    city_rules = current_rules.get(city_slug, {})
+    normalized = city_rules.get(zone_code)
+    # Return None instead of the sentinel string so the column stores NULL
+    return None if normalized == "Other/Unknown" else normalized
+
+
+def normalize_future(gp_slug: str, zone_code: str,
+                     future_rules: dict) -> str | None:
+    """
+    Compute zone_future_normalized for a parcel.
+
+    gp_slug is the GP file slug (e.g. 'tooele_city_gp'); strip '_gp' suffix
+    to match the taxonomy key. Returns None if unmapped.
+    """
+    city_key = gp_slug.replace("_gp", "")
+    city_rules = future_rules.get(city_key, {})
+    normalized = city_rules.get(zone_code)
+    return None if normalized == "Other/Unknown" else normalized
+
+
+def normalize_herriman(sampled_zone: str, future_rules: dict) -> str | None:
+    city_rules = future_rules.get("herriman", {})
+    normalized = city_rules.get(sampled_zone)
+    return None if normalized == "Other/Unknown" else normalized
 
 
 # ── Stage 1: load Herriman per-parcel table ───────────────────────────────────
@@ -84,7 +150,7 @@ def load_herriman_table() -> dict:
     result = {}
     with open(path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            pid = row.get("parcel_id", "").strip()
+            pid  = row.get("parcel_id", "").strip()
             zone = row.get("sampled_zone", "").strip()
             city = row.get("parcel_city", "").strip()
             if pid and zone:
@@ -107,14 +173,17 @@ def build_current_tree():
             if not geom:
                 continue
             try:
-                shp = shape(geom)
+                shp   = shape(geom)
                 props = feat.get("properties", {})
+                zone_code    = (props.get("zone_code") or "").strip()
+                geojson_norm = (props.get("zone_class_normalized") or "").strip()
                 polygons.append(shp)
                 meta.append({
-                    "zone_code":   (props.get("zone_code") or "").strip(),
-                    "source":      props.get("extraction_method") or "REST",
-                    "city_slug":   city_slug,
-                    "note":        note,
+                    "zone_code":    zone_code,
+                    "geojson_norm": geojson_norm,
+                    "source":       props.get("extraction_method") or "REST",
+                    "city_slug":    city_slug,
+                    "note":         note,
                 })
             except Exception:
                 pass
@@ -139,17 +208,26 @@ def build_future_tree():
             if not geom:
                 continue
             try:
-                shp = shape(geom)
+                shp   = shape(geom)
                 props = feat.get("properties", {})
                 raw_code = (props.get("gp_zone_code") or "").strip()
-                # Tooele City has comma-separated codes — take first token
-                zone_code = raw_code.split(",")[0].strip() if raw_code else ""
+
+                # Tooele City: comma-separated codes — split into primary + secondary
+                if raw_code and "," in raw_code:
+                    tokens    = [t.strip() for t in raw_code.split(",") if t.strip()]
+                    zone_code = tokens[0]
+                    secondary = ",".join(tokens[1:])
+                else:
+                    zone_code = raw_code
+                    secondary = ""
+
                 polygons.append(shp)
                 meta.append({
-                    "zone_code":      zone_code,
-                    "source":         future_source,
-                    "currency_note":  currency_note,
-                    "slug":           slug,
+                    "zone_code":     zone_code,
+                    "zone_secondary": secondary,
+                    "source":        future_source,
+                    "currency_note": currency_note,
+                    "slug":          slug,
                 })
                 count += 1
             except Exception:
@@ -174,12 +252,13 @@ def process_county(
     current_tree: STRtree, current_shapes: list, current_meta: list,
     future_tree: STRtree, future_shapes: list, future_meta: list,
     herriman_table: dict,
+    current_rules: dict,
+    future_rules: dict,
     chunk_buf: list,
-    chunk_num_ref: list,  # mutable int container
+    chunk_num_ref: list,
     stats: dict,
 ):
     """Stream one county parcel CSV and extend chunk_buf with UPDATE statements."""
-    # Find the parcel file
     path_gz  = PARCEL_DIR / f"parcels_{county}.csv.gz"
     path_csv = PARCEL_DIR / f"parcels_{county}.csv"
     if path_gz.exists():
@@ -191,9 +270,7 @@ def process_county(
         stats["missing_counties"].append(county)
         return
 
-    rows_read = 0
-    rows_assigned_current = 0
-    rows_assigned_future = 0
+    rows_read = rows_assigned_current = rows_assigned_future = 0
 
     with _open_csv(path) as f:
         reader = csv.DictReader(f)
@@ -211,26 +288,53 @@ def process_county(
 
             # — Current zoning —
             cur = lookup(lng, lat, current_tree, current_shapes, current_meta)
-            zone_current        = cur["zone_code"]   if cur else None
-            zone_current_source = cur["source"]      if cur else None
-            current_note        = cur["note"]        if cur else None
+            if cur:
+                zone_current        = cur["zone_code"]
+                zone_current_source = cur["source"]
+                current_note        = cur["note"]
+                zone_current_norm   = normalize_current(
+                    cur["city_slug"], zone_current, cur["geojson_norm"], current_rules
+                )
+                # Per-code note (e.g. Eagle Mountain ambiguous ordinance codes)
+                per_code_note = CURRENT_CODE_NOTES.get((cur["city_slug"], zone_current))
+            else:
+                zone_current        = None
+                zone_current_source = None
+                current_note        = None
+                zone_current_norm   = None
+                per_code_note       = None
 
             # — Future GP —
+            zone_future_secondary = None
             if pid in herriman_table:
-                hz, hcity = herriman_table[pid]
+                hz, hcity          = herriman_table[pid]
                 zone_future        = hz
                 zone_future_source = "PDF_raster_Cam_KMZ"
                 flu_source_jur     = hcity if hcity and hcity.lower() != "herriman" else None
                 future_note        = None
+                zone_future_norm   = normalize_herriman(hz, future_rules)
             else:
                 fut = lookup(lng, lat, future_tree, future_shapes, future_meta)
-                zone_future        = fut["zone_code"]     if fut else None
-                zone_future_source = fut["source"]        if fut else None
-                flu_source_jur     = None
-                future_note        = fut["currency_note"] if fut else None
+                if fut:
+                    zone_future        = fut["zone_code"]
+                    zone_future_source = fut["source"]
+                    flu_source_jur     = None
+                    future_note        = fut["currency_note"]
+                    zone_future_norm   = normalize_future(
+                        fut["slug"], zone_future, future_rules
+                    )
+                    # Secondary codes (Tooele City comma-separated)
+                    sec = fut.get("zone_secondary", "")
+                    zone_future_secondary = sec if sec else None
+                else:
+                    zone_future        = None
+                    zone_future_source = None
+                    flu_source_jur     = None
+                    future_note        = None
+                    zone_future_norm   = None
 
-            # Combine notes
-            notes = [n for n in (current_note, future_note) if n]
+            # Combine all currency notes
+            notes = [n for n in (current_note, per_code_note, future_note) if n]
             flu_currency_note = ";".join(notes) if notes else None
 
             if zone_current:
@@ -238,7 +342,7 @@ def process_county(
             if zone_future:
                 rows_assigned_future += 1
 
-            # Skip parcels with no zoning data — migration already defaulted all columns to NULL
+            # Skip parcels with no zoning data at all
             if not zone_current and not zone_future:
                 continue
 
@@ -246,8 +350,11 @@ def process_county(
                 f"UPDATE parcel_records SET "
                 f"zone_current={_q(zone_current)}, "
                 f"zone_current_source={_q(zone_current_source)}, "
+                f"zone_current_normalized={_q(zone_current_norm)}, "
                 f"zone_future={_q(zone_future)}, "
                 f"zone_future_source={_q(zone_future_source)}, "
+                f"zone_future_normalized={_q(zone_future_norm)}, "
+                f"zone_future_secondary={_q(zone_future_secondary)}, "
                 f"flu_source_jurisdiction={_q(flu_source_jur)}, "
                 f"flu_currency_note={_q(flu_currency_note)} "
                 f"WHERE id={_q(pid)};"
@@ -257,7 +364,7 @@ def process_county(
             if len(chunk_buf) >= CHUNK_SIZE:
                 _flush_chunk(chunk_buf, chunk_num_ref)
 
-    stats["rows_by_county"][county] = rows_read
+    stats["rows_by_county"][county]             = rows_read
     stats["assigned_current_by_county"][county] = rows_assigned_current
     stats["assigned_future_by_county"][county]  = rows_assigned_future
     print(
@@ -276,12 +383,13 @@ def _flush_chunk(buf: list, num_ref: list):
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main():
-    print("Phase 18b-3: building zoning join SQL chunks", flush=True)
+    print("Phase 18b-3 / 18b-2e: building zoning join SQL chunks", flush=True)
     print(f"  TOOELE_LAND_INTEL_DIR = {TOOELE_DIR}", flush=True)
     print(f"  PARCEL_DIR = {PARCEL_DIR}", flush=True)
     print(f"  OUT_DIR    = {OUT_DIR}", flush=True)
 
-    herriman_table = load_herriman_table()
+    current_rules, future_rules = load_taxonomy()
+    herriman_table               = load_herriman_table()
     current_tree, current_shapes, current_meta = build_current_tree()
     future_tree,  future_shapes,  future_meta  = build_future_tree()
 
@@ -292,8 +400,8 @@ def main():
         "bad_centroid":               0,
         "missing_counties":           [],
     }
-    chunk_buf   = []
-    chunk_num   = [0]  # mutable int via list
+    chunk_buf = []
+    chunk_num = [0]
 
     for county in COUNTY_FILES:
         print(f"\nProcessing county: {county}", flush=True)
@@ -302,15 +410,17 @@ def main():
             current_tree, current_shapes, current_meta,
             future_tree,  future_shapes,  future_meta,
             herriman_table,
+            current_rules,
+            future_rules,
             chunk_buf, chunk_num, stats,
         )
 
     if chunk_buf:
         _flush_chunk(chunk_buf, chunk_num)
 
-    total_parcels  = sum(stats["rows_by_county"].values())
-    total_current  = sum(stats["assigned_current_by_county"].values())
-    total_future   = sum(stats["assigned_future_by_county"].values())
+    total_parcels = sum(stats["rows_by_county"].values())
+    total_current = sum(stats["assigned_current_by_county"].values())
+    total_future  = sum(stats["assigned_future_by_county"].values())
 
     summary = {
         "total_parcels_processed": total_parcels,
@@ -321,9 +431,9 @@ def main():
         "missing_counties":        stats["missing_counties"],
         "by_county": {
             c: {
-                "parcels":         stats["rows_by_county"].get(c, 0),
-                "zone_current":    stats["assigned_current_by_county"].get(c, 0),
-                "zone_future":     stats["assigned_future_by_county"].get(c, 0),
+                "parcels":      stats["rows_by_county"].get(c, 0),
+                "zone_current": stats["assigned_current_by_county"].get(c, 0),
+                "zone_future":  stats["assigned_future_by_county"].get(c, 0),
             }
             for c in COUNTY_FILES
         },
