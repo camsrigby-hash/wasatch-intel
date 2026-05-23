@@ -37,9 +37,13 @@ const OUTLINE_LAYER_ID = "zoning-outline";
 /** Build a MapLibre case expression mapping zone_*_normalized → palette hex. */
 function buildZoningFillExpr(view: ZoningView): maplibregl.ExpressionSpecification {
   const col = view === "current" ? "zone_current_normalized" : "zone_future_normalized";
+  // coalesce converts null/missing property to a sentinel so the case expression always
+  // gets a string — prevents MapLibre returning null fill-color (which would drop the
+  // feature from rendering AND hit-testing entirely).
+  const colExpr = ["coalesce", ["get", col], "__no_data__"] as maplibregl.ExpressionSpecification;
   const cases: (string | maplibregl.ExpressionSpecification)[] = [];
   for (const [d1Value, bucketId] of Object.entries(BUCKET_FROM_D1_VALUE)) {
-    cases.push(["==", ["get", col], d1Value] as maplibregl.ExpressionSpecification);
+    cases.push(["==", colExpr, d1Value] as maplibregl.ExpressionSpecification);
     cases.push(BUCKET_BY_ID[bucketId as ZoningBucket].color);
   }
   return ["case", ...cases, NO_DATA_COLOR] as maplibregl.ExpressionSpecification;
@@ -65,8 +69,9 @@ function parcelFromFeature(
     view === "current"
       ? (props.zone_current_source as string | null)
       : (props.zone_future_source  as string | null);
-  const sourceMethod = (["REST", "PDF_vision_Cam_KMZ", "manual"].includes(sourceRaw ?? "")
-    ? sourceRaw
+  const normalizedSource = sourceRaw === "arcgis_rest" ? "REST" : sourceRaw;
+  const sourceMethod = (["REST", "PDF_vision_Cam_KMZ", "manual"].includes(normalizedSource ?? "")
+    ? normalizedSource
     : null) as Parcel["sourceMethod"];
 
   return {
@@ -123,7 +128,6 @@ export function MapCanvas() {
       center: [-112.1, 40.5],
       zoom: 9,
     });
-
     map.on("load", () => {
       // ── Parcel vector source ─────────────────────────────────────────────
       map.addSource(SOURCE_ID, {
@@ -139,8 +143,8 @@ export function MapCanvas() {
         source:       SOURCE_ID,
         "source-layer": PARCEL_SOURCE_LAYER,
         paint: {
-          "fill-color":   buildZoningFillExpr(layersRef.current.zoningView),
-          "fill-opacity": layersRef.current.zoning ? 0.85 : 0,
+          "fill-color":   buildZoningFillExpr(layers.zoningView),
+          "fill-opacity": layers.zoning ? 0.95 : 0,
         },
       });
 
@@ -194,7 +198,7 @@ export function MapCanvas() {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     if (!map.getLayer(FILL_LAYER_ID)) return;
-    map.setPaintProperty(FILL_LAYER_ID, "fill-opacity", layers.zoning ? 0.85 : 0);
+    map.setPaintProperty(FILL_LAYER_ID, "fill-opacity", layers.zoning ? 0.95 : 0);
   }, [layers.zoning]);
 
   return (
