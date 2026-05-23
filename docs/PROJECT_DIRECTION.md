@@ -43,6 +43,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 13b-7 | Commute corridor scoring (proxy method) | Shipped | May 8 2026 | 98.52% coverage. All rows tagged `commute_corridor_method='proxy'` for future WFRC swap |
 | 13b-8 | Vacancy classification | Shipped | May 8 2026 | UGRC LIR cascade (vacant/partial/developed/unknown) |
 | **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Shipped** | May 9 2026 | All 6 sub-tasks complete. 947k parcels render on map, profile recolor via paint expression, drawer opens on tile parcel click (tileFeaturesToIntelParcel). 3 bugs found+fixed in 14-6 (camera-reset ×2, drawer ×1). See SD-12, SD-13 |
+| **14a** | **PMTiles re-bake — all zoning columns** | **Shipped** | May 23 2026 | Full pyramid rebuild. Dropped zoning_score (prop_class fallback). Added 10 real zoning cols (zone_current, zone_future, normalized variants — migrations 0008/0009). 94 MB, 1.2M features, 100% D1 match rate. 5-parcel smoke test passed. Ready for 14b paint-expression wiring. |
 | **15** | **CRE listings ingest + spread calc + Deal Heat** | **Paused** | May 10 2026 | 15a scaffolding shipped (commits aa3ca00 + 00c9869). CRE platforms blocked: CREXI JS-render returns 0 rows, Land.com 403 from GHA IPs. County recorder output was UGRC assessor fallback, not real transactions. Paused per SD-14. Resume after Phase 18b ships. |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
@@ -80,12 +81,11 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 
 ## What's Active Right Now
 
-**Phase 18b-2e SHIPPED (May 23, 2026).** Taxonomy harmonization complete. Next: apply migration 0009 + re-run zoning load, then Phase 14 PMTiles re-bake.
+**Phase 14a SHIPPED (May 23, 2026).** PMTiles re-baked with all 10 real zoning columns. Next: Phase 14b — Lovable design pass + paint-expression wiring for zone color overlay.
 
-- **18b-1 through 18b-3 and 18b-2e** — all SHIPPED. 13-city current zoning + 12-city future GP/FLU in D1. Normalization columns (zone_current_normalized, zone_future_normalized) ready for PMTiles bake.
-- **Migration 0009** — written; apply via GHA `d1-migrate-phase18b2e.yml` workflow_dispatch.
-- **load_zoning_to_d1.yml** — re-run after migration to populate normalized columns in D1.
-- **Phase 14 PMTiles re-bake** — after D1 re-load, re-bake `parcels.pmtiles` to include zone_current_normalized/zone_future_normalized as tile attributes for color overlay.
+- **18b-1 through 18b-3 and 18b-2e** — all SHIPPED. 13-city current zoning + 12-city future GP/FLU in D1. Normalization columns populated (180,518 zone_current_normalized, 172,830 zone_future_normalized, 12,927 zone_future_secondary).
+- **14a** — SHIPPED (May 23 2026). parcels.pmtiles rebuilt at 94 MB with 10 real zoning cols baked in. Deployed to R2, verified via Worker (HTTP 206 + magic bytes). 5-parcel smoke test passed including rezone-flip signal parcels.
+- **Phase 14b** — Paint-expression wiring in Lovable (zone_current_normalized / zone_future_normalized color overlay, legend, profile toggle). No tile changes needed.
 
 The spread between 18b-1 (current entitlement) and 18b-2 (future planned use) is the core rezone-flip signal — neither dataset alone is sufficient.
 
@@ -327,6 +327,7 @@ Herriman's GP Future Land Use data exists as a public-facing field `FLU2022` on 
 
 ## Update history (newest first)
 
+- **May 23, 2026** — Phase 14a SHIPPED. PMTiles re-baked with all 10 real zoning columns (dropped zoning_score fallback). 94 MB, 1.2M features, 100% D1 match rate. Phase 14a row added to ledger. What's Active updated → Phase 14b.
 - **May 18, 2026** — 18b-2d-2 (Herriman Cam-KMZ) SHIPPED. SD-21 appended (canonical Cam-KMZ workflow for satellite-underlay maps). Phase Ledger 18b-2d → Shipped. PR #11 merged (18b-2c + 18b-2d-2). herriman_gp.kmz / .geojson / _parcel_table.csv on main in tooele-land-intel.
 - **May 18, 2026** — SD-20 logged. Phase 18b-2d (raster-overlay extraction) supersedes 18b-2c PDF pipeline for satellite-basemap cities. Herriman re-extracted under new approach: 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6 s. Phase Ledger updated: 18b-2c → Shipped (Spanish Fork + REST batch); 18b-2d added → Active (raster-overlay); old 18b-2d (taxonomy) renumbered to 18b-2e. SD-19 marked superseded by SD-20.
 - **May 16, 2026 (later still)** — Future Opportunities section added; Herriman internal FLU2022 lead documented.

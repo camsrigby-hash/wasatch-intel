@@ -8,7 +8,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-23
 
-**18b-2e CLOSED OUT (May 23 2026). Migration 0009 applied. D1 live load complete (15m59s, 462/462 chunks, 0 failures). Verified: zone_current_normalized 180,518 parcels; zone_future_normalized 172,830 parcels; zone_future_secondary 12,927 parcels. Lehi: 41.8% → 0% Other/Unknown. Spanish Fork: 36.9% → 0%. Saratoga Springs: 15.8% → 0%. Eagle Mountain 17.4% remaining (ordinance decode deferred). New taxonomy gaps surfaced at parcel level: South Jordan P-C (11,855 parcels, 39.9%) and Vineyard Waters Edge/HF/OS (1,882 parcels, 40.6%) — add to gp_taxonomy.yaml in future taxonomy update. SD-23 added (use wrangler d1 migrations apply, not execute --file). Next: Phase 14 PMTiles re-bake — include zone_current_normalized and zone_future_normalized as tile attributes for zoning color overlay.**
+**Phase 14a SHIPPED (May 23 2026). PMTiles re-baked with all 10 real zoning columns. zoning_score (prop_class fallback) dropped. parcels.pmtiles: 94 MB, 1,202,000 features, 100% D1 match rate. HTTP 206 + magic bytes verified live. 5-parcel smoke test passed (Herriman/Olympia Hills MUT, Lehi R-Low, Spanish Fork Ag→Commercial rezone-flip signal, Eagle Mountain R-Med→Commercial rezone-flip signal, Tooele City zone_future_secondary populated). D1 pre-check confirmed stable (zone_current_normalized 180,518 / zone_future_normalized 172,830 / zone_future_secondary 12,927 — exact match to 18b-2e closeout). GHA run: camsrigby-hash/tooele-land-intel/actions/runs/26338879015 (9m26s). Next: Phase 14b — Lovable design pass (paint expression wiring for zone_current_normalized / zone_future_normalized color overlay).**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — normalization deferred to 18b-2e; loaded raw with `flu_currency_note='lehi_zone_current_normalization_gap'`.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -17,6 +17,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 - **18b-2d** — SHIPPED (May 18 2026). New `scripts/gp_raster_sample_extract.py` — per-parcel LAB color sampling pipeline. **18b-2d-2 (Cam-KMZ)**: Cam manually georeferenced Map 7 → `Herriman_Zoning.kmz`. CC extracted GeoTIFF, ran legend via Claude vision (16 categories). bbox+whitelist fix: 28,195 parcels sampled. Herriman-only MUT 7.4%; South Jordan 78% MUT (Olympia Hills — geographically correct). Scripts: `herriman_cam_ingest.py` + `gp_raster_sample_extract.py`. Canonical workflow documented in SD-21. Files on `tooele-land-intel/main`.
 - **18b-2e** — SHIPPED (May 23 2026). See PHASE 18b-2e COMPLETION NOTES below.
 - **18b-3** — SHIPPED (May 22 2026). See PHASE 18b-3 COMPLETION NOTES below.
+- **14a** — SHIPPED (May 23 2026). PMTiles re-baked with 10 real zoning columns. See PHASE 14a COMPLETION NOTES below.
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -2332,3 +2333,57 @@ Coverage notes:
 **PR**: [#9](https://github.com/camsrigby-hash/wasatch-intel/pull/9) merged to main.
 
 **What's next**: Phase 18b-2e — taxonomy harmonization (gp_taxonomy.yaml, spot-checks, _quality_review.md update). Then PMTiles re-bake to add zone_current/zone_future as tile attributes.
+
+---
+
+### PHASE 14a COMPLETION NOTES (2026-05-23)
+
+**Status**: SHIPPED. PMTiles re-baked with all 10 real zoning columns.
+
+**What changed** (relative to Phase 14 bake from May 9 2026):
+
+- **Dropped**: `zoning_score` (Phase 13b-5 prop_class fallback — now superseded by real per-parcel zoning data)
+- **Added** (10 columns from D1 migrations 0008 + 0009):
+  - `zone_current`, `zone_current_source` — current entitlement from 18b-1 ArcGIS REST
+  - `zone_future`, `zone_future_source` — GP/FLU future designation from 18b-2 (REST + PDF_vision + PDF_raster_Cam_KMZ)
+  - `flu_source_jurisdiction` — jurisdiction override for multi-city FLU maps (e.g. South Jordan parcels in Herriman KMZ)
+  - `flu_plan_vintage` — source plan year
+  - `flu_currency_note` — quality flags (NLS caveat, normalization gaps)
+  - `zone_current_normalized`, `zone_future_normalized` — taxonomy-harmonized categories from 18b-2e
+  - `zone_future_secondary` — Tooele City comma-code full list
+
+**`prop_class` stays** — it's a polygon CSV column (UGRC assessor classification), independent of the zoning score.
+
+**Files modified** (branch `phase-14a-pmtiles-rebake`, `tooele-land-intel`):
+- `scripts/build_parcels_ndjson.py` — `D1_ATTR_COLS` updated, `_extract_attrs` wired for 10 new string columns
+- `.github/workflows/build_parcels_pmtiles.yml` — `SELECT_COLS` and `CSV_COLS` updated
+
+**Build metrics**:
+- GHA run: [26338879015](https://github.com/camsrigby-hash/tooele-land-intel/actions/runs/26338879015) — 9m26s, all steps green
+- Features: 1,202,000 | D1 match rate: 100.0%
+- NDJSON size: 1.5 GB | PMTiles size: **94 MB** (up from 93 MB — +1 MB for 10 new cols)
+- Worker verification: HTTP 206 ✅ | Magic bytes `b'PMTiles'` ✅
+
+**D1 pre-check** (confirmed stable before triggering bake):
+
+| Column | Expected | Actual |
+|---|---|---|
+| `zone_current_normalized IS NOT NULL` | 180,518 | 180,518 ✅ |
+| `zone_future_normalized IS NOT NULL` | 172,830 | 172,830 ✅ |
+| `zone_future_secondary IS NOT NULL` | 12,927 | 12,927 ✅ |
+
+**Smoke test** (5 parcels — all properties confirmed present in D1 at 100% match rate):
+
+| Parcel | zone_current | zone_current_normalized | zone_future | zone_future_normalized | zone_future_source |
+|---|---|---|---|---|---|
+| `26222390010000` (Herriman/Olympia Hills) | P-C | null | Mixed Use - Towne Center | Mixed-Use | PDF_raster_Cam_KMZ |
+| `12-040-0-0124` (Lehi residential) | R1-12 | Residential-Low | R1-12 | Residential-Low | REST |
+| `672340001` (Spanish Fork Ag→Commercial) | A-E | Agriculture/Rural | Business Park | Commercial-General | PDF_vision |
+| `02-135-0-0004` (Eagle Mountain R→C) | R1-7 | Residential-Medium | RC | Commercial-General | REST |
+| `14-094-0-0321` (Tooele City multi-zone) | R1-8 | Residential-Medium | RM-8 | Residential-Medium | REST (zone_future_secondary: R1-7,R1-8,R1-10) |
+
+Note: parcels 3 + 4 demonstrate the rezone-flip thesis data flow end-to-end (residential/ag current, commercial future).
+
+**Cost**: $0 LLM calls. GHA compute only (~9.5 min).
+
+**Node.js 20 deprecation warning**: GHA flagged `actions/checkout@v4`, `actions/setup-node@v4`, `actions/setup-python@v5`, `actions/upload-artifact@v4` as deprecated (Node.js 24 becomes default June 2 2026). Non-blocking today — all steps passed. Upgrade these action versions before Sep 16 2026.
