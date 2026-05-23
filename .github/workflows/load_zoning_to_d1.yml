@@ -47,7 +47,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       # SD-9: global wrangler install required for multi-statement D1 file execute
       - name: Install wrangler (global)
