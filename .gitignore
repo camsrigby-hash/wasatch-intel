@@ -25,3 +25,10 @@ dist/
 # Logs
 *.log
 npm-debug.log*
+
+# Claude Code project-local state
+.claude/
+
+# Generated / cache
+data/
+verify_d1_results.txt
