@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WatchlistsRouteImport } from './routes/watchlists'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as PipelineRouteImport } from './routes/pipeline'
+import { Route as MapRouteImport } from './routes/map'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as DevelopersRouteImport } from './routes/developers'
 import { Route as AgendasRouteImport } from './routes/agendas'
@@ -30,6 +31,11 @@ const SearchRoute = SearchRouteImport.update({
 const PipelineRoute = PipelineRouteImport.update({
   id: '/pipeline',
   path: '/pipeline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MapRoute = MapRouteImport.update({
+  id: '/map',
+  path: '/map',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeedRoute = FeedRouteImport.update({
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/agendas': typeof AgendasRoute
   '/developers': typeof DevelopersRoute
   '/feed': typeof FeedRoute
+  '/map': typeof MapRoute
   '/pipeline': typeof PipelineRoute
   '/search': typeof SearchRoute
   '/watchlists': typeof WatchlistsRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/agendas': typeof AgendasRoute
   '/developers': typeof DevelopersRoute
   '/feed': typeof FeedRoute
+  '/map': typeof MapRoute
   '/pipeline': typeof PipelineRoute
   '/search': typeof SearchRoute
   '/watchlists': typeof WatchlistsRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/agendas': typeof AgendasRoute
   '/developers': typeof DevelopersRoute
   '/feed': typeof FeedRoute
+  '/map': typeof MapRoute
   '/pipeline': typeof PipelineRoute
   '/search': typeof SearchRoute
   '/watchlists': typeof WatchlistsRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/agendas'
     | '/developers'
     | '/feed'
+    | '/map'
     | '/pipeline'
     | '/search'
     | '/watchlists'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/agendas'
     | '/developers'
     | '/feed'
+    | '/map'
     | '/pipeline'
     | '/search'
     | '/watchlists'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/agendas'
     | '/developers'
     | '/feed'
+    | '/map'
     | '/pipeline'
     | '/search'
     | '/watchlists'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   AgendasRoute: typeof AgendasRoute
   DevelopersRoute: typeof DevelopersRoute
   FeedRoute: typeof FeedRoute
+  MapRoute: typeof MapRoute
   PipelineRoute: typeof PipelineRoute
   SearchRoute: typeof SearchRoute
   WatchlistsRoute: typeof WatchlistsRoute
@@ -142,6 +155,13 @@ declare module '@tanstack/react-router' {
       path: '/pipeline'
       fullPath: '/pipeline'
       preLoaderRoute: typeof PipelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/map': {
+      id: '/map'
+      path: '/map'
+      fullPath: '/map'
+      preLoaderRoute: typeof MapRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/feed': {
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgendasRoute: AgendasRoute,
   DevelopersRoute: DevelopersRoute,
   FeedRoute: FeedRoute,
+  MapRoute: MapRoute,
   PipelineRoute: PipelineRoute,
   SearchRoute: SearchRoute,
   WatchlistsRoute: WatchlistsRoute,
