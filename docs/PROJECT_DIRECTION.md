@@ -311,6 +311,43 @@ Do this for each untracked migration that is already applied to the schema, then
 
 ---
 
+### SD-25 — Vite dev server ≠ Cloudflare Worker; proxy required for Worker-served endpoints (May 23, 2026)
+
+The Vite dev server does not run Cloudflare Workers. Any endpoint served by a Worker in production (e.g. `/tiles/`) is unreachable from `localhost:5173` unless a proxy entry is added to `vite.config.ts`:
+
+```ts
+server: {
+  proxy: {
+    "/tiles": { target: "http://localhost:8080", changeOrigin: true },
+  },
+},
+```
+
+**Root cause of Phase 14c ~5-hour debug loop**: The zoning overlay showed black/missing tiles in dev because the MapLibre PMTiles source URL (`/tiles/parcels.pmtiles`) hit Vite directly and got a 404. The Worker serving the tiles was not in the Vite process. The fix was adding the proxy entry so Vite forwarded `/tiles/` requests to the local Worker process (wrangler dev, port 8080).
+
+**Rule for future phases**: Any new Worker-backed route (`/api/`, `/export/`, etc.) added to `wrangler.jsonc` MUST have a matching `server.proxy` entry in `vite.config.ts` before attempting dev testing.
+
+---
+
+### SD-26 — `normalize_current()` must consult `gp_taxonomy.yaml` BEFORE trusting ArcGIS REST (May 23, 2026)
+
+**Original (wrong) behavior**: `normalize_current()` in `scripts/load_zoning_to_d1.py` trusted the ArcGIS REST `zone_class_normalized` field first and only consulted `gp_taxonomy.yaml` for zones that returned `null` or `"Other/Unknown"`.
+
+**Discovered failure**: Phase 14c smoke test found Herriman R-2-10 parcels (a residential zone, ~2-3 du/ac suburban SFR) classified as `Industrial/Flex` in D1. Root cause: ArcGIS REST was returning `"Industrial/Flex"` for R-2-10, and `normalize_current()` accepted it without checking the taxonomy.
+
+**Full audit (Phase 14c)** surfaced **12,856 wrong parcel normalizations** across 5 jurisdictions:
+- Herriman: R-2-10 (4,671), R-1-21 (837), R-20-43 (934), C-2 (2)
+- Bluffdale: R-1-43 (2,573), R-1-10 (182), R-MF Multifamily (200), I-1 Light Industry (125), R-SL Residential (30)
+- Grantsville: RM-15 (107)
+- Vineyard: R-2-15 (82)
+- South Jordan: R-M (3,099 total across R-M, R-M-4 through R-M-8, PD variants)
+
+**Fix applied (Phase 14c data-fix)**: Inverted lookup order in `normalize_current()`. Taxonomy is now checked first; ArcGIS is the fallback for codes not covered by the taxonomy. Taxonomy entries added to `gp_taxonomy.yaml` for all 5 jurisdictions above.
+
+**Rule for future phases**: Any new jurisdiction added to the current-zoning pipeline must have its common zone codes audited against the taxonomy before trusting the ArcGIS REST `zone_class_normalized` field. The ArcGIS field is a useful fallback, not a source of truth.
+
+---
+
 ## Working Style
 
 - **User strongly prefers agentic execution**: single bash blocks to paste, not click-by-click. Tools (gh CLI, git, file edits, GitHub API) over manual browser steps.
