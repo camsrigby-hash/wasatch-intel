@@ -46,6 +46,7 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | **14a** | **PMTiles re-bake — all zoning columns** | **Shipped** | May 23 2026 | Full pyramid rebuild. Dropped zoning_score (prop_class fallback). Added 10 real zoning cols (zone_current, zone_future, normalized variants — migrations 0008/0009). 94 MB, 1.2M features, 100% D1 match rate. 5-parcel smoke test passed. |
 | **14b** | **Lovable zoning overlay design** | **Shipped** | May 23 2026 | Lovable design pass: LayerTogglePanel, ZoningLegend, ParcelPopup, MapCanvas SVG mockup, zoning-mock.ts. ZONING_OVERLAY_HANDOFF.md written. PR #12 merged. |
 | **14c** | **MapLibre wiring — zoning overlay to real PMTiles** | **Shipped** | May 23 2026 | SVG mockup replaced with real MapLibre Map. PMTiles vector source (parcels.pmtiles, source-layer: parcels). Data-driven fill-color expression (15-value BUCKET_FROM_D1_VALUE lookup). Current/Future setPaintProperty toggle. Parcel click → Parcel from tile props (zero API latency). zoning-mock.ts deleted; zoning.ts created. Build clean. SD-24 flagged (Open Space/Public upstream split). |
+| **14c-data-fix** | **Source provenance popup + taxonomy-first normalize** | **Shipped** | May 24 2026 | SD-25: Vite dev proxy required for `/tiles/` Worker route — root cause of ~5 hr debug loop; fix: `server.proxy` in vite.config.ts. SD-26: `normalize_current()` now consults gp_taxonomy.yaml BEFORE ArcGIS REST; 12,956 corrected values across Herriman/Bluffdale/Grantsville/Vineyard/South Jordan. ParcelPopup: source provenance dot, confidence badge, flu_currency_note warnings. |
 | **15** | **CRE listings ingest + spread calc + Deal Heat** | **Paused** | May 10 2026 | 15a scaffolding shipped (commits aa3ca00 + 00c9869). CRE platforms blocked: CREXI JS-render returns 0 rows, Land.com 403 from GHA IPs. County recorder output was UGRC assessor fallback, not real transactions. Paused per SD-14. Resume after Phase 18b ships. |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
@@ -378,8 +379,27 @@ Herriman's GP Future Land Use data exists as a public-facing field `FLU2022` on 
 
 ---
 
+## Post-14c Hygiene Items
+
+Small items surfaced during Phase 14c smoke-test debugging. None are blockers. Log here so they don't get lost before the next phase starts.
+
+**a. Satellite basemap toggle** — Cam requested the ability to toggle the OSM basemap to satellite imagery for visual geography identification while scouting. Deferred during 14c smoke testing as scope creep. Future enhancement: small UI addition + raster source swap in MapCanvas.tsx. ~1 hr CC work.
+
+**b. Mixed-Use Towne Center bucket split** — Herriman and other cities distinguish "Mixed Use - Towne Center" from regular "Mixed Use," but the 8-bucket taxonomy collapses both into `mixed_use`. The raw zone codes are preserved in D1; only the bucket display loses the distinction. Consider whether a 9th bucket (or sub-shade within `mixed_use`) is warranted. Defer until Cam reports prospecting friction from this collapse.
+
+**c. NLS source authority audit** — Eagle Mountain, Lehi, and Saratoga Springs currently use `NLS_regional_study` for `zone_future_normalized`, flagged with `flu_currency_note='NLS_source_authority_unverified'`. Cam to verify each city's adopted GP matches the NLS layer by visiting each city's planning page. ~30 min Cam-time. If mismatched, queue PDF vision re-extraction for that city.
+
+**d. SD-24 Open Space/Public upstream split** — Already in the SD log (SD-24). Reminder: split the `"Open Space/Public"` combined label into separate `"Open Space/Recreation"` and `"Public/Institutional"` normalized values in `gp_taxonomy.yaml` so parks and schools no longer share a bucket. Small fix but requires a data pipeline pass + PMTiles re-bake.
+
+**e. flu_plan_vintage population** — Currently NULL in D1 for all parcels. Field is reserved in schema but never populated by any phase. Either populate from a future enrichment pass OR remove the field reference from ParcelPopup.tsx if not coming. Decision deferred.
+
+**f. Phase 14a regression note** — Initial Phase 14a bake omitted the `jurisdiction` column despite the column existing in D1. Fixed in Phase 14c data-fix. Bake-script-vs-D1-schema drift is a pattern that could recur. Future column additions: always update both the load script AND the bake script in the same PR.
+
+---
+
 ## Update history (newest first)
 
+- **May 24, 2026** — Post-14c hygiene items logged (satellite toggle, MUT bucket split, NLS audit, SD-24 reminder, flu_plan_vintage decision, bake-script drift note). 14c-data-fix row added to Phase Ledger (SD-25 Vite proxy, SD-26 taxonomy-first normalize). CURRENT STATE → Phase 14 SHIPPED. Awaiting Cam decision on Phase 15 vs 16.
 - **May 23, 2026** — Phase 14c SHIPPED. Zoning overlay wired to real PMTiles: MapLibre MapCanvas, BUCKET_FROM_D1_VALUE, zoning.ts, zoning-mock.ts deleted. SD-24 added (Open Space/Public upstream split). Phase Ledger rows 14b + 14c added. CURRENT STATE → Phase 14 complete.
 - **May 23, 2026** — Phase 14b SHIPPED (Lovable). LayerTogglePanel, ZoningLegend, ParcelPopup, MapCanvas SVG mockup, ZONING_OVERLAY_HANDOFF.md. PR #12 merged.
 - **May 23, 2026** — Phase 14a SHIPPED. PMTiles re-baked with all 10 real zoning columns (dropped zoning_score fallback). 94 MB, 1.2M features, 100% D1 match rate. Phase 14a row added to ledger.
