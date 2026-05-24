@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-22
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 18b-3: D1 migration 0008, per-parcel GP/FLU join (227k zone_current + 193k zone_future), /api/parcel/:apn augmented. PR #9 merged.
-**Active phase:** Phase 18b-2e (taxonomy harmonization) is next.
+**Last updated:** 2026-05-24
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 14 SHIPPED TO PRODUCTION. All sub-phases complete (14a PMTiles re-bake, 14b Lovable design, 14c MapLibre wiring, 14c-data-fix SD-25/SD-26). Deployed via GHA run 26349118507.
+**Active phase:** NONE. Phase 14 fully complete. Next phase TBD by Cam (Phase 15 CRE listings or Phase 16 pipeline refinement). STANDING PRINCIPLE: use the tool for several weeks before activating next phase.
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)
@@ -1112,6 +1112,22 @@ REST ingest complete for 4 pre-check cities: Vineyard (36), Grantsville (51), Bl
 ### 2026-05-16 — Phase 18b-2c Herriman GP Amendment re-attempt — Claude Code (Sonnet 4.6)
 
 Downloaded correct 98-page source PDF (`Herriman_GP_Amendment.pdf`, ~39.5 MB, October 2013 revision — confirmed via page count and `D:20131009...` creation date). Extracted page 34 as single-page PDF (`herriman_map7_p34.pdf`; 5100×3300 px raster, 90°-rotated letter page, "Revised — October 7, 2013" footer confirmed). Currency check: 2030 Land Use Map (`LandUse203036x36.pdf`) is the current adopted plan (July 2022 GP) → 2013 amendment output must be flagged as superseded. Pipeline ran standard path (no `--tile-refine`, no `--manual-cps`). Stage 3 degenerate due to SD-18 Overpass bug: Utah numbered-road grid (12600 S, 13400 S) returns 342 shared nodes per road regardless of cross-street → only 2 unique geographic points for 4 CPs → underdetermined affine system → RMSE=0 (false positive, 1D transform). Output: 1 feature, unusable. **Effective result: FAIL. Herriman deferred per SD-19.** See SD-19 in PROJECT_DIRECTION.md. Cost: $0.905.
+
+### 2026-05-24 — Phase 14 SHIPPED TO PRODUCTION — Claude Code (Sonnet 4.6)
+
+Phase 14 fully closed: all sub-phases (14a, 14b, 14c, 14c-data-fix) merged to `wasatch-intel/main` and deployed to production. Cloudflare Worker deploy run `26349118507` (57s, success). Production URL verified: `Accept-Ranges: bytes` from PMTiles endpoint.
+
+**14c-data-fix shipped (SD-25 + SD-26):**
+- `normalize_current()` now consults `gp_taxonomy.yaml` first (taxonomy-first, SD-26). 12,956 zone_current_normalized values corrected vs. prior ArcGIS-first behavior.
+- `ParcelPopup.tsx` shows source confidence dot (green/yellow/orange by method), source method badge, and currency note warning banner (SD-25).
+- `src/lib/zoning.ts` exports `SOURCE_METHOD_DISPLAY` map for popup rendering.
+- `vite.config.ts` `/tiles` dev proxy added so local `vite dev` matches production routing.
+
+**Standing principle:** Use the tool for several weeks before firing Phase 15 or 16. Cam decides which is next.
+
+**Key merge commits:**
+- `ab44d0a` wasatch-intel — feat(14c): Phase 14 complete (squash PR #14)
+- `9f94fb8` tooele-land-intel — feat(14c): taxonomy-first normalization + jurisdiction in tiles (squash PR #14)
 
 ### 2026-05-23 — Phase 14c COMPLETE — Claude Code (Sonnet 4.6)
 

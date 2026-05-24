@@ -6,9 +6,9 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-23
+## CURRENT STATE — 2026-05-24
 
-**Phase 14 COMPLETE (all sub-phases: 14a PMTiles re-bake, 14b Lovable design, 14c MapLibre wiring). `/map` renders ~947k parcels colored by 8-bucket zoning taxonomy, driven by real D1 zone_current_normalized / zone_future_normalized values baked into parcels.pmtiles. Current/Future toggle live. Parcel click → popup from tile properties (no API round-trip). Build clean. Next: Phase 15 (CRE listings) or Phase 16 (pipeline parcel-centric refinement) — see PROJECT_DIRECTION.md for priority.**
+**Phase 14 COMPLETE — ALL SUB-PHASES SHIPPED TO PRODUCTION (May 24 2026). Sub-phases: 14a PMTiles re-bake (10 real zoning cols), 14b Lovable design, 14c MapLibre wiring, 14c-data-fix (SD-25 provenance/confidence popup + SD-26 taxonomy-first normalize_current). `/map` renders ~947k parcels colored by 8-bucket zoning taxonomy. Source provenance dot, confidence badge, and currency note warnings live in popup. `normalize_current()` consults `gp_taxonomy.yaml` before ArcGIS — 12,956 corrected values. Production URL verified. STANDING PRINCIPLE: USE the tool for several weeks before firing Phase 15 or 16. Cam decides which is next.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — normalization deferred to 18b-2e; loaded raw with `flu_currency_note='lehi_zone_current_normalization_gap'`.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -18,6 +18,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 - **18b-2e** — SHIPPED (May 23 2026). See PHASE 18b-2e COMPLETION NOTES below.
 - **18b-3** — SHIPPED (May 22 2026). See PHASE 18b-3 COMPLETION NOTES below.
 - **14a** — SHIPPED (May 23 2026). PMTiles re-baked with 10 real zoning columns. See PHASE 14a COMPLETION NOTES below.
+- **14c-data-fix** — SHIPPED TO PRODUCTION (May 24 2026). SD-25 popup source provenance + confidence dot + currency note warnings. SD-26 taxonomy-first normalize_current(). 12,956 corrected zone_current_normalized values. See PHASE 14c-data-fix COMPLETION NOTES below.
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — must fix normalization before 18b-3 D1 load.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -729,6 +730,50 @@ Zoning overlay wired to real PMTiles data. All Lovable design decisions preserve
 **Smoke test:** `npm run build` clean. Browser smoke test pending Cam verification — 6 canonical parcels per plan checklist item 15.
 
 **Next:** Phase 15 (CRE listings scraper) or Phase 16 (pipeline refinement). Check PROJECT_DIRECTION.md ledger.
+
+---
+
+### PHASE 14c-data-fix COMPLETION NOTES (2026-05-24)
+
+**Status**: SHIPPED TO PRODUCTION. All sub-phases of Phase 14 complete.
+
+**What shipped:**
+
+1. **SD-25 — Popup source provenance + confidence + currency note warnings** (`src/components/ParcelPopup.tsx`)
+   - Confidence dot: green (REST) / yellow (PDF_vision) / orange (PDF_raster_Cam_KMZ) per `SOURCE_METHOD_DISPLAY`
+   - Source method badge: human-readable label (e.g. "ArcGIS REST", "Cam KMZ")
+   - Currency note banner: rendered when `flu_currency_note` is set (NLS caveat, normalization gaps)
+
+2. **SD-26 — `normalize_current()` taxonomy-first** (`wasatch-intel/scripts/load_zoning_to_d1.py`)
+   - Before: ArcGIS REST `zone_class_normalized` was trusted first; taxonomy only applied as override
+   - After: `gp_taxonomy.yaml` is authoritative — consulted first, ArcGIS fallback only for unmapped codes
+   - **12,956 zone_current_normalized values corrected** by re-running the D1 loader with the taxonomy-first logic
+   - Fix prevents ArcGIS "Other/Unknown" values from masking valid taxonomy entries
+
+3. **`src/lib/zoning.ts` — `SOURCE_METHOD_DISPLAY` map** (new export)
+   - Maps raw D1 `zone_current_source` / `zone_future_source` strings → `{ label, confidence }` display objects
+   - Used by ParcelPopup to render source provenance without conditional chain soup
+
+4. **`vite.config.ts` — `/tiles` dev proxy** (SD-25 fix)
+   - Dev server now proxies `/tiles/*` to the Cloudflare Worker so local dev matches production routing
+   - Without this, PMTiles fetches 404 in `vite dev` (SD-25 root cause)
+
+5. **`tooele-land-intel` — taxonomy-first normalization + jurisdiction in tiles** (squash-merged PR #14)
+   - `scripts/build_parcels_ndjson.py` and `.github/workflows/build_parcels_pmtiles.yml` updated
+   - `jurisdiction` baked into tiles for popup source provenance display
+
+**Production verification (2026-05-24)**:
+- Deploy workflow run `26349118507`: 57s, success
+- `curl -I https://wasatch-intel.cam-s-rigby.workers.dev/tiles/parcels.pmtiles` → `Accept-Ranges: bytes` ✅
+- Content-Length: 98,853,390 bytes (94 MB PMTiles)
+
+**Key commits (wasatch-intel `phase-14c-data-fix` → squash PR #14 → `ab44d0a`):**
+- `23ee66a` — fix(14c): normalize_current() consults taxonomy before ArcGIS (SD-26)
+- `c3288cc` — feat(14c): popup source provenance + confidence + currency note warnings (SD-25)
+
+**Cost**: $0 LLM calls. GHA compute only.
+
+**Standing principle (Phase 10 graduation)**: USE the tool for several weeks before firing Phase 15 or 16. Cam decides which comes next.
 
 ---
 
