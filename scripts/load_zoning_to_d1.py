@@ -107,17 +107,20 @@ def normalize_current(city_slug: str, zone_code: str,
     """
     Compute zone_current_normalized for a parcel.
 
-    Strategy: use the GeoJSON's zone_class_normalized when it is meaningful
-    (not null, not 'Other/Unknown'). Fall back to gp_taxonomy.yaml for gaps.
-    Returns None if still unmapped (stored as SQL NULL).
+    SD-26: taxonomy is authoritative. Consult gp_taxonomy.yaml first; fall back
+    to GeoJSON zone_class_normalized only for codes with no taxonomy entry.
+    Returns None if unmapped (stored as SQL NULL).
     """
+    # Taxonomy wins — overrides ArcGIS REST zone_class_normalized
+    city_rules = current_rules.get(city_slug, {})
+    if zone_code in city_rules:
+        normalized = city_rules[zone_code]
+        return None if normalized == "Other/Unknown" else normalized
+    # Fall back to GeoJSON zone_class_normalized for codes not in taxonomy
     existing = (geojson_norm or "").strip()
     if existing and existing != "Other/Unknown":
         return existing
-    city_rules = current_rules.get(city_slug, {})
-    normalized = city_rules.get(zone_code)
-    # Return None instead of the sentinel string so the column stores NULL
-    return None if normalized == "Other/Unknown" else normalized
+    return None
 
 
 def normalize_future(gp_slug: str, zone_code: str,
