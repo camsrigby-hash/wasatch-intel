@@ -70,6 +70,23 @@ export const BUCKET_FROM_D1_VALUE: Record<string, ZoningBucket> = {
   "Residential-Townhome":       "high_res",     // attached/higher-density
 };
 
+// Human-readable labels and confidence levels for source method strings stored in D1.
+// ParcelPopup uses this to translate cryptic identifiers into user-facing provenance.
+export interface SourceMethodDisplay {
+  label: string;
+  confidence: "high" | "medium" | "low";
+}
+
+export const SOURCE_METHOD_DISPLAY: Record<string, SourceMethodDisplay> = {
+  "REST":                   { label: "Direct from city GIS",                    confidence: "high"   },
+  "arcgis_rest":            { label: "Direct from city GIS",                    confidence: "high"   },
+  "PDF_vision":             { label: "Extracted from city PDF map",             confidence: "medium" },
+  "PDF_vision_Cam_KMZ":     { label: "Manually georeferenced from city map",    confidence: "medium" },
+  "PDF_raster_Cam_KMZ":     { label: "Manually georeferenced from city map",    confidence: "medium" },
+  "NLS_regional_study":     { label: "Regional study layer (not city-published)", confidence: "low"  },
+  "manual":                 { label: "Manually entered",                        confidence: "medium" },
+};
+
 // Parcel shape consumed by ParcelPopup (real data, no mock grid fields).
 // Populated from MapLibre vector tile feature properties (all 10 zoning columns
 // baked by Phase 14a into parcels.pmtiles).
@@ -79,7 +96,7 @@ export interface Parcel {
   future: ZoningBucket | null;        // null = no future GP / land use on file
   rawCode: string | null;             // e.g. "Mixed Use - Towne Center"
   jurisdiction: string;               // e.g. "Salt Lake City"
-  sourceMethod: "REST" | "PDF_vision_Cam_KMZ" | "manual" | null;
+  sourceMethod: string | null;        // raw D1 string; translated via SOURCE_METHOD_DISPLAY
   vintage: string | null;             // e.g. "2025"
   currencyNote?: string;              // e.g. "NLS_source_authority_unverified"
 }

@@ -4,9 +4,25 @@ import { X, AlertCircle } from "lucide-react";
 import {
   BUCKET_BY_ID,
   NO_DATA_COLOR,
+  SOURCE_METHOD_DISPLAY,
   type Parcel,
   type ZoningView,
 } from "@/lib/zoning";
+
+const CURRENCY_NOTE_MESSAGES: Record<string, string> = {
+  "NLS_source_authority_unverified":
+    "This future zoning comes from a regional study layer, not directly from city-published data. Verify with city planning before acting.",
+  "lehi_zone_current_normalization_gap":
+    "Some Lehi zone codes are not yet normalized in our taxonomy. Bucket may be approximate.",
+  "regional_map_only":
+    "Only a regional overview exists; parcel-level boundaries cannot be determined.",
+};
+
+const CONFIDENCE_DOT_CLASS: Record<"high" | "medium" | "low", string> = {
+  high:   "bg-green-500",
+  medium: "bg-amber-400",
+  low:    "bg-red-500",
+};
 
 interface Props {
   parcel: Parcel;
@@ -54,26 +70,15 @@ export function ParcelPopup({ parcel, view, onClose }: Props) {
               <Field label="Raw zone code" value={parcel.rawCode} mono />
             )}
             <Field label="Source jurisdiction" value={parcel.jurisdiction} />
+
+            {view === "future" && parcel.currencyNote && (
+              <CurrencyNoteBanner note={parcel.currencyNote} />
+            )}
+
             {parcel.sourceMethod && (
-              <Field
-                label="Source method"
-                value={
-                  <Badge variant="secondary" className="font-mono text-[10px] py-0 px-1.5">
-                    {parcel.sourceMethod}
-                  </Badge>
-                }
-              />
+              <SourceMethodField sourceMethod={parcel.sourceMethod} />
             )}
             {parcel.vintage && <Field label="Plan vintage" value={parcel.vintage} />}
-
-            {parcel.currencyNote && (
-              <div className="flex items-start gap-1.5 mt-1 px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30">
-                <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
-                <span className="text-[10px] font-mono text-amber-700 dark:text-amber-300 leading-snug">
-                  {parcel.currencyNote}
-                </span>
-              </div>
-            )}
           </>
         ) : (
           <NoDataState
@@ -102,6 +107,41 @@ function Field({
     <div className="grid grid-cols-[110px_1fr] gap-2 items-center">
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`text-xs text-foreground ${mono ? "font-mono" : ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function SourceMethodField({ sourceMethod }: { sourceMethod: string }) {
+  const display = SOURCE_METHOD_DISPLAY[sourceMethod];
+  return (
+    <div className="grid grid-cols-[110px_1fr] gap-2 items-center">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Data source</div>
+      <div className="flex items-center gap-1.5">
+        <span
+          className={`inline-block h-2 w-2 rounded-full shrink-0 ${
+            display ? CONFIDENCE_DOT_CLASS[display.confidence] : "bg-muted-foreground"
+          }`}
+        />
+        <span className="text-xs text-foreground">
+          {display ? display.label : (
+            <Badge variant="secondary" className="font-mono text-[10px] py-0 px-1.5">
+              {sourceMethod}
+            </Badge>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CurrencyNoteBanner({ note }: { note: string }) {
+  const message = CURRENCY_NOTE_MESSAGES[note] ?? note;
+  return (
+    <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/30">
+      <AlertCircle className="h-3 w-3 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+      <span className="text-[10px] text-amber-700 dark:text-amber-300 leading-snug">
+        {message}
+      </span>
     </div>
   );
 }

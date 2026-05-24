@@ -65,14 +65,10 @@ function parcelFromFeature(
       ? ((props.zone_current as string | null) ?? null)
       : ((props.zone_future  as string | null) ?? null);
 
-  const sourceRaw =
+  const sourceMethod: string | null =
     view === "current"
-      ? (props.zone_current_source as string | null)
-      : (props.zone_future_source  as string | null);
-  const normalizedSource = sourceRaw === "arcgis_rest" ? "REST" : sourceRaw;
-  const sourceMethod = (["REST", "PDF_vision_Cam_KMZ", "manual"].includes(normalizedSource ?? "")
-    ? normalizedSource
-    : null) as Parcel["sourceMethod"];
+      ? ((props.zone_current_source as string | null) ?? null)
+      : ((props.zone_future_source  as string | null) ?? null);
 
   return {
     id:           String(props.parcel_id ?? props.id ?? "unknown"),
