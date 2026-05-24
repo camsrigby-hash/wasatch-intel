@@ -27,6 +27,25 @@ function ensurePmtilesProtocol() {
 /** PMTiles R2 URL — served by Worker /tiles/:filename (Range request passthrough). */
 const PARCEL_TILES_URL = "pmtiles:///tiles/parcels.pmtiles";
 
+const PREFS_KEY = "wasatch-map-prefs";
+
+function loadPrefs(): Partial<LayerState> {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    return raw ? (JSON.parse(raw) as Partial<LayerState>) : {};
+  } catch { return {}; }
+}
+
+function savePrefs(s: LayerState) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      basemap: s.basemap,
+      zoning: s.zoning,
+      zoningView: s.zoningView,
+    }));
+  } catch { /* quota exceeded or private browsing */ }
+}
+
 /** tippecanoe --layer name (set during Phase 14a bake). */
 const PARCEL_SOURCE_LAYER = "parcels";
 
@@ -83,11 +102,15 @@ function parcelFromFeature(
 }
 
 export function MapCanvas() {
-  const [layers, setLayers] = useState<LayerState>({
-    gapScore:   false,
-    stip:       false,
-    zoning:     true,
-    zoningView: "future",
+  const [layers, setLayers] = useState<LayerState>(() => {
+    const prefs = loadPrefs();
+    return {
+      basemap:    prefs.basemap    ?? "street",
+      gapScore:   false,
+      stip:       false,
+      zoning:     prefs.zoning    ?? true,
+      zoningView: prefs.zoningView ?? "future",
+    };
   });
 
   const [selected, setSelected] = useState<Parcel | null>(null);
@@ -100,11 +123,16 @@ export function MapCanvas() {
   const layersRef = useRef(layers);
   useEffect(() => { layersRef.current = layers; }, [layers]);
 
+  // ── Persist preferences to localStorage on every state change ─────────────
+  useEffect(() => { savePrefs(layers); }, [layers]);
+
   // ── Map init ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     ensurePmtilesProtocol();
+
+    const isSatellite = layers.basemap === "satellite";
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -118,8 +146,17 @@ export function MapCanvas() {
             tileSize: 256,
             attribution: "© OpenStreetMap contributors",
           },
+          satellite: {
+            type: "raster",
+            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256,
+            attribution: "Tiles © Esri",
+          },
         },
-        layers: [{ id: "osm", type: "raster", source: "osm" }],
+        layers: [
+          { id: "osm-layer",       type: "raster", source: "osm",       layout: { visibility: isSatellite ? "none" : "visible" } },
+          { id: "satellite-layer", type: "raster", source: "satellite", layout: { visibility: isSatellite ? "visible" : "none" } },
+        ],
       },
       center: [-112.1, 40.5],
       zoom: 9,
@@ -140,7 +177,7 @@ export function MapCanvas() {
         "source-layer": PARCEL_SOURCE_LAYER,
         paint: {
           "fill-color":   buildZoningFillExpr(layers.zoningView),
-          "fill-opacity": layers.zoning ? 0.95 : 0,
+          "fill-opacity": layers.zoning ? 0.5 : 0,
         },
       });
 
@@ -194,8 +231,17 @@ export function MapCanvas() {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     if (!map.getLayer(FILL_LAYER_ID)) return;
-    map.setPaintProperty(FILL_LAYER_ID, "fill-opacity", layers.zoning ? 0.95 : 0);
+    map.setPaintProperty(FILL_LAYER_ID, "fill-opacity", layers.zoning ? 0.5 : 0);
   }, [layers.zoning]);
+
+  // ── Sync basemap visibility (street ↔ satellite) ──────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const isSat = layers.basemap === "satellite";
+    map.setLayoutProperty("osm-layer",       "visibility", isSat ? "none" : "visible");
+    map.setLayoutProperty("satellite-layer", "visibility", isSat ? "visible" : "none");
+  }, [layers.basemap]);
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#0d1117]">

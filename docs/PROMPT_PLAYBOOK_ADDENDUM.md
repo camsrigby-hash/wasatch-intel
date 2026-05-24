@@ -6,9 +6,9 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ---
 
-## CURRENT STATE — 2026-05-24
+## CURRENT STATE — 2026-05-23
 
-**Phase 14 SHIPPED — ALL SUB-PHASES LIVE ON PRODUCTION (May 24 2026). Sub-phases: 14a PMTiles re-bake (10 real zoning cols), 14b Lovable design, 14c MapLibre wiring, 14c-data-fix (SD-25 Vite proxy + SD-26 taxonomy-first normalize_current + source provenance popup). `/map` renders ~947k parcels colored by 8-bucket zoning taxonomy. 12,956 corrected zone_current_normalized values. Post-14c hygiene items logged in PROJECT_DIRECTION.md. Awaiting Cam decision on next phase (15 CRE listings or 16 Pipeline refinement). STANDING PRINCIPLE FROM PHASE 10 GRADUATION: USE the tool for several weeks before firing next phase.**
+**Phase 14d SHIPPED (May 23 2026). Satellite basemap toggle + zoning overlay toggle with localStorage persistence. `/map` supports Street/Satellite basemap switcher (ESRI World Imagery, no API key), zoning fill at 50% opacity (was 95%), parcel outlines always visible at zoom ≥ 13. Panel: Basemap segmented control above Layers section. State persisted in `wasatch-map-prefs` localStorage key (basemap, zoning, zoningView). Previous sub-phases: 14a PMTiles re-bake, 14b Lovable design, 14c MapLibre wiring, 14c-data-fix. STANDING PRINCIPLE FROM PHASE 10 GRADUATION: USE the tool for several weeks before firing next phase.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — normalization deferred to 18b-2e; loaded raw with `flu_currency_note='lehi_zone_current_normalization_gap'`.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -774,6 +774,36 @@ Zoning overlay wired to real PMTiles data. All Lovable design decisions preserve
 **Cost**: $0 LLM calls. GHA compute only.
 
 **Standing principle (Phase 10 graduation)**: USE the tool for several weeks before firing Phase 15 or 16. Cam decides which comes next.
+
+---
+
+### PHASE 14d COMPLETION NOTES (2026-05-23)
+
+**Status**: SHIPPED TO PRODUCTION.
+
+**What shipped:**
+
+1. **Satellite basemap toggle** (`src/components/MapCanvas.tsx`, `src/components/LayerTogglePanel.tsx`)
+   - ESRI World Imagery raster source added (`tiles/{z}/{y}/{x}`, no API key required)
+   - Both `osm-layer` and `satellite-layer` registered at map init; active one shown via `setLayoutProperty("visibility")`
+   - Segmented toggle "Street / Satellite" added at top of LayerTogglePanel above existing Layers section
+   - `LayerState` interface extended with `basemap: "street" | "satellite"`
+
+2. **Zoning overlay toggle** — already present from Phase 14c; confirmed functional. `layers.zoning` switches `fill-opacity` 0 ↔ 0.5.
+
+3. **Fill opacity lowered to 50%** — was 0.95; now 0.5 to allow satellite ground truth to show through.
+
+4. **localStorage persistence** — `wasatch-map-prefs` key stores `{ basemap, zoning, zoningView }`. Loaded via lazy `useState` initializer on mount. Writes on every `layers` state change.
+
+5. **Z-order (bottom → top)**: `osm-layer` → `satellite-layer` → `zoning-fill` → `zoning-outline` → (future score/STIP layers)
+
+**Key files:**
+- `src/components/MapCanvas.tsx` — loadPrefs/savePrefs helpers, satellite source/layer, basemap effect, lazy useState init
+- `src/components/LayerTogglePanel.tsx` — `basemap` field on LayerState, Basemap segmented toggle in panel
+
+**Test path**: load `/map` → toggle Satellite → toggle Zoning off → parcel outlines visible over imagery → toggle Zoning on → semi-transparent fill renders over satellite without obscuring boundaries.
+
+**Cost**: $0 LLM calls. Pure frontend.
 
 ---
 

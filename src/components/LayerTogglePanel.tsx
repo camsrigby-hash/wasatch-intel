@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { ZoningView } from "@/lib/zoning";
 
 export interface LayerState {
+  basemap: "street" | "satellite";
   gapScore: boolean;
   stip: boolean;
   zoning: boolean;
@@ -19,6 +20,20 @@ interface Props {
 export function LayerTogglePanel({ state, onChange }: Props) {
   return (
     <Card className="w-64 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-border shadow-lg p-3 space-y-2">
+      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
+        Basemap
+      </div>
+      <SegmentedToggle
+        value={state.basemap}
+        onChange={(v) => onChange({ ...state, basemap: v })}
+        options={[
+          { value: "street", label: "Street" },
+          { value: "satellite", label: "Satellite" },
+        ]}
+      />
+
+      <div className="border-t border-border my-0.5" />
+
       <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
         Layers
       </div>
