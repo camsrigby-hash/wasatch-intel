@@ -28,11 +28,11 @@ jobs:
       - name: Checkout wasatch-intel
         uses: actions/checkout@v4
 
-      - name: Checkout tooele-land-intel (phase-14c-data-fix)
+      - name: Checkout tooele-land-intel (main)
         uses: actions/checkout@v4
         with:
           repository: camsrigby-hash/tooele-land-intel
-          ref: phase-14c-data-fix
+          ref: main
           path: tooele-land-intel
           token: ${{ secrets.TOOELE_LAND_INTEL_PAT || github.token }}
 
