@@ -43,7 +43,9 @@ A market intelligence platform for identifying rezone-and-flip parcel opportunit
 | 13b-7 | Commute corridor scoring (proxy method) | Shipped | May 8 2026 | 98.52% coverage. All rows tagged `commute_corridor_method='proxy'` for future WFRC swap |
 | 13b-8 | Vacancy classification | Shipped | May 8 2026 | UGRC LIR cascade (vacant/partial/developed/unknown) |
 | **14** | **PMTiles + Tippecanoe vector tile pipeline** | **Shipped** | May 9 2026 | All 6 sub-tasks complete. 947k parcels render on map, profile recolor via paint expression, drawer opens on tile parcel click (tileFeaturesToIntelParcel). 3 bugs found+fixed in 14-6 (camera-reset ×2, drawer ×1). See SD-12, SD-13 |
-| **14a** | **PMTiles re-bake — all zoning columns** | **Shipped** | May 23 2026 | Full pyramid rebuild. Dropped zoning_score (prop_class fallback). Added 10 real zoning cols (zone_current, zone_future, normalized variants — migrations 0008/0009). 94 MB, 1.2M features, 100% D1 match rate. 5-parcel smoke test passed. Ready for 14b paint-expression wiring. |
+| **14a** | **PMTiles re-bake — all zoning columns** | **Shipped** | May 23 2026 | Full pyramid rebuild. Dropped zoning_score (prop_class fallback). Added 10 real zoning cols (zone_current, zone_future, normalized variants — migrations 0008/0009). 94 MB, 1.2M features, 100% D1 match rate. 5-parcel smoke test passed. |
+| **14b** | **Lovable zoning overlay design** | **Shipped** | May 23 2026 | Lovable design pass: LayerTogglePanel, ZoningLegend, ParcelPopup, MapCanvas SVG mockup, zoning-mock.ts. ZONING_OVERLAY_HANDOFF.md written. PR #12 merged. |
+| **14c** | **MapLibre wiring — zoning overlay to real PMTiles** | **Shipped** | May 23 2026 | SVG mockup replaced with real MapLibre Map. PMTiles vector source (parcels.pmtiles, source-layer: parcels). Data-driven fill-color expression (15-value BUCKET_FROM_D1_VALUE lookup). Current/Future setPaintProperty toggle. Parcel click → Parcel from tile props (zero API latency). zoning-mock.ts deleted; zoning.ts created. Build clean. SD-24 flagged (Open Space/Public upstream split). |
 | **15** | **CRE listings ingest + spread calc + Deal Heat** | **Paused** | May 10 2026 | 15a scaffolding shipped (commits aa3ca00 + 00c9869). CRE platforms blocked: CREXI JS-render returns 0 rows, Land.com 403 from GHA IPs. County recorder output was UGRC assessor fallback, not real transactions. Paused per SD-14. Resume after Phase 18b ships. |
 | 16 | Pipeline parcel-centric refinement using shipped scoring | Pending | — | Iterate based on real usage of post-13b scored parcels |
 | 17 | Mailto/tel/outreach UI | Pending | — | Wired but inactive in current build |
@@ -279,6 +281,20 @@ For PDF zoning/GP maps that use a satellite-basemap underlay (Herriman Map 7 sty
 **Reference implementation**: `tooele-land-intel/scripts/herriman_cam_ingest.py`.
 **Future flag**: bbox-too-tight pattern likely exists for other cities in CITY_CONFIGS. Audit before reusing Cam-KMZ workflow on next city.
 
+### SD-24 — "Open Space/Public" normalized label needs upstream split in gp_taxonomy.yaml (May 23, 2026)
+
+The D1 `zone_current_normalized` and `zone_future_normalized` columns contain the value `"Open Space/Public"` which conflates two distinct land-use categories that belong in separate 8-bucket slots:
+- **Open space / parks / recreation** → should normalize to `open_ag`
+- **Government buildings / schools / utilities / public facilities** → should normalize to `public_inst`
+
+**Current behavior (Phase 14c):** `"Open Space/Public"` maps to `public_inst` (conservative parent). This is the safer v1 choice because miscoloring a school/utility green (open_ag) is a higher-cost prospector error than miscoloring a park blue (public_inst). However, it means some open-space parcels are colored blue instead of green.
+
+**Upstream fix required:** Edit `gp_taxonomy.yaml` (in `tooele-land-intel`) to split `"Open Space/Public"` into two normalized values with distinct label strings (e.g. `"Open Space/Recreation"` → `open_ag` and `"Public/Government"` → `public_inst`). Re-run the normalization pipeline for the affected jurisdictions. Re-bake PMTiles. Update `BUCKET_FROM_D1_VALUE` in `src/lib/zoning.ts` to add the two new values and remove the combined one. This is a small fix (~30 min) but requires a data pipeline pass.
+
+**Affected jurisdictions:** Any city whose GP/FLU data was classified as "Open Space/Public" — check with `SELECT zone_current_normalized, zone_future_normalized, jurisdiction FROM parcel_records WHERE zone_current_normalized='Open Space/Public' OR zone_future_normalized='Open Space/Public' GROUP BY jurisdiction ORDER BY COUNT(*) DESC`.
+
+---
+
 ### SD-23 — D1 migration tracking must use `wrangler d1 migrations apply` (May 23, 2026)
 **Rule**: All future D1 schema migrations MUST be applied via `wrangler d1 migrations apply` rather than `wrangler d1 execute --file`. The `migrations apply` command updates the `d1_migrations` tracking table; the `execute --file` path does not. If untracked migrations later collide with a tracked migration run, wrangler attempts to re-apply earlier migrations and hits duplicate-column errors.
 
@@ -292,6 +308,43 @@ Do this for each untracked migration that is already applied to the schema, then
 **Reference incident**: Phase 18b-2e load, May 23 2026. Migrations 0007 and 0008 were applied via `execute --file` in phases 13b and 18b-3 respectively. When migration 0009 workflow ran `migrations apply`, wrangler tried to re-apply 0007 from scratch and hit `duplicate column name: commute_corridor_method`. Fixed by injecting tracking rows for 0007 and 0008 before re-running the workflow.
 
 **Going forward**: All `d1-migrate-*.yml` GHA workflows must use `wrangler d1 migrations apply --remote`, never `wrangler d1 execute --file` for schema changes.
+
+---
+
+### SD-25 — Vite dev server ≠ Cloudflare Worker; proxy required for Worker-served endpoints (May 23, 2026)
+
+The Vite dev server does not run Cloudflare Workers. Any endpoint served by a Worker in production (e.g. `/tiles/`) is unreachable from `localhost:5173` unless a proxy entry is added to `vite.config.ts`:
+
+```ts
+server: {
+  proxy: {
+    "/tiles": { target: "http://localhost:8080", changeOrigin: true },
+  },
+},
+```
+
+**Root cause of Phase 14c ~5-hour debug loop**: The zoning overlay showed black/missing tiles in dev because the MapLibre PMTiles source URL (`/tiles/parcels.pmtiles`) hit Vite directly and got a 404. The Worker serving the tiles was not in the Vite process. The fix was adding the proxy entry so Vite forwarded `/tiles/` requests to the local Worker process (wrangler dev, port 8080).
+
+**Rule for future phases**: Any new Worker-backed route (`/api/`, `/export/`, etc.) added to `wrangler.jsonc` MUST have a matching `server.proxy` entry in `vite.config.ts` before attempting dev testing.
+
+---
+
+### SD-26 — `normalize_current()` must consult `gp_taxonomy.yaml` BEFORE trusting ArcGIS REST (May 23, 2026)
+
+**Original (wrong) behavior**: `normalize_current()` in `scripts/load_zoning_to_d1.py` trusted the ArcGIS REST `zone_class_normalized` field first and only consulted `gp_taxonomy.yaml` for zones that returned `null` or `"Other/Unknown"`.
+
+**Discovered failure**: Phase 14c smoke test found Herriman R-2-10 parcels (a residential zone, ~2-3 du/ac suburban SFR) classified as `Industrial/Flex` in D1. Root cause: ArcGIS REST was returning `"Industrial/Flex"` for R-2-10, and `normalize_current()` accepted it without checking the taxonomy.
+
+**Full audit (Phase 14c)** surfaced **12,856 wrong parcel normalizations** across 5 jurisdictions:
+- Herriman: R-2-10 (4,671), R-1-21 (837), R-20-43 (934), C-2 (2)
+- Bluffdale: R-1-43 (2,573), R-1-10 (182), R-MF Multifamily (200), I-1 Light Industry (125), R-SL Residential (30)
+- Grantsville: RM-15 (107)
+- Vineyard: R-2-15 (82)
+- South Jordan: R-M (3,099 total across R-M, R-M-4 through R-M-8, PD variants)
+
+**Fix applied (Phase 14c data-fix)**: Inverted lookup order in `normalize_current()`. Taxonomy is now checked first; ArcGIS is the fallback for codes not covered by the taxonomy. Taxonomy entries added to `gp_taxonomy.yaml` for all 5 jurisdictions above.
+
+**Rule for future phases**: Any new jurisdiction added to the current-zoning pipeline must have its common zone codes audited against the taxonomy before trusting the ArcGIS REST `zone_class_normalized` field. The ArcGIS field is a useful fallback, not a source of truth.
 
 ---
 
@@ -327,7 +380,9 @@ Herriman's GP Future Land Use data exists as a public-facing field `FLU2022` on 
 
 ## Update history (newest first)
 
-- **May 23, 2026** — Phase 14a SHIPPED. PMTiles re-baked with all 10 real zoning columns (dropped zoning_score fallback). 94 MB, 1.2M features, 100% D1 match rate. Phase 14a row added to ledger. What's Active updated → Phase 14b.
+- **May 23, 2026** — Phase 14c SHIPPED. Zoning overlay wired to real PMTiles: MapLibre MapCanvas, BUCKET_FROM_D1_VALUE, zoning.ts, zoning-mock.ts deleted. SD-24 added (Open Space/Public upstream split). Phase Ledger rows 14b + 14c added. CURRENT STATE → Phase 14 complete.
+- **May 23, 2026** — Phase 14b SHIPPED (Lovable). LayerTogglePanel, ZoningLegend, ParcelPopup, MapCanvas SVG mockup, ZONING_OVERLAY_HANDOFF.md. PR #12 merged.
+- **May 23, 2026** — Phase 14a SHIPPED. PMTiles re-baked with all 10 real zoning columns (dropped zoning_score fallback). 94 MB, 1.2M features, 100% D1 match rate. Phase 14a row added to ledger.
 - **May 18, 2026** — 18b-2d-2 (Herriman Cam-KMZ) SHIPPED. SD-21 appended (canonical Cam-KMZ workflow for satellite-underlay maps). Phase Ledger 18b-2d → Shipped. PR #11 merged (18b-2c + 18b-2d-2). herriman_gp.kmz / .geojson / _parcel_table.csv on main in tooele-land-intel.
 - **May 18, 2026** — SD-20 logged. Phase 18b-2d (raster-overlay extraction) supersedes 18b-2c PDF pipeline for satellite-basemap cities. Herriman re-extracted under new approach: 16,408 parcels labeled, 99.5% coverage, $0.22, 12.6 s. Phase Ledger updated: 18b-2c → Shipped (Spanish Fork + REST batch); 18b-2d added → Active (raster-overlay); old 18b-2d (taxonomy) renumbered to 18b-2e. SD-19 marked superseded by SD-20.
 - **May 16, 2026 (later still)** — Future Opportunities section added; Herriman internal FLU2022 lead documented.

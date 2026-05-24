@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import type { ZoningView } from "@/lib/zoning-mock";
+import type { ZoningView } from "@/lib/zoning";
 
 export interface LayerState {
   gapScore: boolean;

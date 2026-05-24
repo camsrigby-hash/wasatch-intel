@@ -1113,6 +1113,21 @@ REST ingest complete for 4 pre-check cities: Vineyard (36), Grantsville (51), Bl
 
 Downloaded correct 98-page source PDF (`Herriman_GP_Amendment.pdf`, ~39.5 MB, October 2013 revision — confirmed via page count and `D:20131009...` creation date). Extracted page 34 as single-page PDF (`herriman_map7_p34.pdf`; 5100×3300 px raster, 90°-rotated letter page, "Revised — October 7, 2013" footer confirmed). Currency check: 2030 Land Use Map (`LandUse203036x36.pdf`) is the current adopted plan (July 2022 GP) → 2013 amendment output must be flagged as superseded. Pipeline ran standard path (no `--tile-refine`, no `--manual-cps`). Stage 3 degenerate due to SD-18 Overpass bug: Utah numbered-road grid (12600 S, 13400 S) returns 342 shared nodes per road regardless of cross-street → only 2 unique geographic points for 4 CPs → underdetermined affine system → RMSE=0 (false positive, 1D transform). Output: 1 feature, unusable. **Effective result: FAIL. Herriman deferred per SD-19.** See SD-19 in PROJECT_DIRECTION.md. Cost: $0.905.
 
+### 2026-05-23 — Phase 14c COMPLETE — Claude Code (Sonnet 4.6)
+
+Phase 14c (Zoning Overlay MapLibre wiring) complete. Lovable design (14b) wired to real D1/PMTiles data without any visual design changes.
+
+**What shipped:**
+- `src/lib/zoning.ts` — canonical palette/types module; `BUCKET_FROM_D1_VALUE` (15 D1 normalized values → 8 buckets); `Parcel` interface (col/row dropped)
+- `src/lib/zoning-mock.ts` deleted — MOCK_PARCELS/GRID_COLS/GRID_ROWS gone
+- `src/components/MapCanvas.tsx` — SVG mockup replaced with MapLibre Map; PMTiles protocol singleton; vector source `parcels.pmtiles` (source-layer: "parcels"); data-driven fill-color case expression; `setPaintProperty` on view/toggle change; parcel click → Parcel from tile props (zero API latency); OSM raster basemap
+- `ParcelPopup.tsx`, `LayerTogglePanel.tsx`, `ZoningLegend.tsx` — import path updated `zoning-mock` → `zoning`; `MockParcel` → `Parcel`
+- `npm run build` clean (zero TS errors)
+
+**Bucket decisions:** `Open Space/Public` → `public_inst` (conservative parent; upstream taxonomy split flagged in PROJECT_DIRECTION.md). All other mappings per plan.
+
+**Key commit:** `1011feb` (wasatch-intel branch `phase-14c-zoning-wired`)
+
 ---
 
 ## REFERENCES — supporting docs

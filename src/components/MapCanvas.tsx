@@ -1,127 +1,213 @@
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import maplibregl from "maplibre-gl";
+import { Protocol } from "pmtiles";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { LayerTogglePanel, type LayerState } from "@/components/LayerTogglePanel";
 import { ZoningLegend } from "@/components/ZoningLegend";
 import { ParcelPopup } from "@/components/ParcelPopup";
 import {
   BUCKET_BY_ID,
-  GRID_COLS,
-  GRID_ROWS,
-  MOCK_PARCELS,
+  BUCKET_FROM_D1_VALUE,
   NO_DATA_COLOR,
-  type MockParcel,
-} from "@/lib/zoning-mock";
+  type Parcel,
+  type ZoningBucket,
+  type ZoningView,
+} from "@/lib/zoning";
 
-/**
- * MapCanvas — design mockup harness.
- *
- * NOTE: This is a visual-only mockup against local dummy data. The real map
- * (MapLibre/Mapbox + D1-backed parcel tiles) will be wired in a later pass.
- * Keep the layer-toggle integration shape here so it can be lifted out.
- */
+// Register the PMTiles protocol once at module load — idempotent guard prevents
+// double-registration if HMR re-evaluates this module.
+let pmtilesProtocolAdded = false;
+function ensurePmtilesProtocol() {
+  if (pmtilesProtocolAdded) return;
+  const protocol = new Protocol();
+  maplibregl.addProtocol("pmtiles", protocol.tile.bind(protocol));
+  pmtilesProtocolAdded = true;
+}
+
+/** PMTiles R2 URL — served by Worker /tiles/:filename (Range request passthrough). */
+const PARCEL_TILES_URL = "pmtiles:///tiles/parcels.pmtiles";
+
+/** tippecanoe --layer name (set during Phase 14a bake). */
+const PARCEL_SOURCE_LAYER = "parcels";
+
+const SOURCE_ID = "parcels";
+const FILL_LAYER_ID = "zoning-fill";
+const OUTLINE_LAYER_ID = "zoning-outline";
+
+/** Build a MapLibre case expression mapping zone_*_normalized → palette hex. */
+function buildZoningFillExpr(view: ZoningView): maplibregl.ExpressionSpecification {
+  const col = view === "current" ? "zone_current_normalized" : "zone_future_normalized";
+  // coalesce converts null/missing property to a sentinel so the case expression always
+  // gets a string — prevents MapLibre returning null fill-color (which would drop the
+  // feature from rendering AND hit-testing entirely).
+  const colExpr = ["coalesce", ["get", col], "__no_data__"] as maplibregl.ExpressionSpecification;
+  const cases: (string | maplibregl.ExpressionSpecification)[] = [];
+  for (const [d1Value, bucketId] of Object.entries(BUCKET_FROM_D1_VALUE)) {
+    cases.push(["==", colExpr, d1Value] as maplibregl.ExpressionSpecification);
+    cases.push(BUCKET_BY_ID[bucketId as ZoningBucket].color);
+  }
+  return ["case", ...cases, NO_DATA_COLOR] as maplibregl.ExpressionSpecification;
+}
+
+/** Build a Parcel from MapLibre tile feature properties. No API round-trip needed —
+ *  all 10 zoning columns are baked into parcels.pmtiles (Phase 14a). */
+function parcelFromFeature(
+  props: Record<string, unknown>,
+  view: ZoningView,
+): Parcel {
+  const currentNorm  = (props.zone_current_normalized as string | null) ?? null;
+  const futureNorm   = (props.zone_future_normalized  as string | null) ?? null;
+  const currentBucket = currentNorm ? (BUCKET_FROM_D1_VALUE[currentNorm] ?? null) : null;
+  const futureBucket  = futureNorm  ? (BUCKET_FROM_D1_VALUE[futureNorm]  ?? null) : null;
+
+  const rawCode =
+    view === "current"
+      ? ((props.zone_current as string | null) ?? null)
+      : ((props.zone_future  as string | null) ?? null);
+
+  const sourceMethod: string | null =
+    view === "current"
+      ? ((props.zone_current_source as string | null) ?? null)
+      : ((props.zone_future_source  as string | null) ?? null);
+
+  return {
+    id:           String(props.parcel_id ?? props.id ?? "unknown"),
+    current:      currentBucket,
+    future:       futureBucket,
+    rawCode:      rawCode,
+    jurisdiction: String(props.jurisdiction ?? "Unknown"),
+    sourceMethod,
+    vintage:      (props.flu_plan_vintage as string | null) ?? null,
+    currencyNote: (props.flu_currency_note as string | null) ?? undefined,
+  };
+}
+
 export function MapCanvas() {
   const [layers, setLayers] = useState<LayerState>({
-    gapScore: false,
-    stip: false,
-    zoning: true,
+    gapScore:   false,
+    stip:       false,
+    zoning:     true,
     zoningView: "future",
   });
 
-  const [selected, setSelected] = useState<MockParcel | null>(null);
+  const [selected, setSelected] = useState<Parcel | null>(null);
 
-  const parcels = useMemo(() => MOCK_PARCELS, []);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef          = useRef<maplibregl.Map | null>(null);
+
+  // Keep a ref so the click handler always reads current layer state without
+  // re-running the map-init effect on every state change.
+  const layersRef = useRef(layers);
+  useEffect(() => { layersRef.current = layers; }, [layers]);
+
+  // ── Map init ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current) return;
+
+    ensurePmtilesProtocol();
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: {
+        version: 8,
+        glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+        sources: {
+          osm: {
+            type: "raster",
+            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            attribution: "© OpenStreetMap contributors",
+          },
+        },
+        layers: [{ id: "osm", type: "raster", source: "osm" }],
+      },
+      center: [-112.1, 40.5],
+      zoom: 9,
+    });
+    map.on("load", () => {
+      // ── Parcel vector source ─────────────────────────────────────────────
+      map.addSource(SOURCE_ID, {
+        type: "vector",
+        url: PARCEL_TILES_URL,
+        promoteId: "parcel_id",
+      });
+
+      // ── Zoning fill layer ────────────────────────────────────────────────
+      map.addLayer({
+        id:           FILL_LAYER_ID,
+        type:         "fill",
+        source:       SOURCE_ID,
+        "source-layer": PARCEL_SOURCE_LAYER,
+        paint: {
+          "fill-color":   buildZoningFillExpr(layers.zoningView),
+          "fill-opacity": layers.zoning ? 0.95 : 0,
+        },
+      });
+
+      // ── Parcel outline (subtle, high-zoom only) ──────────────────────────
+      map.addLayer({
+        id:           OUTLINE_LAYER_ID,
+        type:         "line",
+        source:       SOURCE_ID,
+        "source-layer": PARCEL_SOURCE_LAYER,
+        minzoom:      13,
+        paint: {
+          "line-color": "rgba(0,0,0,0.45)",
+          "line-width": 0.5,
+        },
+      });
+
+      // ── Parcel click → popup ─────────────────────────────────────────────
+      map.on("click", FILL_LAYER_ID, (e) => {
+        if (!e.features?.length) return;
+        const props = e.features[0].properties as Record<string, unknown>;
+        const parcel = parcelFromFeature(props, layersRef.current.zoningView);
+        setSelected(parcel);
+      });
+
+      map.on("mouseenter", FILL_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", FILL_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "";
+      });
+    });
+
+    mapRef.current = map;
+    return () => { map.remove(); mapRef.current = null; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sync zoning fill-color when view switches (current ↔ future) ─────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (!map.getLayer(FILL_LAYER_ID)) return;
+    map.setPaintProperty(
+      FILL_LAYER_ID,
+      "fill-color",
+      buildZoningFillExpr(layers.zoningView),
+    );
+  }, [layers.zoningView]);
+
+  // ── Sync fill-opacity when zoning layer toggled on/off ───────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (!map.getLayer(FILL_LAYER_ID)) return;
+    map.setPaintProperty(FILL_LAYER_ID, "fill-opacity", layers.zoning ? 0.95 : 0);
+  }, [layers.zoning]);
 
   return (
     <div className="relative h-screen w-full overflow-hidden bg-[#0d1117]">
-      {/* Faux satellite basemap — dark terrain gradient with subtle road grid. */}
-      <BasemapBackdrop />
-
-      {/* Parcel grid */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          className="relative"
-          style={{
-            width: "min(96vw, 1600px)",
-            aspectRatio: `${GRID_COLS} / ${GRID_ROWS}`,
-          }}
-        >
-          <svg
-            viewBox={`0 0 ${GRID_COLS} ${GRID_ROWS}`}
-            preserveAspectRatio="none"
-            className="absolute inset-0 w-full h-full"
-          >
-            <defs>
-              <pattern
-                id="no-data-hatch"
-                width="0.6"
-                height="0.6"
-                patternUnits="userSpaceOnUse"
-                patternTransform="rotate(45)"
-              >
-                <rect width="0.6" height="0.6" fill={NO_DATA_COLOR} fillOpacity="0.55" />
-                <line x1="0" y1="0" x2="0" y2="0.6" stroke="white" strokeOpacity="0.25" strokeWidth="0.15" />
-              </pattern>
-            </defs>
-            {parcels.map((p) => {
-              const bucketId = layers.zoningView === "current" ? p.current : p.future;
-              const showZoning = layers.zoning;
-              const hasData = bucketId !== null;
-              const fill = !showZoning
-                ? "rgba(255,255,255,0.04)"
-                : hasData
-                  ? BUCKET_BY_ID[bucketId!].color
-                  : "url(#no-data-hatch)";
-              const opacity = !showZoning ? 0.9 : hasData ? 0.92 : 1;
-              return (
-                <rect
-                  key={p.id}
-                  x={p.col + 0.04}
-                  y={p.row + 0.04}
-                  width={0.92}
-                  height={0.92}
-                  fill={fill}
-                  fillOpacity={opacity}
-                  stroke="rgba(0,0,0,0.35)"
-                  strokeWidth={0.03}
-                  className="cursor-pointer hover:stroke-white hover:[stroke-width:0.08] transition-[stroke,stroke-width]"
-                  onClick={() => setSelected(p)}
-                />
-              );
-            })}
-
-            {/* Mock STIP overlay — corridor highlights */}
-            {layers.stip && (
-              <g>
-                <rect x="0" y="9.1" width={GRID_COLS} height="0.8" fill="#22d3ee" fillOpacity="0.35" />
-                <rect x="0" y="19.1" width={GRID_COLS} height="0.8" fill="#22d3ee" fillOpacity="0.35" />
-              </g>
-            )}
-
-            {/* Mock gap-score heat overlay */}
-            {layers.gapScore && (
-              <g style={{ mixBlendMode: "screen" }}>
-                {parcels.map((p, i) => (
-                  <rect
-                    key={`gs-${p.id}`}
-                    x={p.col}
-                    y={p.row}
-                    width={1}
-                    height={1}
-                    fill="#f43f5e"
-                    fillOpacity={((i * 37) % 100) / 400}
-                  />
-                ))}
-              </g>
-            )}
-          </svg>
-        </div>
-      </div>
+      {/* MapLibre canvas */}
+      <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
       {/* Top-left brand */}
-      <div className="absolute top-4 left-4 z-10">
-        <div className="text-xs font-semibold tracking-wider uppercase text-white/90">
+      <div className="absolute top-4 left-4 z-10 pointer-events-none">
+        <div className="text-xs font-semibold tracking-wider uppercase text-white/90 drop-shadow">
           Wasatch Intel
         </div>
-        <div className="text-[10px] text-white/50">
+        <div className="text-[10px] text-white/60 drop-shadow">
           ~947k parcels · Wasatch Front
         </div>
       </div>
@@ -142,33 +228,6 @@ export function MapCanvas() {
           />
         </div>
       )}
-
-      {/* Footer hint */}
-      <div className="absolute bottom-3 right-4 z-10 text-[10px] text-white/40 font-mono">
-        Design mockup · dummy data
-      </div>
     </div>
-  );
-}
-
-function BasemapBackdrop() {
-  return (
-    <>
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse at 30% 40%, #1f2937 0%, #0d1117 60%, #050709 100%)",
-        }}
-      />
-      <div
-        className="absolute inset-0 opacity-[0.07]"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.6) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-        }}
-      />
-    </>
   );
 }

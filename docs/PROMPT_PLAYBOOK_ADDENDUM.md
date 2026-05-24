@@ -8,7 +8,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 
 ## CURRENT STATE — 2026-05-23
 
-**Phase 14a SHIPPED (May 23 2026). PMTiles re-baked with all 10 real zoning columns. zoning_score (prop_class fallback) dropped. parcels.pmtiles: 94 MB, 1,202,000 features, 100% D1 match rate. HTTP 206 + magic bytes verified live. 5-parcel smoke test passed (Herriman/Olympia Hills MUT, Lehi R-Low, Spanish Fork Ag→Commercial rezone-flip signal, Eagle Mountain R-Med→Commercial rezone-flip signal, Tooele City zone_future_secondary populated). D1 pre-check confirmed stable (zone_current_normalized 180,518 / zone_future_normalized 172,830 / zone_future_secondary 12,927 — exact match to 18b-2e closeout). GHA run: camsrigby-hash/tooele-land-intel/actions/runs/26338879015 (9m26s). Next: Phase 14b — Lovable design pass (paint expression wiring for zone_current_normalized / zone_future_normalized color overlay).**
+**Phase 14 COMPLETE (all sub-phases: 14a PMTiles re-bake, 14b Lovable design, 14c MapLibre wiring). `/map` renders ~947k parcels colored by 8-bucket zoning taxonomy, driven by real D1 zone_current_normalized / zone_future_normalized values baked into parcels.pmtiles. Current/Future toggle live. Parcel click → popup from tile properties (no API round-trip). Build clean. Next: Phase 15 (CRE listings) or Phase 16 (pipeline parcel-centric refinement) — see PROJECT_DIRECTION.md for priority.**
 
 - **18b-1** — SHIPPED (May 11 2026). 13-city current zoning GeoJSONs merged to `tooele-land-intel/main`. Lehi 41.8% Other/Unknown flagged in `data/zoning/current/_taxonomy_review_needed.md` — normalization deferred to 18b-2e; loaded raw with `flu_currency_note='lehi_zone_current_normalization_gap'`.
 - **18b-2a** — SHIPPED (May 11 2026). 6-city GP FLU GeoJSONs merged (South Jordan, Lehi, Eagle Mountain, Saratoga Springs, American Fork, Tooele City). Esri rings format fixed. NLS source authority caveat in `data/zoning/future/_source_authority_caveats.md`. 7 PDF-path cities scoped in `data/zoning/future/_18b-2bc_scope.md`.
@@ -700,6 +700,35 @@ jobs:
           git commit -m "data: weekly listings and comps scrape ${today}"
           git push origin HEAD:main
 ```
+
+---
+
+### PHASE 14c COMPLETION NOTES (2026-05-23)
+
+Zoning overlay wired to real PMTiles data. All Lovable design decisions preserved per ZONING_OVERLAY_HANDOFF.md.
+
+**Key commit:** `1011feb` — feat(14c): wire Lovable zoning design to real PMTiles data (branch `phase-14c-zoning-wired`, PR to main)
+
+**Files changed:**
+- `src/lib/zoning.ts` (new) — canonical palette, types, `Parcel` interface, `BUCKET_FROM_D1_VALUE` (15 D1 values → 8 buckets)
+- `src/lib/zoning-mock.ts` (deleted) — palette/types promoted; `MOCK_PARCELS`/`GRID_COLS`/`GRID_ROWS` gone with SVG grid
+- `src/components/MapCanvas.tsx` — SVG mockup replaced with MapLibre Map; PMTiles protocol registered once at module load; vector source `parcels.pmtiles` (`source-layer: "parcels"`, `promoteId: "parcel_id"`); zoning fill layer with data-driven `fill-color` case expression; `setPaintProperty` on view/toggle change; parcel click builds `Parcel` from tile properties; OSM raster basemap; layout intact
+- `src/components/LayerTogglePanel.tsx`, `ZoningLegend.tsx`, `ParcelPopup.tsx` — import paths updated to `@/lib/zoning`; `MockParcel` → `Parcel`
+
+**Bucket lookup decisions:**
+- `Open Space/Public` → `public_inst` (not `open_ag`). Conservative parent: miscoloring a school green is a higher-cost prospector error than miscoloring a park blue. Upstream split (`gp_taxonomy.yaml`) flagged in PROJECT_DIRECTION.md.
+- `Residential-Townhome` → `high_res` (attached/higher-density)
+- All 5 Commercial variants → `commercial`; `Industrial/Flex` → `industrial`; both Mixed/Planned → `mixed_use`
+
+**Architecture decisions (v1):**
+- No-data = flat `#6B7280`, no hatch (hatch sub-pixel at zoom 8–10; add v2 if needed)
+- Basemap = OSM raster (same as WatchlistWizard; no API key)
+- Popup from tile properties only (all 10 zoning cols baked by Phase 14a; zero API latency)
+- STIP/gap-score SVG stubs deleted (mock-grid-only; real overlays deferred to Phase 15/16)
+
+**Smoke test:** `npm run build` clean. Browser smoke test pending Cam verification — 6 canonical parcels per plan checklist item 15.
+
+**Next:** Phase 15 (CRE listings scraper) or Phase 16 (pipeline refinement). Check PROJECT_DIRECTION.md ledger.
 
 ---
 
