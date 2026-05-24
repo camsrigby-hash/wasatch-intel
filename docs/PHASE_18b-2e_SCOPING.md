@@ -248,6 +248,98 @@ All tests run 2026-05-24.
 
 2. **Eagle Mountain zoning free text:** `Zoning` field has data quality issues (typos, inconsistent formatting). Confirm whether `General_Zoning` coded domain is sufficient for normalization or if we need to decode raw `Zoning` strings against Title 17 at `codepublishing.com/UT/EagleMountain/`.
 
-3. **Lehi GP Code duplicates:** Codes 4, 14, 20 each map to two different `Descriptio` values. Decision needed: collapse by `Descriptio` string or resolve against GP document PDF (`lehi-ut.gov/DocumentCenter/View/10899/General-Plan-Update-2022-2042-Adopted-Sept-6-2022`)?
+3. **Lehi GP Code duplicates:** Codes 4, 14, 20 each map to two different `Descriptio` values. Decision needed: collapse by `Descriptio` string or resolve against GP document PDF (`lehi-ut.gov/DocumentCenter/View/10899/General-Plan-Update-2022-2042-Adopted-Sept-6-2022`)? → See de-dup investigation below; the 3 outlier features are data entry errors.
 
 4. **Saratoga Springs Ord 25-75:** Confirmed as Water Element amendment only — no FLU map changes. The REST LandUse layer is authoritative. No further action needed on this specific ordinance.
+
+---
+
+## Lehi de-dup investigation
+
+**Queried:** 2026-05-24  
+**Endpoint:** `https://services5.arcgis.com/rObWD7PYeLl9jJPT/arcgis/rest/services/Lehi_General_Plan/FeatureServer/0/query`  
+**Filter:** `Code IN (4,14,20)` — 55 features returned. Fields: `Code`, `Descriptio`, `Acres`, `Link`.
+
+The `Link` field (format: `http://gis.lehi-ut.gov/Land_Use_Coding/<abbreviation>.jpg`) is a second source of truth — it reflects the city's own color-coding scheme for each land use category.
+
+### Code 4 — 31 features, 4,487.18 ac total
+
+| Descriptio | Features | Total Acres | Link | Notes |
+|---|---|---|---|---|
+| `'Low Density Residential'` | 29 | 4,368.02 | `LDR.jpg` | **Dominant.** Label and Link consistent. |
+| `'Light Density Residential'` | 1 | 72.23 | `VLDR.jpg` | Link points to **Very Low Density Residential** — contradicts both Descriptio and Code 4. |
+| `'Low  Density Residential'` (double space) | 1 | 46.93 | `HDR.jpg` | Link points to **High Density Residential** — contradicts Code 4 entirely. Double space is a typo. |
+
+**Diagnosis:** The two 1-feature outliers are data entry errors. The 'Light Density Residential' feature's VLDR.jpg link suggests it belongs to Code 2 or 3 (Very Low Density). The double-space typo feature's HDR.jpg link suggests it should be Code 6 (High Density Residential). Neither outlier represents an intentional dual-classification of Code 4.
+
+### Code 14 — 8 features, 447.89 ac total
+
+| Descriptio | Features | Total Acres | Link | Notes |
+|---|---|---|---|---|
+| `'Commercial / Residential'` | 7 | 446.00 | `BP.jpg` (Business Park) | **Dominant.** Note: Link is BP, not C — all 7 features use this link. |
+| `'Mixed-Use'` | 1 | 1.89 | `C.jpg` (Commercial) | Outlier. Semantically distinct label; link points to Commercial, not Mixed-Use. |
+
+**Diagnosis:** The 'Mixed-Use' outlier (1.89 ac) is almost certainly a data entry error. The Link=C.jpg (Commercial) does not support "Mixed-Use" as an intentional designation. The 1.89-acre area is too small to represent a distinct GP category.
+
+### Code 20 — 16 features, 96.51 ac total
+
+| Descriptio | Features | Total Acres | Link | Notes |
+|---|---|---|---|---|
+| `'Neighborhood Commercial'` | 15 | 93.57 | `C.jpg` (Commercial) | **Dominant.** Label and Link consistent. |
+| `'Medium Density Residential'` | 1 | 2.94 | `MDR.jpg` | Both Descriptio **and** Link agree on MDR — but Code=20 is Neighborhood Commercial. The **Code field** is wrong. |
+
+**Diagnosis:** The 'Medium Density Residential' outlier is a Code field error — the feature was tagged with Code 20 instead of Code 5 (Medium Density Residential). Both its Descriptio and its Link independently confirm MDR; only its Code is wrong.
+
+### Pipeline recommendation
+
+Use `Descriptio` as the canonical label (confirmed correct approach per scoping doc). Do **not** normalize outliers into their Code group's dominant label — they are miscoded in one or more fields, not intentionally dual-classified.
+
+Specific handling:
+- **Code 4 / 'Light Density Residential' (1 feature, 72 ac):** Flag `dedup_flag: 'miscoded_candidate'`. Link=VLDR suggests this belongs to Code 2/3. Exclude from Code 4 normalization bucket.
+- **Code 4 / 'Low  Density Residential' double-space (1 feature, 47 ac):** Strip extra whitespace → 'Low Density Residential'. Flag `dedup_flag: 'typo_corrected'`. Link=HDR is a secondary anomaly but whitespace fix is safe to apply.
+- **Code 14 / 'Mixed-Use' (1 feature, 1.89 ac):** Flag `dedup_flag: 'miscoded_candidate'`. Leave Descriptio as-is; do not roll into 'Commercial / Residential'.
+- **Code 20 / 'Medium Density Residential' (1 feature, 2.94 ac):** Flag `dedup_flag: 'miscoded_candidate'`. Normalize by Descriptio ('Medium Density Residential'), not by Code (20). Correct behavior: treat as MDR, not Neighborhood Commercial.
+
+**Open question for Cam:** The 3 `miscoded_candidate` features total ~119 acres. Confirm whether to (a) exclude from extraction, (b) normalize by Descriptio (ignoring Code), or (c) phone Lehi planning to get canonical GP document page for each parcel. The Link field (`gis.lehi-ut.gov/Land_Use_Coding/<code>.jpg`) is worth sharing with Lehi GIS staff as supporting evidence of the errors.
+
+---
+
+## Eagle Mountain GP PDF check
+
+**Checked:** 2026-05-24  
+**Sites tested:**
+- `eaglemountain.gov/government/community-development/` (redirects from eaglemountaincity.com)
+- `eaglemountain.gov/priorities-plans/responsible-growth/` (Long-Range Planning Documents subsection)
+- `eaglemountain.gov/planning-department/`
+
+### Result: FLU map PDF found
+
+The Responsible Growth page (`eaglemountain.gov/priorities-plans/responsible-growth/`) contains a "Long-Range Planning Documents" subsection with a direct PDF link:
+
+**Future Land Use Map:**  
+`https://eaglemountain.gov/wp-content/uploads/2026/04/mp-future-land-use-map-1.pdf`  
+File size: 3.8 MB (PDF-1.6, flate-compressed)  
+WordPress upload date: April 2026  
+Associated GP document: *"2025-2018 General Plan Water Element Update"* (base GP adopted 2018, Water Element updated 2025)
+
+The same page also links the interactive ArcGIS experience (`experience.arcgis.com/experience/8d9d65bd0adf4d1b81348068b37781ac`) and the Social Pinpoint FLU engagement map — confirming those are presentation layers, not the authoritative data source. The PDF is the static authoritative document.
+
+### Map type assessment
+
+The PDF was not directly renderable by the verification tool (binary PDF-1.6). Assessment based on indirect signals:
+- The Responsible Growth page distinguishes the PDF as a "static" document vs. the interactive ArcGIS experience — consistent with a flat-color vector map rather than a satellite-underlay raster.
+- File size (3.8 MB) is consistent with a vector or moderate-resolution raster map; satellite-underlay PDFs at this scale typically exceed 10–20 MB.
+- **Preliminary classification: flat-color map** → route to 18b-2c/18b-2d PDF vision pipeline per SD-21 hierarchy. Cam should visually confirm before kicking off pipeline.
+
+### Revised recommendation
+
+**Previous recommendation (scoping doc §Eagle Mountain C):** Escalate to Cam to phone city planner.
+
+**Revised recommendation:** FLU PDF is publicly accessible. Visual confirmation by Cam required to confirm flat-color vs. satellite-underlay.
+
+- If flat-color → 18b-2c/18b-2d automated pipeline (same path as Spanish Fork). Provenance: `PDF_vision`, amber/medium confidence.  
+- If satellite-underlay → Cam-KMZ workflow per SD-21. Provenance: `PDF_raster_Cam_KMZ`, amber/medium.
+
+Phoning the city planner is no longer the first option. The PDF path is viable and should be attempted first.
+
+**Planning contact (if PDF extraction fails):** `planning@eaglemountain.gov`

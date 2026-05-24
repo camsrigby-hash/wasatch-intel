@@ -349,6 +349,20 @@ server: {
 
 ---
 
+### SD-28 — Zoning/FLU source authority hierarchy (May 2026)
+
+For any new city added to coverage, source selection follows this priority order:
+
+1. **REST endpoint with canonical zone attribute field** → REST extract. Provenance: `arcgis_rest`, green/high confidence dot.
+2. **No REST, flat-color PDF GP map** → PDF vision pipeline per Phase 18b-2c. Provenance: `PDF_vision`, amber/medium.
+3. **No REST, satellite-underlay PDF GP map** → Cam-KMZ workflow per SD-21. Provenance: `PDF_raster_Cam_KMZ`, amber/medium.
+4. **No REST and no GP PDF, but related proxy field exists on another city service** → proxy with explicit flag (e.g., `current_landuse_proxy`). Provenance: amber/medium with proxy flag in metadata.
+5. **None of the above** → escalate to Cam, who phones the city planner directly.
+
+Rationale: REST is preferred in every dimension where available — zero georeferencing error, zero color-sampling error, zero Cam time, $0 LLM cost, automatic currency, higher confidence label. Cam-KMZ (SD-21) is a real fallback but is accuracy-lossy by nature and should not be used when REST is available. The scoping pass in Phase 18b-2e was the first formal application of this hierarchy; codifying here so future cities follow it without re-derivation.
+
+---
+
 ## Working Style
 
 - **User strongly prefers agentic execution**: single bash blocks to paste, not click-by-click. Tools (gh CLI, git, file edits, GitHub API) over manual browser steps.
@@ -399,6 +413,7 @@ Small items surfaced during Phase 14c smoke-test debugging. None are blockers. L
 
 ## Update history (newest first)
 
+- **May 24, 2026** — SD-28 added (Zoning/FLU source authority hierarchy). Lehi de-dup investigation completed (3 miscoded outlier features identified via Link-field cross-check). Eagle Mountain FLU PDF found at eaglemountain.gov (3.8 MB, April 2026 upload, preliminary flat-color). Both appended to PHASE_18b-2e_SCOPING.md.
 - **May 24, 2026** — Post-14c hygiene items logged (satellite toggle, MUT bucket split, NLS audit, SD-24 reminder, flu_plan_vintage decision, bake-script drift note). 14c-data-fix row added to Phase Ledger (SD-25 Vite proxy, SD-26 taxonomy-first normalize). CURRENT STATE → Phase 14 SHIPPED. Awaiting Cam decision on Phase 15 vs 16.
 - **May 23, 2026** — Phase 14c SHIPPED. Zoning overlay wired to real PMTiles: MapLibre MapCanvas, BUCKET_FROM_D1_VALUE, zoning.ts, zoning-mock.ts deleted. SD-24 added (Open Space/Public upstream split). Phase Ledger rows 14b + 14c added. CURRENT STATE → Phase 14 complete.
 - **May 23, 2026** — Phase 14b SHIPPED (Lovable). LayerTogglePanel, ZoningLegend, ParcelPopup, MapCanvas SVG mockup, ZONING_OVERLAY_HANDOFF.md. PR #12 merged.
