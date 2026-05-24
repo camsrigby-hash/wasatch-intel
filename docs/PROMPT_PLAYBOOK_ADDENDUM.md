@@ -15,7 +15,7 @@ That means: anyone (you, me in a future chat, or a tool picking up where another
 - **18b-2b** — SHIPPED (May 14 2026). Pipeline `scripts/gp_pdf_extract.py` built and validated structurally on Erda. See `data/zoning/future/erda_transform_validation.md`. Branch: `phase-18b-2b-pipeline-prototype` on `tooele-land-intel`.
 - **18b-2c** — SHIPPED (May 16 2026) — Spanish Fork RMSE 38.6 ft (14 features) + REST batch: Vineyard (36), Grantsville (51), Bluffdale (94), Draper (62). Vector-tracing approach is the shipped 18b-2c pipeline; do NOT refactor it. Herriman previously vector-traced (12 features, 8-call cap) — eye-test exposed fundamental fragility of vector tracing on satellite-basemap PDFs. **Herriman moved to 18b-2d (raster-overlay) per SD-20.** PR #11 (18b-2c + 18b-2d-2) MERGED May 18 2026. Branch: `phase-18b-2-pipeline-v2` on `tooele-land-intel`.
 - **18b-2d** — SHIPPED (May 18 2026). New `scripts/gp_raster_sample_extract.py` — per-parcel LAB color sampling pipeline. **18b-2d-2 (Cam-KMZ)**: Cam manually georeferenced Map 7 → `Herriman_Zoning.kmz`. CC extracted GeoTIFF, ran legend via Claude vision (16 categories). bbox+whitelist fix: 28,195 parcels sampled. Herriman-only MUT 7.4%; South Jordan 78% MUT (Olympia Hills — geographically correct). Scripts: `herriman_cam_ingest.py` + `gp_raster_sample_extract.py`. Canonical workflow documented in SD-21. Files on `tooele-land-intel/main`.
-- **18b-2e** — SHIPPED (May 23 2026). See PHASE 18b-2e COMPLETION NOTES below.
+- **18b-2e** — Step 2a SHIPPED (May 23 2026, taxonomy harmonization). **Step 2b SHIPPED (May 23 2026, REST extractions: SS/Lehi/EM zoning — NLS replaced).** Step 2c PENDING (Eagle Mountain FLU — Cam-KMZ overlay, Prompt C). See PHASE 18b-2e COMPLETION NOTES + Step 2b PHASE_LOG below.
 - **18b-3** — SHIPPED (May 22 2026). See PHASE 18b-3 COMPLETION NOTES below.
 - **14a** — SHIPPED (May 23 2026). PMTiles re-baked with 10 real zoning columns. See PHASE 14a COMPLETION NOTES below.
 - **14c-data-fix** — SHIPPED TO PRODUCTION (May 24 2026). SD-25 popup source provenance + confidence dot + currency note warnings. SD-26 taxonomy-first normalize_current(). 12,956 corrected zone_current_normalized values. See PHASE 14c-data-fix COMPLETION NOTES below.
@@ -2491,3 +2491,69 @@ Note: parcels 3 + 4 demonstrate the rezone-flip thesis data flow end-to-end (res
 **Cost**: $0 LLM calls. GHA compute only (~9.5 min).
 
 **Node.js 20 deprecation warning**: GHA flagged `actions/checkout@v4`, `actions/setup-node@v4`, `actions/setup-python@v5`, `actions/upload-artifact@v4` as deprecated (Node.js 24 becomes default June 2 2026). Non-blocking today — all steps passed. Upgrade these action versions before Sep 16 2026.
+
+---
+
+### PHASE 18b-2e Step 2b PHASE_LOG — REST extractions: SS / Lehi / EM zoning (2026-05-23)
+
+**Status**: SHIPPED to `phase-18b-2e-scoping` (wasatch-intel + tooele-land-intel).
+
+**What was built**: Replaced all three NLS-sourced GeoJSONs (Saratoga Springs current + future, Lehi current + future) with live ArcGIS REST extractions. Added new Eagle Mountain parcel-level zoning GeoJSON (22,146 features). All layers: `source_method='arcgis_rest'`, `confidence='rest_api'` (SD-28 tier 1 / green dot).
+
+**Extraction counts**:
+
+| Layer | Features | Notes |
+|---|---|---|
+| SS zoning (MapServer/1, ZONECLASS) | 368 | 1 null-geometry, benign |
+| SS FLU (LandUse/MapServer/2, LANDUSEDESC) | 33 | Ord 25-75 was Water Element only; REST is authoritative |
+| Lehi zoning (services5 FeatureServer/0, Zone) | 585 | services5 = April 2026 upload (added 5 new codes vs services9) |
+| Lehi GP (services5 FeatureServer/0, Descriptio) | 429 | 4 miscoded features flagged with `provenance_note='miscoded_candidate_for_review'` |
+| Eagle Mountain zoning (EMC_Zoning_View, Zoning+General_Zoning+Current_Landuse) | 22,146 | Parcel-level (not polygon). 38 null-geometry, benign. `zone_current_raw` + `current_landuse` preserved. |
+
+**SS FLU endpoint clarification**: Scoping doc specified `Planning/LandUse/MapServer/2` — NOT `Planning/Zoning/MapServer Layer 2` as the original prompt stated. LandUse endpoint confirmed by field name (LANDUSEDESC) and feature count (33 polys).
+
+**Taxonomy additions to `gp_taxonomy.yaml`**:
+- `current_zoning.lehi` +5: `R-1-22`, `R-1-Flex`, `R-2`, `R-2.5`, `RA-1` (services5 April 2026 codes, absent in prior services9 extract)
+- `current_zoning.eagle_mountain` +8: General_Zoning label entries (`Residential`, `Agriculture`, `Open Space`, `Commercial`, `Business Park / Industrial`, `Business Park / Light Industry`, `Under Review`, `Other`) — new parcel-level layer uses text labels not legacy 17.xx codes
+- `future_zoning.saratoga_springs` +6: `Business Park`, `Planned Community`, `Heavy Commercial`, `NH Commercial`, `Mixed Use Commercial Overlay`, `Town Center Overlay` — LANDUSEDESC values from new REST FLU
+- `future_zoning.lehi` REPLACED: NLS abbreviations (LDR, MDR, etc.) removed entirely; 17 full Descriptio text entries written (services5 GP field values)
+
+**Anomalies / fixes required mid-run**:
+1. `UnicodeEncodeError` on `─` (U+2500) and `→` (U+2192) in Windows cp1252 terminal — replaced with ASCII `-` and `->`.
+2. EM domain key mismatch: `"Business Park/Industrial"` (no spaces) vs server's `"Business Park / Industrial"` (spaces around `/`) — fixed in `EM_GENERAL_ZONE_NORM`.
+3. 5 unmapped Lehi zone codes from services5 (R-1-22, R-1-Flex, R-2, R-2.5, RA-1) — added to `LEHI_ZONE_NORM` in script and taxonomy.
+4. UGRC Utah County parcel REST URL returned 400 for all variants — worked around by querying D1 directly.
+5. D1 `jurisdiction` uses full city name (`'Saratoga Springs'`), not slug format — corrected in D1 query.
+
+**Wagstaff validation result** (APN 352390021, Saratoga Springs):
+- Centroid: (-111.9200, 40.3711), 10.30 acres
+- `zone_current` (SS REST): **MU** (Mixed-Use) — NOT residential
+- `zone_class_normalized`: Mixed-Use
+- `zone_future` (new REST FLU): **Business Park**
+- **VALIDATION: PASS** — commercial classification confirmed. D1 load is cleared to proceed.
+
+**Eagle Mountain FLU**: OUT OF SCOPE for this step. EM FLU PDF confirmed as satellite-underlay (same class as Herriman 18b-2d). `eagle_mountain_gp` removed from `FUTURE_GP_META` in `load_zoning_to_d1.py` — EM parcels get `zone_future=NULL` until Cam-KMZ extraction (Prompt C, Step 2c).
+
+**Files changed** (`wasatch-intel` repo):
+- `scripts/load_zoning_to_d1.py` — Updated `FUTURE_GP_META` (lehi_gp + SS_gp sources, EM removed), added `zone_current_raw`/`current_landuse` UPDATE columns, `provenance_note` carry-through, `prov_note=None` scope fix
+- `migrations/0010_em_zone_raw.sql` — NEW. `ALTER TABLE parcel_records ADD COLUMN zone_current_raw TEXT; ADD COLUMN current_landuse TEXT;`
+- `scripts/wagstaff_validation.py` — NEW. Point-in-polygon validator for Wagstaff parcel against SS zoning + FLU GeoJSONs
+
+**Files changed** (`tooele-land-intel` repo):
+- `scripts/extract_zoning_18b2e.py` — NEW. 5-layer REST extraction script (SS zoning, SS FLU, Lehi zoning, Lehi GP, EM zoning)
+- `data/zoning/gp_taxonomy.yaml` — Updated (4 sections, taxonomy additions documented above)
+- `data/zoning/current/saratoga_springs_ut_zoning.geojson` — REPLACED (368 features, 9,193 KB)
+- `data/zoning/future/saratoga_springs_gp.geojson` — REPLACED (33 features, 1,142 KB; was NLS)
+- `data/zoning/current/lehi_ut_zoning.geojson` — REPLACED (585 features, 1,330 KB; services5 endpoint)
+- `data/zoning/future/lehi_gp.geojson` — REPLACED (429 features, 1,429 KB; was NLS)
+- `data/zoning/current/eagle_mountain_ut_zoning.geojson` — NEW (22,146 features, 48,652 KB; parcel-level)
+- `data/zoning/future/eagle_mountain_gp.geojson` — NOT replaced (stays as NLS, excluded from FUTURE_GP_META)
+
+**Pending before D1 load**:
+1. Apply migration 0010: `wrangler d1 execute wasatch-intel-db --remote --file migrations/0010_em_zone_raw.sql`
+2. Trigger `load_zoning_to_d1.yml` GHA workflow (dry_run=true then live) — requires parcel CSVs in `large-parcels` release
+3. PMTiles rebake: trigger `build_parcels_pmtiles.yml` GHA workflow
+
+**Step 2c (EM FLU)**: Cam-KMZ overlay required. Same workflow as Herriman 18b-2d-2 (SD-21). Cam manually overlays EM FLU PDF in Google Earth Pro → exports KMZ → CC runs LAB sampling. See Prompt C in scoping doc.
+
+**Cost**: $0 (zero LLM calls — pure REST extraction + Python/YAML edits).
