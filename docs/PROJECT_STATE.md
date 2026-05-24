@@ -8,9 +8,9 @@ Update this file at the end of every work session. The "Current Status" section 
 
 ## CURRENT STATUS
 
-**Last updated:** 2026-05-24
-**Last agent:** Claude Code (Sonnet 4.6) — Phase 14 SHIPPED TO PRODUCTION. All sub-phases complete (14a PMTiles re-bake, 14b Lovable design, 14c MapLibre wiring, 14c-data-fix SD-25/SD-26). Deployed via GHA run 26349118507.
-**Active phase:** NONE. Phase 14 fully complete. Next phase TBD by Cam (Phase 15 CRE listings or Phase 16 pipeline refinement). STANDING PRINCIPLE: use the tool for several weeks before activating next phase.
+**Last updated:** 2026-05-23
+**Last agent:** Claude Code (Sonnet 4.6) — Phase 18b-2e Step 2b SHIPPED. REST extractions for Saratoga Springs (zoning + FLU), Lehi (zoning + GP), Eagle Mountain (zoning only). NLS replaced for SS + Lehi. EM zoning now parcel-level (22,146 features). Wagstaff validation PASS (zone_current=MU). EM FLU excluded (Step 2c — Cam-KMZ, Prompt C). Migration 0010 ready to apply. Branch: `phase-18b-2e-scoping` (wasatch-intel + tooele-land-intel).
+**Active phase:** Phase 18b-2e Step 2c PENDING (Eagle Mountain FLU — Cam-KMZ overlay). D1 load of Step 2b data PENDING (apply migration 0010 → trigger load_zoning_to_d1.yml → PMTiles rebake).
 **Live URL:** https://wasatch-intel.cam-s-rigby.workers.dev (Cloudflare Workers, not Pages)
 **GitHub repo:** `github.com/camsrigby-hash/wasatch-intel`
 **Legacy repo:** `github.com/camsrigby-hash/tooele-land-intel` (kept as scrapers source)

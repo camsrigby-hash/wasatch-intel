@@ -49,25 +49,28 @@ FUTURE_GP_META = {
     "american_fork_gp":    ("REST",       None),
     "bluffdale_gp":        ("REST",       None),
     "draper_gp":           ("REST",       None),
-    "eagle_mountain_gp":   ("REST",       "NLS_source_authority_unverified"),
+    # eagle_mountain_gp EXCLUDED: EM FLU has no authoritative REST source (18b-2e, Prompt C pending).
+    # zone_future will be NULL for EM parcels until Prompt C (Cam-KMZ overlay) populates it.
+    # Restore when: tooele-land-intel/data/zoning/future/eagle_mountain_gp.kmz delivered by Cam.
     "grantsville_gp":      ("REST",       None),
-    "lehi_gp":             ("REST",       "NLS_source_authority_unverified"),
-    "saratoga_springs_gp": ("REST",       "NLS_source_authority_unverified"),
+    "lehi_gp":             ("REST",       None),                  # 18b-2e: NLS replaced with city REST (April 2026)
+    "saratoga_springs_gp": ("REST",       "Ord 25-75 Dec 2 2025 was Water Element only; FLU layer is current adopted"),
     "south_jordan_gp":     ("REST",       None),
     "spanish_fork_gp":     ("PDF_vision", None),
     "tooele_city_gp":      ("REST",       None),
     "vineyard_gp":         ("REST",       None),
 }
 
-# Lehi normalization gap is FIXED in 18b-2e via gp_taxonomy.yaml — note removed.
-# Eagle Mountain ordinance-section codes ('17', '17.25') flagged per-code below.
+# 18b-2e: Lehi + SS + EM zoning NLS replaced with city REST sources.
+# EM ordinance code notes (17, 17.25) removed — EMC_Zoning_View General_Zoning domain supersedes them.
 CURRENT_CITY_NOTES: dict[str, str] = {}
 
 # Per zone-code notes added to flu_currency_note when that raw code is matched.
-CURRENT_CODE_NOTES: dict[tuple, str] = {
-    ("eagle_mountain", "17"):    "eagle_mountain_ordinance_decode_pending",
-    ("eagle_mountain", "17.25"): "eagle_mountain_ordinance_decode_pending",
-}
+CURRENT_CODE_NOTES: dict[tuple, str] = {}
+
+# Cities that carry extra raw fields in their current-zoning GeoJSON (18b-2e EM parcel layer).
+# These populate zone_current_raw and current_landuse columns in D1 (migration 0010).
+EM_RAW_PROPS_CITY = "eagle_mountain"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,11 +185,14 @@ def build_current_tree():
                 geojson_norm = (props.get("zone_class_normalized") or "").strip()
                 polygons.append(shp)
                 meta.append({
-                    "zone_code":    zone_code,
-                    "geojson_norm": geojson_norm,
-                    "source":       props.get("extraction_method") or "REST",
-                    "city_slug":    city_slug,
-                    "note":         note,
+                    "zone_code":       zone_code,
+                    "geojson_norm":    geojson_norm,
+                    "source":          props.get("extraction_method") or "REST",
+                    "city_slug":       city_slug,
+                    "note":            note,
+                    # EM parcel-level extras (18b-2e); None for all other cities
+                    "zone_current_raw":  props.get("zone_current_raw") or None,
+                    "current_landuse":   props.get("current_landuse") or None,
                 })
             except Exception:
                 pass
@@ -224,13 +230,17 @@ def build_future_tree():
                     zone_code = raw_code
                     secondary = ""
 
+                # Per-feature provenance_note (Lehi GP miscoded features, 18b-2e)
+                feat_note = (props.get("provenance_note") or "").strip() or None
+
                 polygons.append(shp)
                 meta.append({
-                    "zone_code":     zone_code,
-                    "zone_secondary": secondary,
-                    "source":        future_source,
-                    "currency_note": currency_note,
-                    "slug":          slug,
+                    "zone_code":       zone_code,
+                    "zone_secondary":  secondary,
+                    "source":          future_source,
+                    "currency_note":   currency_note,
+                    "provenance_note": feat_note,
+                    "slug":            slug,
                 })
                 count += 1
             except Exception:
@@ -298,17 +308,22 @@ def process_county(
                 zone_current_norm   = normalize_current(
                     cur["city_slug"], zone_current, cur["geojson_norm"], current_rules
                 )
-                # Per-code note (e.g. Eagle Mountain ambiguous ordinance codes)
-                per_code_note = CURRENT_CODE_NOTES.get((cur["city_slug"], zone_current))
+                per_code_note       = CURRENT_CODE_NOTES.get((cur["city_slug"], zone_current))
+                # EM parcel-level extras (18b-2e; None for all other cities)
+                zone_current_raw    = cur.get("zone_current_raw")
+                parcel_current_lu   = cur.get("current_landuse")
             else:
                 zone_current        = None
                 zone_current_source = None
                 current_note        = None
                 zone_current_norm   = None
                 per_code_note       = None
+                zone_current_raw    = None
+                parcel_current_lu   = None
 
             # — Future GP —
             zone_future_secondary = None
+            prov_note             = None
             if pid in herriman_table:
                 hz, hcity          = herriman_table[pid]
                 zone_future        = hz
@@ -329,15 +344,18 @@ def process_county(
                     # Secondary codes (Tooele City comma-separated)
                     sec = fut.get("zone_secondary", "")
                     zone_future_secondary = sec if sec else None
+                    # Per-feature provenance_note (Lehi GP miscoded features, 18b-2e)
+                    prov_note = fut.get("provenance_note")
                 else:
                     zone_future        = None
                     zone_future_source = None
                     flu_source_jur     = None
                     future_note        = None
                     zone_future_norm   = None
+                    prov_note          = None
 
-            # Combine all currency notes
-            notes = [n for n in (current_note, per_code_note, future_note) if n]
+            # Combine all currency notes (per-city, per-code, per-future-polygon, per-provenance)
+            notes = [n for n in (current_note, per_code_note, future_note, prov_note) if n]
             flu_currency_note = ";".join(notes) if notes else None
 
             if zone_current:
@@ -354,6 +372,8 @@ def process_county(
                 f"zone_current={_q(zone_current)}, "
                 f"zone_current_source={_q(zone_current_source)}, "
                 f"zone_current_normalized={_q(zone_current_norm)}, "
+                f"zone_current_raw={_q(zone_current_raw)}, "
+                f"current_landuse={_q(parcel_current_lu)}, "
                 f"zone_future={_q(zone_future)}, "
                 f"zone_future_source={_q(zone_future_source)}, "
                 f"zone_future_normalized={_q(zone_future_norm)}, "
